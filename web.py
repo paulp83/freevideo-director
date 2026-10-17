@@ -541,6 +541,38 @@ def library_view(c):
     return dict(c, image_url=f'/library-files/{c["slug"]}/{c["image"]}' if c.get('image') else None)
 
 
+def queue_view():
+    """Everything that is running now: jobs (with learned estimates) and batches, oldest first."""
+    now = time.time()
+    where = {jid: key for key, jid in SCENE_JOB.items()}          # job id -> (project slug, scene id)
+    def film(slug, scene_id=None):
+        try:
+            p = projects.load(slug)
+        except Exception:
+            return None, None
+        scene = next((s for s in p['scenes'] if s['id'] == scene_id), None)
+        return p.get('name') or slug, scene['title'] if scene else None
+    jobs = []
+    for jid, job in list(JOBS.items()):
+        if job['done']:
+            continue
+        slug, scene_id = where.get(jid, (None, None))
+        name, title = film(slug, scene_id) if slug else (None, None)
+        elapsed = round(now - job['created'])
+        estimate = stats.estimate(job['kind'])
+        estimate = round(estimate) if estimate is not None else None
+        stage = next((s['label'] for s in job['stages'] if s['state'] == 'active'), None)
+        jobs.append({'id': jid, 'kind': job['kind'], 'project': slug, 'project_name': name, 'scene': scene_id,
+                     'scene_title': title, 'elapsed': elapsed, 'estimate': estimate,
+                     'eta': max(0, estimate - elapsed) if estimate is not None else None, 'stage': stage})
+    batches = []
+    for slug, b in list(BATCH.items()):
+        if not b['done']:
+            batches.append({'project': slug, 'project_name': film(slug)[0], 'label': b['label'], 'step': b['step'],
+                            'of': b['of'], 'scene': b['scene'], 'seconds': round(now - b['started'])})
+    return {'jobs': jobs, 'batches': batches}
+
+
 def serve_file(handler, file):
     """Static file with Range support (browser seeking in mp4)."""
     size = file.stat().st_size
@@ -609,6 +641,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (HERE / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path in ('/project', '/project.html') or self.path.startswith('/project?'):
             return self.reply(200, (HERE / 'project.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/api/queue':
+            return self.reply(200, queue_view())
+        if self.path == '/queue':
+            return self.reply(200, (HERE / 'queue.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/api/library':
             return self.reply(200, [library_view(c) for c in library.list_all()])
         if self.path.startswith('/library-files/'):
