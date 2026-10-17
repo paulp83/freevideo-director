@@ -135,6 +135,26 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
       <span class="status" id="createStatus"></span>
     </div>
     <p class="hint">The director plans the scenes (4–15 s each), a style bible for consistent characters, and a music brief. About 20 s. Everything stays editable.</p>
+    <div class="grid2" style="margin-top:10px">
+      <div>
+        <label class="inline">Characters from your library (each picture takes one of the 2 picture slots)</label>
+        <div id="nCharacters"></div>
+      </div>
+      <div>
+        <label class="inline">Add a character</label>
+        <input type="text" id="libName" maxlength="60" placeholder="Name">
+        <textarea id="libDesc" rows="3" maxlength="1500" placeholder="Exact look: age, build, hair, face, clothing colours"></textarea>
+        <div class="row">
+          <button class="btn ghost small" id="libPick">Choose picture…</button>
+          <span class="hint" id="libPicName"></span>
+        </div>
+        <div class="row">
+          <button class="btn small" id="libAdd">Add to library</button>
+          <span class="status" id="libStatus"></span>
+        </div>
+      </div>
+    </div>
+    <div id="libList"></div>
   </section>
 
   <!-- project -->
@@ -267,15 +287,50 @@ document.querySelectorAll('#newBox .slot').forEach(slot => {
 });
 $('createBtn').onclick = async () => {
   const st = $('createStatus'), t0 = Date.now();
+  const chosen = [...document.querySelectorAll('#nCharacters input:checked')].map(x => x.value);
+  const pics = chosen.filter(s => (library.find(c => c.slug === s) || {}).image_url).length + newRefs.filter(Boolean).length;
+  if (pics > 2) { st.textContent = 'Pick at most 2 pictures in total (uploads plus characters with a picture).'; st.classList.add('err'); return; }
   $('createBtn').disabled = true;
   const tick = setInterval(() => st.textContent = `Storyboarding… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
   try {
     const p = await api('/api/projects', {name: $('nName').value, logline: $('nLogline').value, seconds: +$('nSeconds').value,
-                                          aspect, refs: newRefs.filter(Boolean)});
+                                          aspect, refs: newRefs.filter(Boolean), characters: chosen});
     clearInterval(tick); st.textContent = '';
     await loadList(); open(p.slug);
   } catch (e) { clearInterval(tick); st.textContent = e.message; st.classList.add('err'); }
   $('createBtn').disabled = false;
+};
+
+let library = [];
+let libImage = null;
+async function loadLibrary() { library = await api('/api/library'); renderLibrary(); }
+function renderLibrary() {
+  const box = $('nCharacters');
+  const checked = new Set([...box.querySelectorAll('input')].filter(x => x.checked).map(x => x.value));
+  box.replaceChildren(); $('libList').replaceChildren();
+  for (const c of library) {
+    const cb = el('input', {type: 'checkbox', value: c.slug});
+    cb.checked = checked.has(c.slug);
+    box.append(el('label', {class: 'inline'}, cb, ' ' + c.name + (c.image_url ? ' · picture' : '')));
+    const row = el('div', {class: 'row'});
+    if (c.image_url) row.append(el('img', {src: c.image_url, style: 'width:48px;height:48px;object-fit:cover;border-radius:6px'}));
+    row.append(el('b', {}, c.name), el('span', {style: 'flex:1'}, c.description));
+    row.append(el('button', {class: 'btn ghost small', onclick: async () => {
+      if (confirm('Delete ' + c.name + ' from the library?')) { await api('/api/library/' + c.slug + '/delete', {}); await loadLibrary(); }
+    }}, 'Delete'));
+    $('libList').append(row);
+  }
+  $('libList').hidden = !library.length;
+}
+$('libPick').onclick = async () => { const f = await pick('image/*'); if (f) { libImage = await readFile(f); $('libPicName').textContent = f.name; } };
+$('libAdd').onclick = async () => {
+  $('libAdd').disabled = true;
+  try {
+    await api('/api/library', {name: $('libName').value, description: $('libDesc').value, image: libImage});
+    $('libName').value = ''; $('libDesc').value = ''; libImage = null; $('libPicName').textContent = ''; $('libStatus').textContent = ''; $('libStatus').classList.remove('err');
+    await loadLibrary();
+  } catch (e) { $('libStatus').textContent = e.message; $('libStatus').classList.add('err'); }
+  $('libAdd').disabled = false;
 };
 
 /* ---------- open + poll ---------- */
@@ -531,6 +586,7 @@ $('batchCancel').onclick = () => run('cancel', {});
 $('musicRemove').onclick = async () => { proj = await api(`/api/p/${slug}/music`, {remove: true}); draw(); };
 
 loadList().then(() => { if (slug) open(slug); });
+loadLibrary().catch(() => {});
 </script>
 </body>
 </html>
