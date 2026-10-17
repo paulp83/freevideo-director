@@ -73,7 +73,7 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 
 /* scenes */
 .scene { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 12px; background: var(--bg); }
-.scene-head { display: grid; grid-template-columns: auto 1fr 90px 150px auto; gap: 8px; align-items: center; }
+.scene-head { display: grid; grid-template-columns: auto 1fr 90px 150px 130px auto; gap: 8px; align-items: center; }
 .scene-head .num { font-weight: 700; color: var(--muted); }
 .scene details { margin-top: 8px; }
 .scene summary { cursor: pointer; color: var(--muted); font-size: 13px; }
@@ -454,7 +454,7 @@ function updateScene(s, i) {
   setIfIdle(q(card, 'connect'), s.connect, 'connect', s.id);
   q(card, 'connect').disabled = i === 0;
   setIfIdle(q(card, 'transition'), s.transition, 'transition', s.id);
-  q(card, 'transition').hidden = i === 0;
+  q(card, 'transition').disabled = i === 0;
   setIfIdle(q(card, 'action'), s.action, 'action', s.id);
   setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
   q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
