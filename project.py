@@ -24,6 +24,7 @@ I2VA_LINE = 'For the target video, at 0.00 seconds into the target video, <Pictu
 TRANSITIONS = ('cut', 'crossfade', 'dip')
 XFADE = 0.5
 DIP = 0.4
+HISTORY_MAX = 20
 CARD_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
@@ -160,7 +161,7 @@ def create(name, logline, seconds, aspect, refs, characters=()):
 def new_scene(title='New scene', seconds=6, connect='cut', action=''):
     return {'id': secrets.token_hex(3), 'title': title, 'seconds': int(seconds), 'connect': connect,
             'action': action, 'prompt': '', 'prompt_mode': None, 'seed': secrets.randbelow(2**31),
-            'takes': [], 'star': None, 'transition': 'cut'}
+            'takes': [], 'star': None, 'transition': 'cut', 'history': [], 'prompt_check': None}
 
 
 def apply_storyboard(project, plan):
@@ -181,9 +182,17 @@ def update_from_editor(project, data):
         scenes = []
         for i, item in enumerate(data['scenes']):
             scene = old.get(item.get('id')) or new_scene()
-            for key in ('title', 'action', 'prompt'):
+            for key in ('title', 'action'):
                 if key in item:
                     scene[key] = str(item[key])
+            if 'prompt' in item:
+                new = str(item['prompt'])
+                if new != scene.get('prompt', ''):
+                    if scene.get('prompt', '').strip() and not scene.get('history'):
+                        push_history(scene, scene['prompt'], scene.get('prompt_mode'), 'edit')
+                    scene['prompt'] = new
+                    scene['prompt_check'] = None
+                    push_history(scene, new, scene.get('prompt_mode'), 'edit')
             if 'seconds' in item:
                 scene['seconds'] = min(15, max(4, int(item['seconds'])))
             if 'connect' in item:
@@ -219,6 +228,30 @@ def _clean_card(card):
     if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not 1 <= seconds <= 10:
         raise ProjectError('card seconds must be 1-10')
     return {'text': text, 'seconds': seconds}
+
+
+def push_history(scene, prompt, mode, source):
+    """Record a prompt in the scene's history; deduped against the latest entry, capped."""
+    if not isinstance(prompt, str) or not prompt.strip():
+        return
+    h = scene.setdefault('history', [])
+    if h and h[-1]['prompt'] == prompt:
+        return
+    h.append({'prompt': prompt, 'mode': mode, 'time': time.time(), 'source': source})
+    del h[:-HISTORY_MAX]
+
+
+def restore_prompt(project, scene_id, index):
+    """Restore history entry `index`: current prompt pushed first, prompt_check cleared."""
+    scene = project['scenes'][scene_index(project, scene_id)]
+    h = scene.get('history') or []
+    if type(index) is not int or not 0 <= index < len(h):
+        raise ProjectError('no such history entry')
+    entry = h[index]
+    push_history(scene, scene.get('prompt', ''), scene.get('prompt_mode'), 'edit')
+    scene['prompt'], scene['prompt_mode'] = entry['prompt'], entry['mode']
+    scene['prompt_check'] = None
+    return project
 
 
 def scene_index(project, scene_id):
