@@ -26,6 +26,7 @@ XFADE = 0.5
 DIP = 0.4
 HISTORY_MAX = 20
 EDIT_WINDOW = 300
+NOTES_MAX = 1000
 CARD_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
@@ -153,7 +154,7 @@ def create(name, logline, seconds, aspect, refs, characters=()):
         notes.append(line)
     project = {'slug': slug, 'name': name or logline[:40], 'logline': logline, 'seconds': seconds,
                'aspect': aspect, 'size': list(SIZES[aspect]), 'refs': names, 'music_file': None,
-               'title': '', 'bible': '', 'music_brief': '', 'title_card': None, 'end_card': None,
+               'title': '', 'bible': '', 'music_brief': '', 'notes': '', 'title_card': None, 'end_card': None,
                'scenes': [], 'outputs': {}, 'characters': [c['slug'] for c in chars],
                'character_notes': chr(10).join(notes), 'created': time.time()}
     return save(project)
@@ -178,6 +179,10 @@ def update_from_editor(project, data):
     for key in ('title', 'bible', 'music_brief'):
         if key in data:
             project[key] = str(data[key])
+    if 'notes' in data:
+        if not isinstance(data['notes'], str) or len(data['notes']) > NOTES_MAX:
+            raise ProjectError('notes must be text of at most 1000 characters')
+        project['notes'] = data['notes']
     if 'scenes' in data:
         old = {s['id']: s for s in project['scenes']}
         scenes = []
