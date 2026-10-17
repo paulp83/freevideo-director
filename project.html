@@ -316,7 +316,9 @@ function renderLibrary() {
     if (c.image_url) row.append(el('img', {src: c.image_url, style: 'width:48px;height:48px;object-fit:cover;border-radius:6px'}));
     row.append(el('b', {}, c.name), el('span', {style: 'flex:1'}, c.description));
     row.append(el('button', {class: 'btn ghost small', onclick: async () => {
-      if (confirm('Delete ' + c.name + ' from the library?')) { await api('/api/library/' + c.slug + '/delete', {}); await loadLibrary(); }
+      if (!confirm('Delete ' + c.name + ' from the library?')) return;
+      try { await api('/api/library/' + c.slug + '/delete', {}); await loadLibrary(); }
+      catch (e) { $('libStatus').textContent = e.message; $('libStatus').classList.add('err'); }
     }}, 'Delete'));
     $('libList').append(row);
   }
