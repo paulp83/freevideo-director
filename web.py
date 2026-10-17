@@ -284,6 +284,10 @@ def _files(paths):
     return [(Path(f).name, Path(f).read_bytes()) for f in paths]
 
 
+def check_of(report):
+    return {'retried': report['retried'], 'first_failures': report['first_failures'], 'final_failures': report['final_failures']}
+
+
 def write_scene_prompt(slug, scene_id, think=True):
     """Director writes scene's H3 prompt from the bible + action (+ refs or the previous last frame)."""
     p = projects.load(slug)
@@ -292,10 +296,12 @@ def write_scene_prompt(slug, scene_id, think=True):
     refs, first = projects.scene_media(p, i)
     if scene['connect'] == 'continue' and i and first is None:
         refs = []          # previous take not rendered yet: write I2VA-ready text, frame is attached at render
-    mode, text, _, _ = director.direct(director.scene_idea(p, i), scene['seconds'], refs, first, None, think)
+    report = director.direct_report(director.scene_idea(p, i), scene['seconds'], refs, first, None, think)
+    mode, text = report['mode'], report['text']
     def apply(proj):
         s = proj['scenes'][projects.scene_index(proj, scene_id)]
         s['prompt'], s['prompt_mode'] = text, mode
+        s['prompt_check'] = check_of(report)
     projects.mutate(slug, apply)
     return mode
 
@@ -613,12 +619,14 @@ class Handler(BaseHTTPRequestHandler):
             last = decode(data['last']) if data.get('last') else None
             if self.path == '/api/direct':
                 start = time.time()
-                mode, text, tokens, model = director.direct(
+                report = director.direct_report(
                     data.get('idea', ''), float(data.get('seconds', 10)), [r for _, r in refs],
                     first and first[1], last and last[1], bool(data.get('think', True)))
+                mode, text, tokens, model = report['mode'], report['text'], report['tokens'], report['model']
                 saved = director.save(text)
                 return self.reply(200, {'mode': mode, 'model': model, 'prompt': text, 'tokens': tokens,
-                                        'saved': str(saved), 'elapsed': round(time.time() - start)})
+                                        'saved': str(saved), 'elapsed': round(time.time() - start),
+                                        'check': check_of(report)})
             if self.path == '/api/render':
                 preset = PRESETS.get(data.get('preset', 'draft'))
                 if not preset:
