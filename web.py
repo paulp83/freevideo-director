@@ -299,7 +299,7 @@ def write_scene_prompt(slug, scene_id, think=True):
     return mode
 
 
-def render_scene(slug, scene_id, preset_name, job):
+def render_scene(slug, scene_id, preset_name, job, variant=None):
     """Blocking: render one scene (Draft or Final) and record the take (and final) in the project."""
     preset = PRESETS[preset_name]
     p = projects.load(slug)
@@ -319,7 +319,8 @@ def render_scene(slug, scene_id, preset_name, job):
         def apply(proj):
             s = proj['scenes'][projects.scene_index(proj, scene_id)]
             s['takes'].append({'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
-                               'seed': scene['seed'], 'created': time.time(), 'final': None, 'final_url': None})
+                               'seed': scene['seed'], 'created': time.time(), 'final': None, 'final_url': None,
+                               'variant': list(variant) if variant else None})
         projects.mutate(slug, apply)
     run_render(job, args, preset['finish'], on_take, final_recorder(slug, scene_id, lambda: job['take']['run']))
 
@@ -433,6 +434,24 @@ def batch_render(slug, preset_name, only_missing):
             if job['error']:
                 raise RuntimeError(f'scene {n}: {job["error"]}')
     return start_batch(slug, 'Drafting scenes' if preset_name == 'draft' else 'Rendering finals', 0, worker)
+
+
+def batch_variants(slug, scene_id, n):
+    def worker(state):
+        state['of'] = n
+        for k in range(1, n + 1):
+            if state.get('cancel'):
+                raise RuntimeError('cancelled')
+            p = projects.load(slug)
+            scene = p['scenes'][projects.scene_index(p, scene_id)]
+            if k > 1 or scene['takes']:
+                projects.mutate(slug, lambda pr: projects.reroll_seed(pr, scene_id))
+            job = scene_job(slug, scene_id, 'render-draft')
+            state.update(step=k, scene=scene_id, job=job['id'])
+            render_scene(slug, scene_id, 'draft', job, variant=(k, n))
+            if job['error']:
+                raise RuntimeError(f'variant {k}: {job["error"]}')
+    return start_batch(slug, 'Drafting variants', n, worker)
 
 
 def batch_enhance(slug):
@@ -670,6 +689,13 @@ class Handler(BaseHTTPRequestHandler):
                 s = p['scenes'][projects.scene_index(p, data['scene'])]
                 s['star'] = data.get('run')
             projects.mutate(slug, apply)
+            return self.reply(200, project_view(slug))
+        if action == 'variants':                      # one batch of n Draft renders of a single scene
+            n = data.get('n')
+            if type(n) is not int or not 2 <= n <= 6:
+                raise projects.ProjectError('n must be an integer from 2 to 6')
+            projects.scene_index(projects.load(slug), data['scene'])   # validate before anything starts
+            batch_variants(slug, data['scene'], n)
             return self.reply(200, project_view(slug))
         if action == 'draft-all':
             batch_render(slug, 'draft', bool(data.get('only_missing', True)))
