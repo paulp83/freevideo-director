@@ -13,6 +13,7 @@ ROOT = HERE / 'library'
 
 SLUG = re.compile(r'[a-z0-9-]+')
 MAX_IMAGE = 8 * 1024 * 1024
+IMAGE_FILES = ('image.png', 'image.jpg', 'image.webp')
 
 
 class LibraryError(Exception):
@@ -55,13 +56,18 @@ def get(slug):
     f = safe(slug) / 'character.json'
     if not f.is_file():
         raise LibraryError('no such character')
-    return json.loads(f.read_text())
+    try:
+        return json.loads(f.read_text())
+    except ValueError as e:
+        raise LibraryError('character file is damaged') from e
 
 
 def image_path(slug):
     c = get(slug)
     if not c.get('image'):
         return None
+    if c['image'] not in IMAGE_FILES:                         # never trust a path read back from disk
+        raise LibraryError('bad image name')
     return safe(slug) / c['image']
 
 
@@ -111,7 +117,7 @@ def save(name, description, image_bytes=None, filename=''):
         tmp = d / 'character.json.tmp'
         tmp.write_text(json.dumps(character, indent=1))
         tmp.replace(d / 'character.json')
-    except OSError:
+    except Exception:
         shutil.rmtree(d, ignore_errors=True)
         raise
     return character
