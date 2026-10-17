@@ -8,7 +8,7 @@ Writes eval/<label>/<case>-<run>.txt and eval/<label>/results.json.
 import argparse, json, re, time
 from pathlib import Path
 
-import director
+import director, h3check
 
 HERE = Path(__file__).resolve().parent
 GROUP = str(Path('~/Pictures/group.jpg').expanduser())
@@ -36,33 +36,27 @@ CASES = [
          grounding=['reston wranglers', 'plaid|flannel', 'bandana', 'rope'], labels=1),
 ]
 
-BASE = ['integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music']
-REF = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description',
-       'overall_soundscape', 'non_diegetic_music']
-I2VA_LINE = 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.'
+BASE = h3check.BASE
+REF = h3check.REF
+I2VA_LINE = h3check.I2VA_LINE
 
 
 def score(case, mode, text):
     low = text.lower()
-    fields = REF if mode == 'ref2va' else BASE
-    pos = [re.search(rf'(?m)^{f}:', text) for f in fields]
-    checks = {'fields_in_order': all(pos) and [p.start() for p in pos] == sorted(p.start() for p in pos)}
-    if mode == 'i2va':
-        checks['instruction_line'] = text.splitlines()[0].strip() == I2VA_LINE
+    n_images = len(case.get('refs', [])) or len([x for x in (case.get('first'), case.get('last')) if x])
+    failed = set(h3check.failures(mode, text, case['seconds'], n_images))
+    names = ['fields_in_order'] + (['instruction_line'] if mode == 'i2va' else []) + \
+            ['has_shots', 'timestamps_in_range', 'labels_valid', 'no_markdown']
+    checks = {n: n not in failed for n in names}
     stamps = [int(m) * 60 + float(s) for m, s in re.findall(r'At (\d\d):(\d\d(?:\.\d+)?)', text)]
     shots = re.findall(r'\[Shot (\d+)\]', text)
-    checks['has_shots'] = bool(shots) and shots[0] == '1'
-    checks['timestamps_in_range'] = all(t < case['seconds'] for t in stamps)
     labels = {int(n) for n in re.findall(r'<Picture (\d+)>', text)}
-    n_images = len(case.get('refs', [])) or len([x for x in (case.get('first'), case.get('last')) if x])
-    checks['labels_valid'] = labels <= set(range(1, n_images + 1)) and (not n_images or bool(labels))
     if case.get('labels'):
         checks['all_images_used'] = labels == set(range(1, case['labels'] + 1))
     if case.get('dialogue'):
         checks['dialogue_tag'] = bool(re.search(r'<d>.*grandmother.*</d>', text, re.I | re.S))
     for g in case['grounding']:
         checks['mentions:' + g] = bool(re.search(g, low))
-    checks['no_markdown'] = not re.search(r'(?m)^(#|```|\*\*)', text)
     return checks, {'shots': len(set(shots)), 'last_cut': max(stamps, default=0), 'chars': len(text)}
 
 
