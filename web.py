@@ -300,8 +300,11 @@ def write_scene_prompt(slug, scene_id, think=True):
     mode, text = report['mode'], report['text']
     def apply(proj):
         s = proj['scenes'][projects.scene_index(proj, scene_id)]
+        if s.get('prompt', '').strip() and not s.get('history'):
+            projects.push_history(s, s['prompt'], s.get('prompt_mode'), 'edit')
         s['prompt'], s['prompt_mode'] = text, mode
         s['prompt_check'] = check_of(report)
+        projects.push_history(s, text, mode, 'director')
     projects.mutate(slug, apply)
     return mode
 
@@ -725,6 +728,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, project_view(slug))
         if action == 'cancel':
             cancel_project(slug)
+            return self.reply(200, project_view(slug))
+        if action == 'restore_prompt':                 # history entry -> this scene's prompt
+            projects.mutate(slug, lambda p: projects.restore_prompt(p, data['scene'], data['index']))
             return self.reply(200, project_view(slug))
         if action == 'star':
             def apply(p):
