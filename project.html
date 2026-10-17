@@ -438,7 +438,7 @@ function buildScene(s) {
       el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
       el('button', {class: 'btn small', 'data-k': 'bDraft', onclick: () => sceneAct('render', {scene: id, preset: 'draft'})}, 'Draft'),
       el('button', {class: 'btn ghost small', 'data-k': 'bReroll', onclick: () => sceneReroll(id)}, '🎲 Re-roll'),
-      el('select', {'data-k': 'vCount', title: 'How many variants'}, el('option', {value: '2'}, '×2'), el('option', {value: '3', selected: ''}, '×3'), el('option', {value: '4'}, '×4'), el('option', {value: '5'}, '×5'), el('option', {value: '6'}, '×6')),
+      el('select', {'data-k': 'vCount', title: 'How many variants', style: 'width:auto'}, el('option', {value: '2'}, '×2'), el('option', {value: '3', selected: ''}, '×3'), el('option', {value: '4'}, '×4'), el('option', {value: '5'}, '×5'), el('option', {value: '6'}, '×6')),
       el('button', {class: 'btn ghost small', 'data-k': 'bVariants', title: 'Render several Drafts with new seeds', onclick: () => sceneAct('variants', {scene: id, n: +card.querySelector('[data-k=vCount]').value})}, 'Draft variants'),
       el('button', {class: 'btn ghost small', 'data-k': 'bFinal', onclick: () => sceneAct('render', {scene: id, preset: 'final'})}, 'Final'),
       el('button', {class: 'btn ghost small', 'data-k': 'bEnhance', onclick: () => sceneAct('enhance', {scene: id})}, '✨ Enhance ★'),
