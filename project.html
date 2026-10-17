@@ -147,7 +147,7 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
         </div>
       </div>
       <div class="steps" id="steps" style="margin-top:14px"></div>
-      <div class="batch" id="batch"><span id="batchText"></span><div class="bar"><i id="batchBar"></i></div></div>
+      <div class="batch" id="batch"><span id="batchText"></span> <button class="btn ghost small" id="batchCancel" hidden>Cancel</button><div class="bar"><i id="batchBar"></i></div></div>
       <p class="hint">Iterate with Drafts (★ the take you like per scene), check the Animatic, then Enhance only the ★ takes for the Film.</p>
     </section>
 
@@ -322,6 +322,7 @@ function draw(force) {
     let txt = bt.error ? `${bt.label} failed: ${bt.error}` : `${bt.label} · ${bt.step}/${bt.of || '?'}${scene ? ` · scene ${scene}` : ''} · ${fmt(bt.seconds)}`;
     const jb = p.batch_job;
     if (jb && !bt.done) { const a = jb.stages.find(s => s.state === 'active'); if (a) txt += ` · ${a.label}${a.max ? ` ${a.value}/${a.max}` : ''}`; }
+    $('batchCancel').hidden = !!bt.done;
     $('batchText').textContent = txt; $('batchText').classList.toggle('err', !!bt.error);
     $('batchBar').style.width = (bt.of ? Math.round(100 * Math.max(0, bt.step - (bt.done ? 0 : 1)) / bt.of) : 0) + '%';
   } else bx.classList.remove('show');
@@ -487,6 +488,7 @@ $('musicBtn').onclick = async () => {
   flash('Uploading music…');
   try { proj = await api(`/api/p/${slug}/music`, {file: await readFile(f)}); flash('Music added'); draw(); } catch (e) { flash(e.message, true); }
 };
+$('batchCancel').onclick = () => run('cancel', {});
 $('musicRemove').onclick = async () => { proj = await api(`/api/p/${slug}/music`, {remove: true}); draw(); };
 
 loadList().then(() => { if (slug) open(slug); });

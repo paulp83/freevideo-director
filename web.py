@@ -174,7 +174,7 @@ def new_job(kind, stage_keys):
     job = {'id': uuid.uuid4().hex[:12], 'kind': kind, 'created': time.time(), 'error': None, 'done': False,
            'stages': [{'key': k, 'label': STAGES[k], 'state': 'pending', 'started': None, 'ended': None,
                        'value': 0, 'max': 0} for k in stage_keys],
-           'take': None, 'final': None}
+           'take': None, 'final': None, 'prompt_ids': [], 'cancel': False}
     with LOCK:
         JOBS[job['id']] = job
     return job
@@ -216,7 +216,10 @@ def run_render(job, args, finish_after, on_take=None, on_final=None):
     try:
         st = activate(job, 'render')
         pid = queue(**args)
+        job['prompt_ids'].append(pid)
         while (take := render_result(pid)) is None:
+            if job['cancel']:
+                raise RuntimeError('cancelled')
             p = PROGRESS.get(pid, {})
             st.update(value=p.get('value', 0), max=p.get('max', 0))
             time.sleep(1.5)
@@ -235,9 +238,12 @@ def run_enhance(job, run, on_final=None):
     try:
         activate(job, 'upscale')
         pid, run_dir = enhance.submit(run)
+        job['prompt_ids'].append(pid)
         if job['take'] is None:
             job['take'] = {'path': str(run_dir / 'video.mp4'), 'run': str(run_dir), 'url': None}
         while (final := enhance.result(pid)) is None:
+            if job['cancel']:
+                raise RuntimeError('cancelled')
             p = PROGRESS.get(pid, {})
             if p.get('node') in ENHANCE_NODES:
                 st = activate(job, ENHANCE_NODES[p['node']])
@@ -343,14 +349,59 @@ def start_batch(slug, label, steps, worker):
     state = {'label': label, 'step': 0, 'of': steps, 'scene': None, 'job': None, 'error': None, 'done': False,
              'started': time.time(), 'result': None}
     BATCH[slug] = state
+    persist_batch(slug, state)
     def run():
         try:
             state['result'] = worker(state)
         except Exception as e:
             state['error'] = str(e)
+        state['finished'] = time.time()
+        persist_batch(slug, state, done=True)     # on disk first, so readers of done never see a stale file
         state['done'] = True
     threading.Thread(target=run, daemon=True).start()
     return state
+
+
+def persist_batch(slug, state, done=None):
+    """Record the batch in project.json so a restart can tell it died (projects.recover_interrupted)."""
+    keep = {k: state.get(k) for k in ('label', 'step', 'of', 'done', 'error', 'started', 'finished')}
+    if done is not None:
+        keep['done'] = done
+    try:
+        projects.mutate(slug, lambda p: p.__setitem__('last_batch', keep))
+    except projects.ProjectError:
+        pass
+
+
+def cancel_project(slug):
+    """Stop this project's running batch and jobs: flag them, then tell ComfyUI to drop only our prompts."""
+    state = BATCH.get(slug)
+    if state and not state['done']:
+        state['cancel'] = True
+    ours = set()
+    for (s, _), jid in list(SCENE_JOB.items()):
+        job = JOBS.get(jid)
+        if s == slug and job and not job['done']:
+            job['cancel'] = True
+            ours.update(job['prompt_ids'])
+    if not ours:
+        return
+    try:
+        queue_state = comfy('/queue')
+    except (OSError, ValueError):
+        return
+    header = {'Content-Type': 'application/json'}
+    if any(item[1] in ours for item in queue_state.get('queue_running', [])):
+        try:
+            comfy('/interrupt', b'{}', header)
+        except (OSError, ValueError):         # ComfyUI answers /interrupt with an empty body
+            pass
+    pending = [item[1] for item in queue_state.get('queue_pending', []) if item[1] in ours]
+    if pending:
+        try:
+            comfy('/queue', json.dumps({'delete': pending}).encode(), header)
+        except (OSError, ValueError):
+            pass
 
 
 def batch_prompts(slug, only_missing):
@@ -359,6 +410,8 @@ def batch_prompts(slug, only_missing):
         todo = [s['id'] for s in p['scenes'] if not (only_missing and s['prompt'].strip())]
         state['of'] = len(todo)
         for n, sid in enumerate(todo, 1):
+            if state.get('cancel'):
+                raise RuntimeError('cancelled')
             state.update(step=n, scene=sid)
             write_scene_prompt(slug, sid)
     return start_batch(slug, 'Writing prompts', 0, worker)
@@ -370,6 +423,8 @@ def batch_render(slug, preset_name, only_missing):
         todo = [s['id'] for s in p['scenes'] if not (only_missing and s['takes'])]
         state['of'] = len(todo)
         for n, sid in enumerate(todo, 1):
+            if state.get('cancel'):
+                raise RuntimeError('cancelled')
             job = scene_job(slug, sid, 'render-' + preset_name)
             state.update(step=n, scene=sid, job=job['id'])
             render_scene(slug, sid, preset_name, job)
@@ -385,6 +440,8 @@ def batch_enhance(slug):
         todo = [(sid, t) for sid, t in todo if t and not t.get('final')]
         state['of'] = len(todo)
         for n, (sid, take) in enumerate(todo, 1):
+            if state.get('cancel'):
+                raise RuntimeError('cancelled')
             job = scene_job(slug, sid, 'enhance')
             state.update(step=n, scene=sid, job=job['id'])
             run_enhance(job, take['run'], final_recorder(slug, sid, lambda run=take['run']: run))
@@ -600,6 +657,9 @@ class Handler(BaseHTTPRequestHandler):
         if action == 'reroll':                         # new seed for the next Draft / Final of this scene
             projects.mutate(slug, lambda p: projects.reroll_seed(p, data['scene']))
             return self.reply(200, project_view(slug))
+        if action == 'cancel':
+            cancel_project(slug)
+            return self.reply(200, project_view(slug))
         if action == 'star':
             def apply(p):
                 s = p['scenes'][projects.scene_index(p, data['scene'])]
@@ -644,6 +704,7 @@ if __name__ == '__main__':
                    help='extra host name to admit (repeatable)')
     a = p.parse_args()
     Handler.extra_hosts = set(a.allow_host)
+    projects.recover_interrupted()
     threading.Thread(target=ws_listen, daemon=True).start()
     print(f'FreeVideo director UI: http://{a.host}:{a.port}')
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()

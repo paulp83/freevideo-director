@@ -78,6 +78,18 @@ def listing():
     return out
 
 
+def recover_interrupted():
+    """After a restart: a batch recorded as running died with the old process; mark it so."""
+    for f in ROOT.glob('*/project.json'):
+        try:
+            last = json.loads(f.read_text()).get('last_batch')
+        except ValueError:
+            continue
+        if last and not last.get('done'):
+            mutate(f.parent.name, lambda p: p['last_batch'].update(
+                done=True, error='interrupted by restart', finished=time.time()))
+
+
 def create(name, logline, seconds, aspect, refs):
     """refs: [(filename, bytes)]. Returns the new (un-storyboarded) project."""
     if aspect not in SIZES:
