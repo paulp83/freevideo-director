@@ -6,3 +6,4 @@ projects/*/*.mp4
 projects/*/*.mp3
 projects/*/frames/
 projects/*/*.tmp
+library/
