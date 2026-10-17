@@ -1,0 +1,27 @@
+subject_definitions:
+<Subject 1> is the man in <Picture 1>, with short brown hair, a mustache, a brown cowboy hat, a red bandana, a blue-and-red plaid shirt, blue jeans, and a large silver belt buckle.
+<Subject 2> is the woman on the far left in <Picture 1>, with long dark hair, a brown cowboy hat, a black bandana with white patterns, a black tank top, a brown fringed vest, and blue jeans.
+<Subject 3> is the woman standing next to the man (on his right) in <Picture 1>, with long brown hair pulled back, a brown cowboy hat, a red bandana, and a black tank top.
+<Subject 4> is the woman on the far right in <Picture 1>, with long dark hair, a light-colored cowboy hat, a black bandana, a black tank top, a brown fringed vest, and blue jeans.
+<Subject 5> is the wooden sign in <Picture 1> reading "Reston Wranglers" in black script and block letters.
+
+summary:
+[reference generation] The target video features the group from <Picture 1> in a western desert setting. The three women (<Subject 2>, <Subject 3>, <Subject 4>) release the rope binding <Subject 1>, who spins free and tips his hat. The "Reston Wranglers" sign (<Subject 5>) hangs above.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - the man's plaid shirt, red bandana, brown hat, and jeans are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the woman's black tank, fringed vest, and brown hat are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - the woman's black tank and red bandana are retained.
+<Subject 4> (appears in [Shot 1], [Shot 2]): fully_preserved - the woman's black tank, fringed vest, and light hat are retained.
+<Subject 5> (appears in [Shot 1], [Shot 2]): fully_preserved - the "Reston Wranglers" sign is retained.
+
+detailed_description:
+The target video is a western-themed scene with warm sunset lighting.
+[Shot 1] The scene opens on the group under the "Reston Wranglers" sign (<Subject 5>). <Subject 2>, <Subject 3>, and <Subject 4> are holding a thick rope that binds <Subject 1> in the center. The rope is wrapped around <Subject 1>'s torso. The women are smiling and looking at the camera. <Subject 1> is looking slightly to the side with a playful expression.
+[Shot 2] At 00:03.000, the three women simultaneously let go of the rope. <Subject 1> spins around in a circle, freeing himself from the rope which falls to the ground. He then stops, smiles, and tips his brown cowboy hat with his right hand. The women step back slightly, clapping or smiling. The sunset background with mountains remains consistent.
+
+overall_soundscape:
+Desert wind and distant birds.
+
+non_diegetic_music:
+Upbeat western-style music with acoustic guitar and fiddle.

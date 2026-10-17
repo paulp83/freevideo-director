@@ -1,0 +1,7 @@
+For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
+
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, the four individuals from <Picture 1> stand in a paved parking lot in front of a brick building with an orange roof. The man on the far right, wearing a purple "TEAM PIZZA" tank top, black shorts, and a cap, jumps up in joy. The woman next to him in the matching purple tank top and the other two individuals cheer and clap. The camera holds a static medium-wide shot.
+
+overall_soundscape: The group cheers loudly with laughter and clapping. Distant traffic and wind are audible in the background.
+
+non_diegetic_music: Upbeat, energetic pop music with a strong beat that matches the celebration.

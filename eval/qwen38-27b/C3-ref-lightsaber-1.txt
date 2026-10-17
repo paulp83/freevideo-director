@@ -1,0 +1,24 @@
+subject_definitions:
+<Subject 1> is the parking-lot environment in <Picture 1>: cracked grey asphalt marked with white parking-space lines, a long tan brick wall with recessed orange loading-dock doors, an orange corrugated metal roof, a brick chimney stack, and a partly cloudy blue sky overhead.
+<Subject 2> is the woman on the right side of <Picture 1>: blonde hair pulled back, purple-tinted sunglasses, a purple "TEAM PIZZA" tank top with yellow lettering and a dripping-pizza graphic, tight black shorts, and bright red running shoes.
+<Subject 3> is the man on the far right of <Picture 1>: short beard, black baseball cap, dark sunglasses, a purple "TEAM PIZZA" sleeveless shirt with yellow lettering and a dripping-pizza graphic, black running shorts, and black running shoes.
+
+summary:
+[reference generation] The target video shows <Subject 2> and <Subject 3> dueling with glowing lightsabers in <Subject 1>. The two reference figures keep their appearance from <Picture 1> while wielding added blue and red lightsabers, exchanging a short three-shot fight that fills the ten-second timeline.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the cracked asphalt, white parking lines, tan brick wall, orange loading-dock doors, orange metal roof, brick chimney, and cloudy sky are all retained.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the blonde pulled-back hair, purple sunglasses, purple "TEAM PIZZA" tank top, black shorts, and red running shoes are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the beard, black cap, dark sunglasses, purple "TEAM PIZZA" sleeveless shirt, black shorts, and black running shoes are retained.
+
+detailed_description:
+The target video uses a bright, comedic action style with harsh midday sun, saturated colors, and a handheld camera that keeps up with the fight.
+[Shot 1] A medium-wide shot establishes <Subject 1>, the open parking lot with its cracked asphalt, white space lines, tan brick wall, orange loading-dock doors, orange metal roof, and cloudy sky. <Subject 2>, the blonde woman in the purple "TEAM PIZZA" tank top, purple sunglasses, black shorts, and red running shoes, stands on the left holding an ignited blue lightsaber, while <Subject 3>, the bearded man in the black cap, dark sunglasses, purple "TEAM PIZZA" sleeveless shirt, and black shorts, stands on the right holding an ignited red lightsaber. The two circle each other slowly, sabers humming, and <Subject 2> (S1) grins and says, <d>[English] You sure you can handle this?</d>
+[Shot 2] At 00:03.000, the shot cuts to a tighter two-shot at eye level as the camera tracks sideways with the fighters. <Subject 2> (S1) lunges with the blue saber and <Subject 3> (S2) parries with the red one; the blades cross with a bright flash and a crackling clash. They trade three quick swings, stepping around each other across the white parking lines, the orange brick wall and loading docks sliding past in the background as the handheld camera shakes with each impact.
+[Shot 3] At 00:07.000, the shot cuts to a low-angle medium shot from the asphalt looking up at the two. <Subject 3> (S2) swings high and <Subject 2> (S1) ducks, then rises and taps his red saber aside, knocking it from his hand. The red blade clatters to the cracked asphalt and dies with a fading hum. <Subject 2> (S1) holds her blue saber upright, sunglasses still on, and says with a smug grin, <d>[English] Told you.</d> She holds the pose as the blue saber's hum settles into a steady glow.
+
+overall_soundscape:
+Bright outdoor parking-lot ambience with a light breeze and distant building tone continues throughout. The blue and red lightsabers emit a constant electrical hum, and each clash produces a sharp crackling impact; the disarmed red saber clatters and fades on the asphalt in the final shot.
+
+non_diegetic_music:
+A punchy, playful orchestral-and-synth action score at a driving tempo, with quick percussive hits on each saber clash and a small triumphant swell on the final disarm.

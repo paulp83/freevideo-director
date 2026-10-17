@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeVideo Film</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b6862; --line: #e3e0da;
+  --accent: #7c3aed; --accent-ink: #ffffff; --soft: #f1edfb; --ok: #15803d; --warn: #b45309; --err: #b42318;
+  --s-none: #d6d3cd; --s-prompt: #93c5fd; --s-draft: #fbbf24; --s-final: #4ade80;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141312; --panel: #1d1c1a; --ink: #ecebe8; --muted: #a29e97; --line: #33312d;
+          --accent: #a78bfa; --accent-ink: #141312; --soft: #26213a; --ok: #4ade80; --warn: #fbbf24; --err: #f97066;
+          --s-none: #44403c; --s-prompt: #1d4ed8; --s-draft: #b45309; --s-final: #15803d; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 80px; }
+a { color: var(--accent); }
+h1 { font-size: 20px; margin: 0; }
+.top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.top .spacer { flex: 1; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+textarea, input[type=text], input[type=number], select {
+  width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; font: inherit; }
+textarea { resize: vertical; }
+.mono { font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.btn { border: 0; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: 8px;
+       font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.status { color: var(--muted); font-size: 14px; }
+.err { color: var(--err); }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--ink); padding: 6px 12px; font: inherit; cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.slot { border: 1.5px dashed var(--line); border-radius: 10px; min-height: 110px; display: flex; align-items: center;
+        justify-content: center; color: var(--muted); cursor: pointer; position: relative; overflow: hidden; padding: 6px; text-align: center; }
+.slot img { max-width: 100%; max-height: 150px; border-radius: 6px; }
+
+/* stepper */
+.steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.step { border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+.step .n { font-size: 12px; color: var(--muted); }
+.step b { font-size: 15px; }
+.step .count { font-size: 13px; color: var(--muted); min-height: 20px; }
+.step.done { border-color: var(--ok); }
+.step.done .n { color: var(--ok); }
+.step.next { border-color: var(--accent); background: var(--soft); }
+.step .btn { margin-top: auto; }
+.batch { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 14px; display: none; }
+.batch.show { display: block; }
+.bar { height: 4px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+
+/* timeline */
+.timeline { display: flex; gap: 3px; height: 36px; margin-top: 4px; }
+.tl { border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; overflow: hidden;
+      white-space: nowrap; padding: 0 6px; color: var(--ink); cursor: pointer; min-width: 28px; }
+.tl.none { background: var(--s-none); } .tl.prompt { background: var(--s-prompt); }
+.tl.draft { background: var(--s-draft); } .tl.final { background: var(--s-final); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+
+/* scenes */
+.scene { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 12px; background: var(--bg); }
+.scene-head { display: grid; grid-template-columns: auto 1fr 90px 150px auto; gap: 8px; align-items: center; }
+.scene-head .num { font-weight: 700; color: var(--muted); }
+.scene details { margin-top: 8px; }
+.scene summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.badge.final { border-color: var(--ok); color: var(--ok); }
+.badge.accent { border-color: var(--accent); color: var(--accent); }
+.takes { display: flex; gap: 10px; overflow-x: auto; margin-top: 10px; padding-bottom: 4px; }
+.take { flex: 0 0 220px; border: 1.5px solid var(--line); border-radius: 10px; padding: 6px; }
+.take.chosen { border-color: var(--accent); }
+.take video { width: 100%; border-radius: 6px; background: #000; display: block; }
+.take .meta { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+.job { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.stagechips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
+.chip.active { border-color: var(--accent); color: var(--accent); }
+.chip.done { border-color: var(--ok); color: var(--ok); }
+.chip.error { border-color: var(--err); color: var(--err); }
+.outputs video { width: 100%; border-radius: 8px; background: #000; }
+@media (max-width: 860px) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scene-head { grid-template-columns: auto 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>FreeVideo Film</h1>
+    <span class="status">multi-scene projects</span>
+    <span class="spacer"></span>
+    <select id="picker" style="width:auto"></select>
+    <button class="btn ghost" id="newBtn">+ New film</button>
+    <a href="/">Single shot →</a>
+  </div>
+
+  <!-- new project -->
+  <section id="newBox" hidden>
+    <h2>New film</h2>
+    <div class="grid2">
+      <div>
+        <label class="inline">Name</label>
+        <input type="text" id="nName" placeholder="Wranglers short">
+        <label class="inline" style="margin-top:10px">Logline</label>
+        <textarea id="nLogline" rows="4" placeholder="What happens, start to end, in two or three sentences."></textarea>
+        <div class="row">
+          <label class="inline">Length <input type="range" id="nSeconds" min="10" max="120" step="5" value="30"> <b id="nSecondsOut">30 s</b></label>
+          <span class="seg" id="nAspect"><button data-a="16:9" class="on">16:9</button><button data-a="9:16">9:16</button></span>
+        </div>
+      </div>
+      <div>
+        <label class="inline">Reference pictures (optional, up to 2): people and places to reuse</label>
+        <div class="grid2" style="margin-top:6px">
+          <div class="slot" data-i="0">Picture 1</div>
+          <div class="slot" data-i="1">Picture 2</div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn" id="createBtn">Create &amp; storyboard</button>
+      <span class="status" id="createStatus"></span>
+    </div>
+    <p class="hint">The director plans the scenes (4–15 s each), a style bible for consistent characters, and a music brief. About 20 s. Everything stays editable.</p>
+  </section>
+
+  <!-- project -->
+  <div id="projBox" hidden>
+    <section>
+      <div class="row" style="margin-top:0">
+        <div style="flex:1;min-width:240px">
+          <input type="text" id="pTitle" style="font-size:18px;font-weight:700">
+          <div class="hint" id="pMeta"></div>
+        </div>
+      </div>
+      <div class="steps" id="steps" style="margin-top:14px"></div>
+      <div class="batch" id="batch"><span id="batchText"></span><div class="bar"><i id="batchBar"></i></div></div>
+      <p class="hint">Iterate with Drafts (★ the take you like per scene), check the Animatic, then Enhance only the ★ takes for the Film.</p>
+    </section>
+
+    <section class="outputs" id="outBox" hidden>
+      <h2>Cuts</h2>
+      <div class="grid2">
+        <div id="animaticBox" hidden><b>Animatic</b> <span class="badge">drafts · 24 fps</span><video id="animatic" controls></video><div class="hint" id="animaticInfo"></div></div>
+        <div id="filmBox" hidden><b>Film</b> <span class="badge final">finals · 1080p · 48 fps</span><video id="film" controls></video><div class="hint" id="filmInfo"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Timeline</h2>
+      <div class="timeline" id="timeline"></div>
+      <div class="legend"><span><i style="background:var(--s-none)"></i>no prompt</span><span><i style="background:var(--s-prompt)"></i>prompt ready</span>
+        <span><i style="background:var(--s-draft)"></i>draft take</span><span><i style="background:var(--s-final)"></i>final ready</span><span>↪ continues from previous scene</span></div>
+    </section>
+
+    <section>
+      <div class="grid2">
+        <div>
+          <h2>Style bible</h2>
+          <textarea id="pBible" rows="9" class="mono"></textarea>
+          <p class="hint">Every scene prompt is written from this. Keep characters' looks here, not in scenes.</p>
+        </div>
+        <div>
+          <h2>Music bed</h2>
+          <textarea id="pMusicBrief" rows="3"></textarea>
+          <p class="hint">The director's brief for the score. Scenes are rendered without music; the film gets one continuous track, ducked under dialogue.</p>
+          <div class="row">
+            <button class="btn ghost" id="musicBtn">Add music file…</button>
+            <span class="status" id="musicName">No track: the film keeps the scenes' own sound.</span>
+            <button class="btn ghost small" id="musicRemove" hidden>Remove</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="row" style="margin-top:0"><h2 style="margin:0;flex:1">Scenes</h2>
+        <span class="status" id="saveStatus"></span>
+        <button class="btn ghost small" id="addScene">+ Add scene</button></div>
+      <div id="scenes"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let slug = new URLSearchParams(location.search).get('p');
+let proj = null, aspect = '16:9';
+const newRefs = [null, null];
+const dirty = {};            // scene id -> {field: value}
+let dirtyTop = {};           // title / bible / music_brief
+let saveTimer = null;
+
+/* ---------- helpers ---------- */
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== undefined && v !== null) e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k !== null && k !== undefined) e.append(k);
+  return e;
+}
+function fmt(s) { return s == null ? '' : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; }
+function readFile(file) { return new Promise(res => { const r = new FileReader(); r.onload = () => res({name: file.name, data: r.result}); r.readAsDataURL(file); }); }
+function pick(accept) { return new Promise(res => { const f = el('input', {type: 'file', accept}); f.onchange = () => res(f.files[0]); f.click(); }); }
+function flash(msg, isErr) { $('saveStatus').textContent = msg; $('saveStatus').classList.toggle('err', !!isErr); }
+
+/* ---------- project list ---------- */
+async function loadList() {
+  const list = await api('/api/projects');
+  const p = $('picker'); p.replaceChildren(el('option', {value: ''}, list.length ? 'Open a film…' : 'No films yet'));
+  for (const x of list) p.append(el('option', {value: x.slug}, `${x.title || x.name} · ${x.seconds}s · ${x.scenes} scenes`));
+  p.value = slug || '';
+  if (!slug) { $('newBox').hidden = false; $('projBox').hidden = true; }
+}
+$('picker').onchange = () => { if ($('picker').value) open($('picker').value); };
+$('newBtn').onclick = () => { slug = null; history.replaceState(null, '', '/project'); $('newBox').hidden = false; $('projBox').hidden = true; $('picker').value = ''; };
+
+/* ---------- new project ---------- */
+$('nSeconds').oninput = () => $('nSecondsOut').textContent = $('nSeconds').value + ' s';
+document.querySelectorAll('#nAspect button').forEach(b => b.onclick = () => {
+  aspect = b.dataset.a; document.querySelectorAll('#nAspect button').forEach(x => x.classList.toggle('on', x === b)); });
+document.querySelectorAll('#newBox .slot').forEach(slot => {
+  const i = +slot.dataset.i;
+  const show = () => { slot.replaceChildren(newRefs[i] ? el('img', {src: newRefs[i].data}) : `Picture ${i + 1}: drop or click`); };
+  slot.onclick = async () => { const f = await pick('image/*'); if (f) { newRefs[i] = await readFile(f); show(); } };
+  slot.ondragover = e => e.preventDefault();
+  slot.ondrop = async e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { newRefs[i] = await readFile(f); show(); } };
+  show();
+});
+$('createBtn').onclick = async () => {
+  const st = $('createStatus'), t0 = Date.now();
+  $('createBtn').disabled = true;
+  const tick = setInterval(() => st.textContent = `Storyboarding… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
+  try {
+    const p = await api('/api/projects', {name: $('nName').value, logline: $('nLogline').value, seconds: +$('nSeconds').value,
+                                          aspect, refs: newRefs.filter(Boolean)});
+    clearInterval(tick); st.textContent = '';
+    await loadList(); open(p.slug);
+  } catch (e) { clearInterval(tick); st.textContent = e.message; st.classList.add('err'); }
+  $('createBtn').disabled = false;
+};
+
+/* ---------- open + poll ---------- */
+async function open(s) {
+  slug = s; history.replaceState(null, '', '/project?p=' + s);
+  $('newBox').hidden = true; $('projBox').hidden = false; $('picker').value = s;
+  $('scenes').replaceChildren();
+  await refresh(true);
+}
+async function refresh(force) {
+  if (!slug) return;
+  try { proj = await api('/api/p/' + slug); } catch (e) { flash(e.message, true); return; }
+  draw(force);
+}
+setInterval(() => refresh(false), 3000);
+
+/* ---------- draw ---------- */
+function sceneState(s) {
+  const t = (s.takes || []).find(t => t.run === s.chosen);
+  if (t && t.final) return 'final';
+  if (t) return 'draft';
+  return s.prompt ? 'prompt' : 'none';
+}
+function busy() { return proj.batch && !proj.batch.done; }
+
+function draw(force) {
+  const p = proj;
+  setIfIdle($('pTitle'), p.title || p.name, 'title');
+  setIfIdle($('pBible'), p.bible, 'bible');
+  setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
+  const total = p.scenes.reduce((a, s) => a + s.seconds, 0);
+  $('pMeta').textContent = `${p.logline}  ·  ${p.scenes.length} scenes · ${total} s of ${p.seconds} s · ${p.aspect}`;
+  $('musicName').textContent = p.music_file ? `Track: ${p.music_file}` : 'No track: the film keeps the scenes\' own sound.';
+  $('musicRemove').hidden = !p.music_file;
+
+  // stepper
+  const n = p.scenes.length;
+  const prompts = p.scenes.filter(s => s.prompt).length;
+  const drafted = p.scenes.filter(s => s.takes.length).length;
+  const finals = p.scenes.filter(s => sceneState(s) === 'final').length;
+  const steps = [
+    {t: 'Storyboard', c: `${n} scenes`, done: n > 0, act: 'Re-plan…', fn: replan},
+    {t: 'Prompts', c: `${prompts}/${n} written`, done: n && prompts === n, act: 'Write missing', fn: () => run('prompts', {only_missing: true})},
+    {t: 'Drafts', c: `${drafted}/${n} scenes`, done: n && drafted === n, act: 'Draft missing', fn: () => run('draft-all', {only_missing: true})},
+    {t: 'Animatic', c: p.outputs.animatic ? `${p.outputs.animatic.seconds} s cut` : 'rough cut of drafts', done: !!p.outputs.animatic, act: 'Assemble', fn: () => run('assemble', {kind: 'animatic'})},
+    {t: 'Finals', c: `${finals}/${n} ★ enhanced`, done: n && finals === n, act: 'Enhance ★ takes', fn: () => run('enhance-starred', {})},
+    {t: 'Film', c: p.outputs.film ? `${p.outputs.film.seconds} s · 1080p48` : 'final cut + music', done: !!p.outputs.film, act: 'Assemble film', fn: () => run('assemble', {kind: 'film'})},
+  ];
+  const next = steps.findIndex(s => !s.done);
+  const box = $('steps'); box.replaceChildren();
+  steps.forEach((s, i) => {
+    const b = el('button', {class: 'btn small' + (i === next ? '' : ' ghost'), onclick: s.fn}, s.act);
+    b.disabled = busy() || (i === 3 && drafted < n) || (i === 5 && drafted < n);
+    box.append(el('div', {class: 'step' + (s.done ? ' done' : '') + (i === next ? ' next' : '')},
+      el('span', {class: 'n'}, s.done ? `✓ step ${i + 1}` : `step ${i + 1}`), el('b', {}, s.t), el('span', {class: 'count'}, s.c), b));
+  });
+
+  // batch bar
+  const bt = p.batch, bx = $('batch');
+  if (bt && (!bt.done || bt.error)) {
+    bx.classList.add('show');
+    const scene = bt.scene ? p.scenes.findIndex(s => s.id === bt.scene) + 1 : 0;
+    let txt = bt.error ? `${bt.label} failed: ${bt.error}` : `${bt.label} · ${bt.step}/${bt.of || '?'}${scene ? ` · scene ${scene}` : ''} · ${fmt(bt.seconds)}`;
+    const jb = p.batch_job;
+    if (jb && !bt.done) { const a = jb.stages.find(s => s.state === 'active'); if (a) txt += ` · ${a.label}${a.max ? ` ${a.value}/${a.max}` : ''}`; }
+    $('batchText').textContent = txt; $('batchText').classList.toggle('err', !!bt.error);
+    $('batchBar').style.width = (bt.of ? Math.round(100 * Math.max(0, bt.step - (bt.done ? 0 : 1)) / bt.of) : 0) + '%';
+  } else bx.classList.remove('show');
+
+  // outputs
+  const out = p.outputs || {};
+  $('outBox').hidden = !out.animatic && !out.film;
+  for (const k of ['animatic', 'film']) {
+    $(k + 'Box').hidden = !out[k];
+    if (out[k]) {
+      const src = `/files/${p.slug}/${out[k].file}`;
+      if (!$(k).src.endsWith(src)) $(k).src = src;
+      $(k + 'Info').textContent = `${out[k].file} · ${out[k].scenes} scenes · ${out[k].seconds} s` +
+        (out[k].not_final && out[k].not_final.length ? ` · scenes ${out[k].not_final.join(', ')} used drafts` : '');
+    }
+  }
+
+  // timeline
+  const tl = $('timeline'); tl.replaceChildren();
+  p.scenes.forEach((s, i) => tl.append(el('div', {class: 'tl ' + sceneState(s), style: `flex:${s.seconds}`, title: s.title,
+    onclick: () => document.getElementById('scene-' + s.id)?.scrollIntoView({behavior: 'smooth', block: 'center'})},
+    `${s.connect === 'continue' ? '↪ ' : ''}${i + 1} · ${s.seconds}s`)));
+
+  // scenes: rebuild only when the set/order changes
+  const ids = p.scenes.map(s => s.id).join(',');
+  if (force || $('scenes').dataset.ids !== ids) { $('scenes').dataset.ids = ids; $('scenes').replaceChildren(...p.scenes.map(buildScene)); }
+  p.scenes.forEach((s, i) => updateScene(s, i));
+}
+
+function setIfIdle(input, value, key, sceneId) {
+  const d = sceneId ? (dirty[sceneId] || {}) : dirtyTop;
+  if (document.activeElement === input || key in d) return;
+  if (input.value !== String(value ?? '')) input.value = value ?? '';
+}
+function markDirty(sceneId, key, value) {
+  if (sceneId) (dirty[sceneId] ||= {})[key] = value; else dirtyTop[key] = value;
+  clearTimeout(saveTimer); flash('Unsaved…'); saveTimer = setTimeout(save, 700);
+}
+async function save(structure) {
+  clearTimeout(saveTimer);
+  const scenes = (structure || proj.scenes).map(s => ({id: s.id, ...(dirty[s.id] || {})}));
+  const body = {...dirtyTop, scenes};
+  const sent = {top: dirtyTop, scenes: structuredClone(dirty)};
+  try {
+    await api(`/api/p/${slug}/save`, body);
+    dirtyTop = {}; for (const k of Object.keys(sent.scenes)) delete dirty[k];
+    flash('Saved'); await refresh(!!structure);
+  } catch (e) { flash(e.message, true); }
+}
+$('pTitle').oninput = e => markDirty(null, 'title', e.target.value);
+$('pBible').oninput = e => markDirty(null, 'bible', e.target.value);
+$('pMusicBrief').oninput = e => markDirty(null, 'music_brief', e.target.value);
+
+function buildScene(s) {
+  const id = s.id;
+  const input = (key, attrs, tag = 'input') => {
+    const x = el(tag, {...attrs, 'data-k': key});
+    x.oninput = () => markDirty(id, key, key === 'seconds' ? +x.value : x.value);
+    if (tag === 'select') x.onchange = x.oninput;
+    return x;
+  };
+  const connect = input('connect', {}, 'select');
+  connect.append(el('option', {value: 'cut'}, 'Cut (new shot)'), el('option', {value: 'continue'}, '↪ Continue'));
+  const card = el('div', {class: 'scene', id: 'scene-' + id},
+    el('div', {class: 'scene-head'},
+      el('span', {class: 'num', 'data-k': 'num'}),
+      input('title', {type: 'text'}),
+      input('seconds', {type: 'number', min: 4, max: 15}),
+      connect,
+      el('span', {},
+        el('button', {class: 'btn ghost small', title: 'Move up', onclick: () => move(id, -1)}, '↑'), ' ',
+        el('button', {class: 'btn ghost small', title: 'Move down', onclick: () => move(id, 1)}, '↓'), ' ',
+        el('button', {class: 'btn ghost small', title: 'Delete scene', onclick: () => remove(id)}, '✕'))),
+    el('div', {style: 'margin-top:8px'}, input('action', {rows: 3, placeholder: 'What happens in this scene (shot, action, sound, dialogue)…'}, 'textarea')),
+    el('details', {'data-k': 'details'},
+      el('summary', {}, 'H3 prompt ', el('span', {class: 'badge', 'data-k': 'mode'})),
+      input('prompt', {rows: 12, class: 'mono', placeholder: 'Click "Write prompt", or paste your own.'}, 'textarea')),
+    el('div', {class: 'row'},
+      el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
+      el('button', {class: 'btn small', 'data-k': 'bDraft', onclick: () => sceneAct('render', {scene: id, preset: 'draft'})}, 'Draft'),
+      el('button', {class: 'btn ghost small', 'data-k': 'bFinal', onclick: () => sceneAct('render', {scene: id, preset: 'final'})}, 'Final'),
+      el('button', {class: 'btn ghost small', 'data-k': 'bEnhance', onclick: () => sceneAct('enhance', {scene: id})}, '✨ Enhance ★'),
+      el('span', {class: 'status', 'data-k': 'sStatus'})),
+    el('div', {class: 'job', 'data-k': 'job'}),
+    el('div', {class: 'takes', 'data-k': 'takes'}));
+  return card;
+}
+function q(card, k) { return card.querySelector(`[data-k="${k}"]`); }
+function updateScene(s, i) {
+  const card = document.getElementById('scene-' + s.id); if (!card) return;
+  q(card, 'num').textContent = `${i + 1}`;
+  setIfIdle(q(card, 'title'), s.title, 'title', s.id);
+  setIfIdle(q(card, 'seconds'), s.seconds, 'seconds', s.id);
+  setIfIdle(q(card, 'connect'), s.connect, 'connect', s.id);
+  q(card, 'connect').disabled = i === 0;
+  setIfIdle(q(card, 'action'), s.action, 'action', s.id);
+  setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
+  q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
+  const job = s.job, running = job && !job.done;
+  ['bPrompt', 'bDraft', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
+  q(card, 'bEnhance').hidden = !s.takes.length;
+  // job progress
+  const jb = q(card, 'job'); jb.replaceChildren();
+  if (job && (running || job.error)) {
+    const chips = el('div', {class: 'stagechips'});
+    job.stages.forEach(st => chips.append(el('span', {class: 'chip ' + st.state},
+      `${st.label}${st.state === 'active' && st.max ? ` ${st.value}/${st.max}` : ''}${st.seconds != null ? ` · ${fmt(st.seconds)}` : ''}`)));
+    jb.append(chips);
+    if (job.error) jb.append(el('div', {class: 'err'}, job.error));
+  }
+  // takes
+  const tk = q(card, 'takes');
+  const sig = s.takes.map(t => t.run + (t.final ? 'F' : '') + (t.run === s.chosen ? '*' : '')).join('|');
+  if (tk.dataset.sig !== sig) {
+    tk.dataset.sig = sig; tk.replaceChildren();
+    [...s.takes].reverse().forEach(t => {
+      const chosen = t.run === s.chosen;
+      tk.append(el('div', {class: 'take' + (chosen ? ' chosen' : '')},
+        el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'metadata'}),
+        el('div', {class: 'meta'},
+          el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'final 1080p48' : t.preset),
+          el('span', {class: 'badge'}, 'seed ' + t.seed),
+          el('button', {class: 'btn small ' + (chosen ? '' : 'ghost'), onclick: () => sceneAct('star', {scene: s.id, run: t.run})}, chosen ? '★ chosen' : '☆ choose'))));
+    });
+  }
+}
+
+/* ---------- actions ---------- */
+async function run(action, body) {
+  try { if (Object.keys(dirty).length || Object.keys(dirtyTop).length) await save(); proj = await api(`/api/p/${slug}/${action}`, body); draw(); }
+  catch (e) { flash(e.message, true); }
+}
+async function sceneAct(action, body) { await run(action, body); }
+async function scenePrompt(id) {
+  const card = document.getElementById('scene-' + id), st = q(card, 'sStatus'), t0 = Date.now();
+  const tick = setInterval(() => st.textContent = `Directing… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
+  try { if (Object.keys(dirty).length || Object.keys(dirtyTop).length) await save();
+        proj = await api(`/api/p/${slug}/prompt`, {scene: id}); delete (dirty[id] || {}).prompt;
+        clearInterval(tick); st.textContent = ''; q(card, 'details').open = true; draw(); }
+  catch (e) { clearInterval(tick); st.textContent = e.message; st.classList.add('err'); }
+}
+async function replan() {
+  const logline = prompt('Re-plan the storyboard from this logline. This REPLACES all scenes, prompts and takes in the project.', proj.logline);
+  if (logline === null) return;
+  flash('Re-planning… ~20 s');
+  try { proj = await api(`/api/p/${slug}/storyboard`, {logline}); flash('Re-planned'); draw(true); } catch (e) { flash(e.message, true); }
+}
+function move(id, dir) {
+  const list = [...proj.scenes], i = list.findIndex(s => s.id === id), j = i + dir;
+  if (j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]]; save(list);
+}
+function remove(id) {
+  const s = proj.scenes.find(s => s.id === id);
+  if (!confirm(`Delete scene "${s.title}"? Its takes stay on disk but leave the project.`)) return;
+  delete dirty[id]; save(proj.scenes.filter(s => s.id !== id));
+}
+$('addScene').onclick = () => save([...proj.scenes, {id: 'new-' + Date.now()}]);
+$('musicBtn').onclick = async () => {
+  const f = await pick('audio/*'); if (!f) return;
+  flash('Uploading music…');
+  try { proj = await api(`/api/p/${slug}/music`, {file: await readFile(f)}); flash('Music added'); draw(); } catch (e) { flash(e.message, true); }
+};
+$('musicRemove').onclick = async () => { proj = await api(`/api/p/${slug}/music`, {remove: true}); draw(); };
+
+loadList().then(() => { if (slug) open(slug); });
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+subject_definitions:
+<Subject 1> is the man in the center of <Picture 1>, wearing a brown cowboy hat, a blue and red plaid shirt, a red bandana, blue jeans, and a large silver belt buckle.
+<Subject 2> is the group of three women in <Picture 1>: the woman on the left wears a brown cowboy hat and black bandana, the woman in the center wears a red bandana, and the woman on the right wears a beige cowboy hat and black bandana; all wear black tank tops and fringed jeans.
+<Subject 3> is the setting in <Picture 1>, featuring a wooden sign reading "Reston Wranglers", a desert landscape, mountains, and a sunset sky.
+
+summary:
+[reference generation] The target video features <Subject 1> and <Subject 2> in <Subject 3>. The three women release the rope binding the man, who spins free and tips his hat.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1]): fully_preserved - the man's appearance and clothing are retained.
+<Subject 2> (appears in [Shot 1]): fully_preserved - the women's appearance and clothing are retained.
+<Subject 3> (appears in [Shot 1]): fully_preserved - the setting, sign, and background are retained.
+
+detailed_description:
+The target video is a western-themed scene with warm sunset lighting.
+[Shot 1] The scene opens with <Subject 1> standing in the center of the frame, bound tightly by thick ropes held by <Subject 2>, the three women flanking him. The women smile as they hold the ropes taut. At 00:02.000, the women simultaneously release their grip on the ropes, which fall away from <Subject 1>'s torso. He spins around in a quick, playful motion, freeing himself completely. At 00:05.000, <Subject 1> stops spinning, raises his hand, and tips his brown cowboy hat with a confident smile. The women watch him, still smiling. The "Reston Wranglers" sign hangs above them against the sunset.
+
+overall_soundscape:
+Desert wind and the sound of ropes falling to the ground.
+
+non_diegetic_music:
+Upbeat country music with a steady rhythm.

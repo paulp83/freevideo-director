@@ -1,0 +1,5 @@
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a low-angle tracking shot follows a folded white paper boat as it catches the current in a narrow metal rain gutter during a heavy downpour. The camera moves forward at a slow, steady pace, keeping the boat centered as it navigates small debris and ripples. The boat tilts slightly in the rushing water before gliding smoothly out of the gutter's end at 00:05.500, where it splashes softly into a larger rain puddle on the pavement below, sending up small concentric ripples as the video concludes.
+
+overall_soundscape: Steady rain hammers against the metal gutter while water rushes rapidly beneath the paper boat. A soft splash echoes as the boat hits the puddle, followed by the continuous patter of rain on the pavement.
+
+non_diegetic_music: A soft, melancholic piano melody plays at a slow tempo, accompanied by a deep, sustained cello drone that fades out as the boat lands.

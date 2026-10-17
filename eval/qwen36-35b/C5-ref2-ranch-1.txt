@@ -1,0 +1,34 @@
+subject_definitions:
+<Subject 1> is the man on the far left in <Picture 1>, wearing a grey t-shirt with a skull graphic, dark shorts, a grey baseball cap, black sneakers with orange accents, and visible tattoos on his left arm.
+<Subject 2> is the woman second from left in <Picture 1>, with dark hair, wearing a black tank top with a colorful logo, black leggings, and black sneakers.
+<Subject 3> is the woman second from right in <Picture 1>, with light brown hair and sunglasses, wearing a purple tank top with "TEAM PIZZA" text and a pizza graphic, black shorts, and red sneakers.
+<Subject 4> is the man on the far right in <Picture 1>, wearing a grey baseball cap, sunglasses, a purple tank top with "TEAM PIZZA" text and a pizza graphic, black shorts, and black sneakers.
+<Subject 5> is the ranch entrance environment in <Picture 2>, featuring a large wooden sign reading "Reston WRANGLERS" against a vibrant sunset sky with mountains in the distance.
+<Subject 6> is the wrangler woman on the far left in <Picture 2>, wearing a brown cowboy hat, black tank top, black bandana, and brown fringed chaps.
+<Subject 7> is the wrangler woman second from left in <Picture 2>, wearing a brown cowboy hat, black tank top, red bandana, and brown fringed chaps.
+<Subject 8> is the wrangler woman on the far right in <Picture 2>, wearing a light cowboy hat, black tank top, black bandana, and brown fringed chaps.
+
+summary:
+[reference generation] The target video shows the Team Pizza crew from <Picture 1> riding horses into the "Reston WRANGLERS" ranch from <Picture 2> at sunset. The wranglers from <Picture 2> swing lassos and successfully catch <Subject 4> (the man in the cap) from the group.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1]): fully_preserved - the grey skull t-shirt, tattoos, and cap are retained.
+<Subject 2> (appears in [Shot 1]): fully_preserved - the black tank top and leggings are retained.
+<Subject 3> (appears in [Shot 1]): fully_preserved - the purple "TEAM PIZZA" tank top and red sneakers are retained.
+<Subject 4> (appears in [Shot 1], [Shot 3]): fully_preserved - the purple "TEAM PIZZA" tank top, cap, and sunglasses are retained.
+<Subject 5> (appears in [Shot 1], [Shot 2]): fully_preserved - the "Reston WRANGLERS" sign and sunset background are retained.
+<Subject 6> (appears in [Shot 2], [Shot 3]): fully_preserved - the cowboy hat, bandana, and fringed chaps are retained.
+<Subject 7> (appears in [Shot 2], [Shot 3]): fully_preserved - the red bandana and fringed chaps are retained.
+<Subject 8> (appears in [Shot 2], [Shot 3]): fully_preserved - the cowboy hat and fringed chaps are retained.
+
+detailed_description:
+The target video is a cinematic western scene with warm sunset lighting and dusty atmosphere.
+[Shot 1] A wide tracking shot follows the Team Pizza crew riding horses toward the camera along a dirt path. <Subject 1>, the man in the grey skull t-shirt and cap, rides on the left. <Subject 2>, in the black tank top, rides beside him. <Subject 3>, in the purple "TEAM PIZZA" shirt, rides next. <Subject 4>, the man in the purple "TEAM PIZZA" shirt and cap, rides on the right. In the background, the large wooden "Reston WRANGLERS" sign from <Subject 5> is visible against the orange and purple sunset sky. The horses gallop steadily.
+[Shot 2] At 00:05.000, the shot cuts to a medium shot of the wranglers standing near the ranch entrance. <Subject 6>, <Subject 7>, and <Subject 8>, all wearing cowboy hats and fringed chaps, swing their lassos in unison. <Subject 7> winds up a rope with a focused expression. The sunset light flares behind them.
+[Shot 3] At 00:08.500, the shot cuts to a close-up of <Subject 4> on his horse. A lasso flies into the frame and loops tightly around his neck and shoulders. <Subject 4> is pulled forward off his horse by the tension of the rope, his arms flailing slightly as he is caught by the wranglers off-screen. He wears his cap and sunglasses as he is lassoed.
+
+overall_soundscape:
+Horses galloping on dirt, wind whistling, and the sharp crack of lassos swinging through the air.
+
+non_diegetic_music:
+An upbeat, rhythmic western country track with acoustic guitar and a steady drum beat.

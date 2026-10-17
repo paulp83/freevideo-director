@@ -1,0 +1,7 @@
+For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
+
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium-wide shot captures four people standing in a parking lot in front of a brick building with an orange roof. From left to right: a man with tattoos on his right arm, wearing a grey tie-dye t-shirt, black shorts, and a grey cap; a woman with dark hair in a black tank top and leggings; a woman in a purple "TEAM PIZZA" tank top and black shorts; and a man on the far right wearing a matching purple "TEAM PIZZA" tank top, black shorts, sunglasses, and a grey cap. The camera holds a static shot. The group begins to cheer excitedly, and the man on the far right leaps into the air with his arms raised in celebration.
+
+overall_soundscape: The group erupts into loud cheering and laughter. The man's sneakers squeak against the asphalt as he jumps, followed by the thud of his landing.
+
+non_diegetic_music: Upbeat, energetic pop track with clapping rhythms and a bright melody that swells as the man jumps.

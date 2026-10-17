@@ -1,0 +1,5 @@
+[Shot 1] Live-action, cinematic, a medium shot frames a street food chef at a bustling Bangkok night market stall. A large flame erupts from the wok as he flips the noodles high into the air. The camera pushes in with small amplitude at slow speed as the chef catches the wok and looks directly at the lens, the man with a warm, confident voice (S1) says: <d>[English] This is how my grandmother did it.</d>
+
+overall_soundscape: Sizzling oil and roaring flames from the wok fill the foreground, while the ambient hum of a busy night market and distant traffic continue underneath. The metal spatula clinks sharply against the hot metal.
+
+non_diegetic_music: A rhythmic track with traditional Thai xylophone tones and a steady beat, building slightly in intensity as the flames rise.

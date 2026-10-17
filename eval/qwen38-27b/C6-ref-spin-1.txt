@@ -1,0 +1,28 @@
+subject_definitions:
+<Subject 1> is the man in the center of <Picture 1>, with a tan-brown cowboy hat, a thick brown mustache and short beard, a reddish-brown and grey plaid button-up shirt, a red bandana knotted at his neck, blue jeans, and a brown leather belt with a large round silver concho buckle; in the reference his torso is wrapped in thick natural-fiber rope.
+<Subject 2> is the woman on the left of <Picture 1>, with long dark hair, a brown cowboy hat, a black sleeveless tank top, a black bandana, and blue jeans fitted with brown leather fringe chaps; she grips the rope.
+<Subject 3> is the muscular woman at center-left of <Picture 1>, with brown hair pulled back, a red bandana, a black sleeveless tank top, and blue jeans with brown fringe chaps; she grips the rope around the man's torso.
+<Subject 4> is the woman on the right of <Picture 1>, with long dark hair, a light-tan cowboy hat, a black bandana, a black sleeveless tank top, and blue jeans with brown fringe chaps; she grips the rope.
+<Subject 5> is the weathered wooden sign at the top of <Picture 1>, hanging by two ropes from a horizontal wooden pole, painted with the words "Reston Wranglers" flanked by two stars, set against a sunset sky with orange and pink clouds, distant mountains, and sandy desert ground.
+
+summary:
+[reference generation] The target video shows <Subject 2>, <Subject 3>, and <Subject 4> gripping a thick rope that binds <Subject 1>'s torso beneath <Subject 5>; the three women let go of the rope, <Subject 1> spins free, and then tips his hat. The scene takes place in the desert sunset environment of <Subject 5>.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the tan-brown cowboy hat, brown mustache, plaid shirt, red bandana, blue jeans, and silver-concho belt are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the brown cowboy hat, black tank top, black bandana, fringe chaps, and long dark hair are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the red bandana, black tank top, muscular build, and fringe chaps are retained.
+<Subject 4> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the light-tan cowboy hat, black bandana, black tank top, fringe chaps, and long dark hair are retained.
+<Subject 5> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the "Reston Wranglers" wooden sign, hanging pole, sunset sky, mountains, and desert ground are retained.
+
+detailed_description:
+The target video uses a bright, playful western-comedy style with warm golden-hour light and a slightly saturated orange-and-pink sky.
+[Shot 1] A medium-wide shot establishes <Subject 5>, the "Reston Wranglers" wooden sign hanging from its pole against the sunset sky and distant mountains, with <Subject 1> standing center-frame, his torso wrapped in thick rope. <Subject 2> on the left, <Subject 3> at center-left, and <Subject 4> on the right each grip the rope with both hands, all smiling at the camera. The camera holds steady with a slight slow push-in. <Subject 2> (S1) counts in a bright, friendly female voice, <d>[English] Three, two, one—</d>
+[Shot 2] At 00:02.500, the three women simultaneously let go of the rope; the coils drop away from <Subject 1>'s torso and fall to the sandy ground. Freed, <Subject 1> pivots and spins in a single full rotation, his plaid shirt and red bandana swinging with the motion. <Subject 2> (S1), <Subject 3> (S2), and <Subject 4> (S3) cheer together, <d>[English] Yeah!</d> as they clap and lean back laughing. The camera tracks the spin with a quick arc to keep <Subject 1> centered.
+[Shot 3] At 00:05.500, the shot settles into a medium shot as <Subject 1> finishes his spin facing the camera; he reaches up, lifts the brim of his tan-brown cowboy hat in a tipping gesture, and holds it there with a confident grin. <Subject 2>, <Subject 3>, and <Subject 4> frame him on either side, still smiling. <Subject 1> (S4) says in a relaxed, amused male voice, <d>[English] Thanks, ladies.</d> He holds the hat tip through the final frame as the sunset light glows behind the sign.
+
+overall_soundscape:
+Light outdoor desert ambience with a soft low wind and faint distant open-space tone continues throughout the video, plus the whoosh of the spinning man and the thud of the rope dropping to the ground in [Shot 2].
+
+non_diegetic_music:
+An upbeat, lighthearted country-western track with acoustic guitar, light percussion, and a fiddle enters under [Shot 1], swells as the man spins free in [Shot 2], and resolves on a bright final chord as he tips his hat in [Shot 3].

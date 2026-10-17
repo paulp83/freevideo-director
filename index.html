@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeVideo Director</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b6862; --line: #e3e0da;
+  --accent: #7c3aed; --accent-ink: #ffffff; --soft: #f1edfb; --ok: #15803d; --err: #b42318;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141312; --panel: #1d1c1a; --ink: #ecebe8; --muted: #a29e97; --line: #33312d;
+          --accent: #a78bfa; --accent-ink: #141312; --soft: #26213a; --ok: #4ade80; --err: #f97066; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+           border-radius: 8px; padding: 10px; font: inherit; resize: vertical; }
+#idea { min-height: 84px; }
+#prompt { min-height: 280px; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
+.slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.slot { border: 1.5px dashed var(--line); border-radius: 10px; min-height: 120px; display: flex;
+        align-items: center; justify-content: center; text-align: center; color: var(--muted);
+        cursor: pointer; position: relative; overflow: hidden; padding: 8px; }
+.slot.drag { border-color: var(--accent); background: var(--soft); }
+.slot img { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; }
+.slot .tag { position: absolute; top: 6px; left: 6px; background: var(--accent); color: var(--accent-ink);
+             font-size: 12px; padding: 1px 8px; border-radius: 99px; }
+.slot .x { position: absolute; top: 4px; right: 6px; background: var(--panel); border: 1px solid var(--line);
+           color: var(--ink); border-radius: 99px; width: 24px; height: 24px; cursor: pointer; line-height: 1; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--ink); padding: 6px 12px; font: inherit; cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+input[type=number], select { background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+                             border-radius: 6px; padding: 5px 8px; font: inherit; width: 7.5em; }
+input[type=range] { accent-color: var(--accent); }
+.btn { border: 0; background: var(--accent); color: var(--accent-ink); padding: 9px 16px; border-radius: 8px;
+       font: inherit; font-weight: 600; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.btn:disabled { opacity: .5; cursor: progress; }
+.status { color: var(--muted); font-size: 14px; }
+.status.err { color: var(--err); }
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+/* presets */
+.presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.preset { border: 1.5px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; background: var(--bg); }
+.preset.on { border-color: var(--accent); background: var(--soft); }
+.preset b { font-size: 16px; }
+.preset .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.preset ol { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+
+/* pipeline tracker */
+.pipeline { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.stage { flex: 1 1 150px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
+.stage .name { font-weight: 600; font-size: 14px; display: flex; gap: 6px; align-items: center; }
+.stage .info { color: var(--muted); font-size: 12px; margin-top: 2px; min-height: 18px; }
+.stage .bar { height: 4px; background: var(--line); border-radius: 99px; margin-top: 8px; overflow: hidden; }
+.stage .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+.stage.active { border-color: var(--accent); }
+.stage.done .name { color: var(--ok); }
+.stage.error { border-color: var(--err); }
+.stage.error .name { color: var(--err); }
+.icon { width: 14px; height: 14px; display: inline-block; text-align: center; line-height: 14px; font-size: 12px; }
+.spin { border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: s 1s linear infinite; }
+@keyframes s { to { transform: rotate(360deg); } }
+
+/* results */
+.results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.result h3 { font-size: 14px; margin: 0 0 6px; }
+.result video { width: 100%; border-radius: 8px; background: #000; }
+.result .path { color: var(--muted); font-size: 12px; word-break: break-all; margin-top: 4px; }
+.takes { list-style: none; margin: 0; padding: 0; }
+.takes li { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; flex-wrap: wrap; }
+.takes li:first-child { border-top: 0; }
+.takes .when { color: var(--muted); font-size: 12px; min-width: 64px; }
+.badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.badge.final { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 640px) { .slots, .presets, .results { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 style="display:flex;gap:12px;align-items:baseline">FreeVideo Director <a href="/project" style="font-size:14px;font-weight:500;color:var(--accent)">Film project →</a></h1>
+  <p class="sub">Three steps: describe the idea → the director writes the H3 prompt → render a quick Draft or a polished Final.</p>
+
+  <section>
+    <h2>1 · Idea</h2>
+    <textarea id="idea" placeholder="e.g. the two people on the right side of the photo have a Jedi lightsaber fight in this parking lot"></textarea>
+    <div class="row">
+      <span class="seg" id="mode">
+        <button data-mode="ref" class="on">Reference images</button>
+        <button data-mode="keys">First / last frame</button>
+      </span>
+      <label>Length <input type="range" id="seconds" min="4" max="15" step="1" value="10"> <b id="secondsOut">10 s</b></label>
+      <label><input type="checkbox" id="think" checked> Reasoning</label>
+    </div>
+    <div class="slots">
+      <div class="slot" data-i="0"></div>
+      <div class="slot" data-i="1"></div>
+    </div>
+    <p class="hint" id="modeHint"></p>
+    <div class="row">
+      <button class="btn" id="write">Write prompt</button>
+      <span class="status" id="writeStatus"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Prompt</h2>
+    <textarea id="prompt" placeholder="The director's prompt appears here. Edit freely before rendering."></textarea>
+    <div class="row">
+      <button class="btn ghost" id="copy">Copy</button>
+      <span class="status" id="copyStatus"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Render</h2>
+    <div class="presets">
+      <div class="preset on" data-preset="draft">
+        <b>Draft</b> <span class="badge">quick look</span>
+        <div class="meta">1344×768 · 24 fps · ~2–3 min for 10 s</div>
+        <ol><li>Render (fast two-pass)</li></ol>
+      </div>
+      <div class="preset" data-preset="final">
+        <b>Final</b> <span class="badge final">best quality</span>
+        <div class="meta">1080p · 48 fps · <span id="finalEta">~9–10 min for 10 s</span></div>
+        <ol><li>Render (sharp single-pass)</li><li>Upscale to 1080p (SeedVR2)</li><li>Smooth to 48 fps (RIFE)</li><li>Encode (high quality, original audio)</li></ol>
+      </div>
+    </div>
+    <div class="row">
+      <label>Size <select id="size">
+        <option value="1344x768">1344×768</option>
+        <option value="1024x576">1024×576</option>
+        <option value="768x1344">768×1344 (portrait)</option>
+      </select></label>
+      <label>Seed <input type="number" id="seed" placeholder="random"></label>
+      <button class="btn" id="render">Render Draft</button>
+      <span class="status" id="renderStatus"></span>
+    </div>
+    <p class="hint">Tip: iterate with Drafts and a fixed seed, then <b>Enhance</b> the take you like. That runs only the finishing steps, no re-render.</p>
+
+    <div class="pipeline" id="pipeline" hidden></div>
+
+    <div class="results" id="results" hidden>
+      <div class="result" id="takeBox">
+        <h3>Take <span class="badge">raw render</span></h3>
+        <video id="takeVideo" controls></video>
+        <div class="path" id="takePath"></div>
+        <div class="row"><button class="btn ghost" id="enhance" hidden>✨ Enhance this take</button></div>
+      </div>
+      <div class="result" id="finalBox" hidden>
+        <h3>Final <span class="badge final">1080p · 48 fps</span></h3>
+        <video id="finalVideo" controls></video>
+        <div class="path" id="finalPath"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="takesBox" hidden>
+    <h2>Recent takes (this session)</h2>
+    <ul class="takes" id="takes"></ul>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const images = [null, null];
+let mode = 'ref', preset = 'draft', current = null;   // current = {take, final, run}
+const takes = [];
+
+/* ---------- step 1: idea + images ---------- */
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  $('modeHint').textContent = m === 'ref'
+    ? 'Reference images become <Picture 1>, <Picture 2> (FreeVideo\'s reference mode is experimental, so expect loose likeness). No images = text only.'
+    : 'Slot 1 = first frame, slot 2 = last frame. Use either or both. Best for likeness.';
+  renderSlots();
+}
+document.querySelectorAll('#mode button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+$('seconds').oninput = () => $('secondsOut').textContent = $('seconds').value + ' s';
+
+function renderSlots() {
+  document.querySelectorAll('.slot').forEach(slot => {
+    const i = +slot.dataset.i, img = images[i];
+    const tag = mode === 'ref' ? `Picture ${i + 1}` : (i ? 'Last frame' : 'First frame');
+    slot.replaceChildren();
+    if (!img) { const s = document.createElement('span'); s.textContent = `${tag}: drop or click to add`; slot.append(s); return; }
+    const t = document.createElement('span'); t.className = 'tag'; t.textContent = tag;
+    const im = document.createElement('img'); im.src = img.data; im.alt = img.name;
+    const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.title = 'Remove';
+    x.onclick = e => { e.stopPropagation(); images[i] = null; renderSlots(); };
+    slot.append(t, im, x);
+  });
+}
+function load(i, file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const r = new FileReader();
+  r.onload = () => { images[i] = {name: file.name, data: r.result}; renderSlots(); };
+  r.readAsDataURL(file);
+}
+document.querySelectorAll('.slot').forEach(slot => {
+  const i = +slot.dataset.i;
+  slot.onclick = () => { const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*';
+                         f.onchange = () => load(i, f.files[0]); f.click(); };
+  slot.ondragover = e => { e.preventDefault(); slot.classList.add('drag'); };
+  slot.ondragleave = () => slot.classList.remove('drag');
+  slot.ondrop = e => { e.preventDefault(); slot.classList.remove('drag'); load(i, e.dataTransfer.files[0]); };
+});
+function media() {
+  const set = images.filter(Boolean);
+  if (mode === 'ref') return {refs: set};
+  return {first: images[0] || undefined, last: images[1] || undefined};
+}
+async function post(path, body) {
+  const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function status(el, text, err) { el.textContent = text; el.classList.toggle('err', !!err); }
+
+$('write').onclick = async () => {
+  const btn = $('write'), st = $('writeStatus'), t0 = Date.now();
+  btn.disabled = true;
+  const tick = setInterval(() => status(st, `Directing… ${Math.round((Date.now() - t0) / 1000)} s`), 500);
+  try {
+    const j = await post('/api/direct', {idea: $('idea').value, seconds: +$('seconds').value,
+                                        think: $('think').checked, ...media()});
+    $('prompt').value = j.prompt;
+    clearInterval(tick);
+    status(st, `${j.mode.toUpperCase()} · ${j.model} · ${j.elapsed} s · ${j.tokens ?? '?'} tokens · saved ${j.saved.split('/').pop()}`);
+  } catch (e) { clearInterval(tick); status(st, e.message, true); }
+  btn.disabled = false;
+};
+
+/* ---------- step 2: prompt ---------- */
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('prompt').value); }
+  catch { $('prompt').select(); document.execCommand('copy'); }
+  status($('copyStatus'), 'Copied.');
+};
+
+/* ---------- step 3: render ---------- */
+function setPreset(p) {
+  preset = p;
+  document.querySelectorAll('.preset').forEach(el => el.classList.toggle('on', el.dataset.preset === p));
+  $('render').textContent = p === 'final' ? 'Render Final' : 'Render Draft';
+}
+document.querySelectorAll('.preset').forEach(el => el.onclick = () => setPreset(el.dataset.preset));
+
+function fmt(s) { return s == null ? '' : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; }
+function drawPipeline(job) {
+  const box = $('pipeline'); box.hidden = false; box.replaceChildren();
+  for (const s of job.stages) {
+    const el = document.createElement('div'); el.className = `stage ${s.state}`;
+    const name = document.createElement('div'); name.className = 'name';
+    const icon = document.createElement('span'); icon.className = 'icon';
+    if (s.state === 'active') icon.classList.add('spin');
+    else icon.textContent = {pending: '○', done: '✓', error: '✕'}[s.state] || '';
+    name.append(icon, document.createTextNode(s.label));
+    const info = document.createElement('div'); info.className = 'info';
+    const pct = s.max ? Math.round(100 * s.value / s.max) : 0;
+    info.textContent = s.state === 'active' ? `${fmt(s.seconds)}${s.max ? ` · ${s.value}/${s.max}` : ''}`
+                     : s.state === 'done' ? fmt(s.seconds) : s.state === 'error' ? 'failed' : 'waiting';
+    const bar = document.createElement('div'); bar.className = 'bar';
+    const fill = document.createElement('i'); fill.style.width = (s.state === 'done' ? 100 : pct) + '%';
+    bar.append(fill); el.append(name, info, bar); box.append(el);
+  }
+}
+function showTake(take) {
+  $('results').hidden = false;
+  if (take.url) { $('takeVideo').src = take.url; }
+  $('takePath').textContent = take.path;
+}
+function showFinal(final) {
+  $('finalBox').hidden = false; $('finalVideo').src = final.url; $('finalPath').textContent = final.path;
+}
+function remember(job) {
+  if (!job.take) return;
+  const existing = takes.find(t => t.run === job.take.run);
+  if (existing) { if (job.final) existing.final = job.final; }
+  else takes.unshift({run: job.take.run, take: job.take, final: job.final, when: new Date(), label: $('idea').value.slice(0, 80) || 'untitled'});
+  drawTakes();
+}
+function drawTakes() {
+  $('takesBox').hidden = !takes.length;
+  const ul = $('takes'); ul.replaceChildren();
+  for (const t of takes) {
+    const li = document.createElement('li');
+    const when = document.createElement('span'); when.className = 'when'; when.textContent = t.when.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    const label = document.createElement('span'); label.textContent = t.label; label.style.flex = '1';
+    const badge = document.createElement('span'); badge.className = 'badge' + (t.final ? ' final' : ''); badge.textContent = t.final ? 'final ready' : 'draft';
+    const open = document.createElement('button'); open.className = 'btn ghost'; open.textContent = 'Show';
+    open.onclick = () => { current = t; showTake(t.take); $('finalBox').hidden = !t.final; if (t.final) showFinal(t.final);
+                           $('enhance').hidden = !!t.final; window.scrollTo({top: $('results').offsetTop - 80, behavior: 'smooth'}); };
+    li.append(when, label, badge, open);
+    ul.append(li);
+  }
+}
+
+async function follow(job) {
+  const st = $('renderStatus');
+  $('render').disabled = true; $('enhance').disabled = true;
+  try {
+    while (true) {
+      drawPipeline(job);
+      if (job.take && (!current || current.run !== job.take.run)) {
+        current = {run: job.take.run, take: job.take, final: null};
+        showTake(job.take); $('finalBox').hidden = true;
+      }
+      if (job.done) break;
+      status(st, `${job.kind === 'enhance' ? 'Enhancing' : job.kind === 'final' ? 'Rendering Final' : 'Rendering Draft'}… ${fmt(job.elapsed)}`);
+      await new Promise(r => setTimeout(r, 2000));
+      const r = await fetch('/api/job/' + job.id); job = await r.json();
+    }
+    if (job.error) throw new Error(job.error);
+    if (job.final) { current.final = job.final; showFinal(job.final); }
+    $('enhance').hidden = !!job.final;
+    remember(job);
+    status(st, `Done in ${fmt(job.elapsed)}.`);
+  } catch (e) { status(st, e.message, true); }
+  $('render').disabled = false; $('enhance').disabled = false;
+}
+
+$('render').onclick = async () => {
+  const st = $('renderStatus');
+  if (!$('prompt').value.trim()) return status(st, 'Write or paste a prompt first.', true);
+  const [width, height] = $('size').value.split('x').map(Number);
+  const body = {prompt: $('prompt').value, seconds: +$('seconds').value, width, height, preset, ...media()};
+  if ($('seed').value) body.seed = +$('seed').value;
+  try { current = null; follow(await post('/api/render', body)); }
+  catch (e) { status(st, e.message, true); }
+};
+$('enhance').onclick = async () => {
+  if (!current) return;
+  try { follow(await post('/api/enhance', {run: current.run})); }
+  catch (e) { status($('renderStatus'), e.message, true); }
+};
+
+setMode('ref');
+</script>
+</body>
+</html>

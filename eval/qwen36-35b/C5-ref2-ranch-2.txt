@@ -1,0 +1,29 @@
+subject_definitions:
+<Subject 1> is the man on the far left in <Picture 1>, wearing a grey skull t-shirt, black shorts, and a dark cap, with tattoos on his left arm.
+<Subject 2> is the woman next to him in <Picture 1>, wearing a black tank top with a colorful logo and black leggings.
+<Subject 3> is the woman next to her in <Picture 1>, wearing a purple "TEAM PIZZA" tank top with a pizza graphic, black shorts, and red sneakers.
+<Subject 4> is the man on the far right in <Picture 1>, wearing a purple "TEAM PIZZA" tank top, black shorts, sunglasses, and a cap.
+<Subject 5> is the ranch entrance in <Picture 2>, featuring a wooden "Reston Wranglers" sign against a sunset sky and mountain backdrop.
+<Subject 6> are the wranglers in <Picture 2>, three women wearing cowboy hats, black tops, and fringed chaps, holding a thick rope.
+
+summary:
+[reference generation] The target video shows the four members of the Team Pizza crew from <Picture 1> riding horses towards the ranch entrance from <Picture 2> at sunset. As they arrive, the wranglers from <Picture 2> lasso the man in the cap from the crew.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - the grey skull t-shirt, black shorts, tattoos, and cap are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the black tank top and leggings are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - the purple "TEAM PIZZA" shirt and red sneakers are retained.
+<Subject 4> (appears in [Shot 1], [Shot 2]): fully_preserved - the purple "TEAM PIZZA" shirt, sunglasses, and cap are retained.
+<Subject 5> (appears in [Shot 1], [Shot 2]): fully_preserved - the "Reston Wranglers" sign and sunset background are retained.
+<Subject 6> (appears in [Shot 2]): fully_preserved - the cowboy hats, fringed chaps, and rope are retained.
+
+detailed_description:
+The target video features a vibrant western adventure style with warm sunset lighting.
+[Shot 1] A wide shot captures the four members of the Team Pizza crew from <Picture 1> riding horses across a dusty plain towards the camera. From left to right: <Subject 1> in the grey skull t-shirt and cap rides a dark horse; <Subject 2> in the black tank top rides a light horse; <Subject 3> in the purple "TEAM PIZZA" shirt and red sneakers rides a chestnut horse; and <Subject 4> in the matching purple shirt and sunglasses rides a dark horse. In the background, the "Reston Wranglers" sign from <Subject 5> is visible against a vibrant orange and purple sunset sky with distant mountains. The camera tracks backward slightly as they approach.
+[Shot 2] At 00:06.000, the shot cuts to a medium shot at the ranch entrance. The group has slowed down. Suddenly, <Subject 6>, the three wranglers in cowboy hats and fringed chaps from <Picture 2>, step forward from the sides. They swing lassos and successfully throw a rope around <Subject 1>, the man in the cap. He stumbles backward as the wranglers pull the rope taut, securing him while the others watch. The sunset glow illuminates the dust and the wooden sign above.
+
+overall_soundscape:
+Hoofbeats on dirt and wind rustling through dry grass continue throughout the video.
+
+non_diegetic_music:
+An upbeat western soundtrack with acoustic guitar and drums drives the scene.

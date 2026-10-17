@@ -1,0 +1,130 @@
+{
+ "slug": "lasso-test",
+ "name": "Lasso test",
+ "logline": "At the Reston Wranglers ranch at sunset, the three wranglers rope the man in the plaid shirt; he wriggles free, grabs a lasso, and catches his own hat by accident while the women cheer.",
+ "seconds": 20,
+ "aspect": "16:9",
+ "size": [
+  1344,
+  768
+ ],
+ "refs": [
+  "picture-1.jpg"
+ ],
+ "music_file": "music.mp3",
+ "title": "Hat Trick (test)",
+ "bible": "Setting: the open dirt yard of the Reston Wranglers ranch at golden-hour sunset; a weathered hand-carved wooden sign reading 'Reston Wranglers' with two stars hangs from a rope across the top of frame, behind it a fiery orange-and-gold cloud sky and a ridge of hazy blue mountains. Lighting is warm low-angle sunset rim-light with long soft shadows; colour palette is amber, burnt orange, dusty brown and faded denim blue. Camera style is handheld documentary with smooth dolly moves, shallow depth of field on close-ups, 16:9. Characters: MATT, a 35-year-old stocky man with a thick brown mustache, short brown hair, wearing a tan cowboy hat, a red paisley bandana, a brown-and-grey plaid button shirt, blue jeans and a big silver belt buckle. RUBY, a 30-year-old athletic woman with long dark hair, a brown cowboy hat, a black bandana, a black tank top and blue jeans with brown fringed leather chaps. LUCY, a 32-year-old athletic woman with brown hair in a ponytail, a red bandana, a black tank top and fringed chaps. TESS, a 28-year-old woman with long dark hair, a cream cowboy hat, a black bandana, a black tank top and fringed chaps. All three women wear brown leather chaps with long fringe and hold coiled rope. Overall mood is playful, warm and comedic. The people and the hanging sign in <Picture 1> are the source for MATT, RUBY, LUCY and TESS and the ranch sign look.",
+ "music_brief": "Bouncy country-folk score with fiddle, banjo and acoustic guitar at a lively 120 bpm, playful and warm, building to a triumphant comedic swell at the end.",
+ "scenes": [
+  {
+   "id": "ce1579",
+   "title": "Roping the Plaid Man",
+   "seconds": 5,
+   "connect": "cut",
+   "action": "Wide establishing shot of the dirt yard under the sunset, the 'Reston Wranglers' sign swinging at the top of frame. RUBY, LUCY and TESS swing their lassos in unison and haul a coil of rope around MATT's torso, cinching him tight while he looks up in mock alarm. Key sounds: the whoosh of rope, a thud of the knot, and the women's laughing 'heave-ho!'. Camera slowly dollies in toward the group.",
+   "prompt": "subject_definitions:\n<Subject 1> is MATT, the stocky 35-year-old man in <Picture 1>, with a thick brown mustache, short brown hair, a tan cowboy hat, a red paisley bandana around his neck, a brown-and-grey plaid button shirt, blue jeans, and a big silver belt buckle.\n<Subject 2> is RUBY, the athletic 30-year-old woman on the left in <Picture 1>, with long dark hair, a brown cowboy hat, a black bandana, a black tank top, and blue jeans with brown fringed leather chaps.\n<Subject 3> is LUCY, the athletic 32-year-old woman in the middle-left of <Picture 1>, with brown hair in a ponytail, a red bandana, a black tank top, and brown fringed leather chaps.\n<Subject 4> is TESS, the 28-year-old woman on the right in <Picture 1>, with long dark hair, a cream cowboy hat, a black bandana, a black tank top, and brown fringed leather chaps.\n<Subject 5> is the ranch environment in <Picture 1>: the open dirt yard at golden-hour sunset, a weathered hand-carved wooden sign reading 'Reston Wranglers' with two stars hanging from a rope across the top of frame, a fiery orange-and-gold cloud sky, and a ridge of hazy blue mountains behind.\n\nsummary:\n[reference generation] The target video is a single five-second wide establishing shot of <Subject 5>, the Reston Wranglers dirt yard at sunset, in which <Subject 2>, <Subject 3>, and <Subject 4> swing their lassos in unison and haul a coil of rope around <Subject 1>'s torso, cinching him tight while he looks up in mock alarm. All four characters and the hanging sign take their look from <Picture 1>; the camera slowly dollies in toward the group.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - MATT's stocky build, thick brown mustache, short brown hair, tan cowboy hat, red paisley bandana, brown-and-grey plaid shirt, blue jeans, and big silver belt buckle are retained.\n<Subject 2> (appears in [Shot 1]): fully_preserved - RUBY's long dark hair, brown cowboy hat, black bandana, black tank top, and fringed chaps are retained.\n<Subject 3> (appears in [Shot 1]): fully_preserved - LUCY's brown ponytail, red bandana, black tank top, and fringed chaps are retained.\n<Subject 4> (appears in [Shot 1]): fully_preserved - TESS's long dark hair, cream cowboy hat, black bandana, black tank top, and fringed chaps are retained.\n<Subject 5> (appears in [Shot 1]): fully_preserved - the dirt yard, the 'Reston Wranglers' two-star wooden sign on a rope, the orange-and-gold sunset sky, and the hazy blue mountain ridge are retained.\n\ndetailed_description:\nThe target video is a handheld documentary-style wide establishing shot with warm low-angle sunset rim-light, long soft shadows, an amber, burnt-orange, dusty-brown and faded-denim-blue palette, and 16:9 framing.\n[Shot 1] The scene opens wide on <Subject 5>, the open dirt yard of the Reston Wranglers ranch under a fiery orange-and-gold cloud sky with a ridge of hazy blue mountains on the horizon; the weathered hand-carved wooden sign reading 'Reston Wranglers' with two stars hangs from a rope stretched across the top of frame and swings gently. In the mid-ground, <Subject 1> MATT stands at the centre, stocky, with his thick brown mustache, short brown hair, tan cowboy hat, red paisley bandana, brown-and-grey plaid shirt, blue jeans, and big silver belt buckle; to his left are <Subject 2> RUBY, <Subject 3> LUCY, and to his right <Subject 4> TESS, each in a cowboy hat, bandana, black tank top, and brown fringed leather chaps, all holding coiled rope. The three women swing their lassos in unison overhead with a sharp whoosh, then haul the rope around <Subject 1>'s torso, cinching it tight against his plaid shirt as he looks up at the sign in mock alarm, mouth open and eyes wide. As the knot tightens with a soft thud, <Subject 2> (S1), <Subject 3> (S2), and <Subject 4> (S3) laugh together and call out in unison, <d>[English] Heave-ho!</d> The camera slowly and smoothly dollies in toward the group over the full shot, tightening the wide frame into a medium-wide while the sign keeps swinging at the top and the sunset rim-light flares on the rope and the women's hats.\n\noverall_soundscape:\nDiegetic sound only: the sharp whoosh of the swinging rope, a single soft thud as the knot tightens around <Subject 1>'s torso, the women's laughing \"heave-ho!\", and faint dry wind and distant outdoor room tone of the open dirt yard at sunset.\n\nnon_diegetic_music:\nNone",
+   "prompt_mode": "ref2va",
+   "seed": 1491292394,
+   "takes": [
+    {
+     "run": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/b8ca909afc3347a899e2cf8573b7a466",
+     "path": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/b8ca909afc3347a899e2cf8573b7a466/video.mp4",
+     "url": "http://127.0.0.1:8190/view?filename=video.mp4&subfolder=FreeVideo%2F2026-10-05%2Fb8ca909afc3347a899e2cf8573b7a466&type=output",
+     "preset": "draft",
+     "seed": 1491292394,
+     "created": 1791164841.8715975,
+     "final": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/director/b8ca909afc3347a899e2cf8573b7a466-final_00001-audio.mp4",
+     "final_url": "http://127.0.0.1:8190/view?filename=b8ca909afc3347a899e2cf8573b7a466-final_00001-audio.mp4&subfolder=director&type=output"
+    }
+   ],
+   "star": null
+  },
+  {
+   "id": "d7cfb1",
+   "title": "The Wriggle Free",
+   "seconds": 5,
+   "connect": "continue",
+   "action": "Medium shot, same spot, MATT twists and shrugs his shoulders and slips free of the rope coil, which drops to the dirt. He bends and snatches a coiled lasso from the ground, grinning. Key sounds: rope sliding off his shirt, a sharp grunt of effort, the lasso uncoiling. Camera stays level and tracks his movement.",
+   "prompt": "integrated_multimodal_description: [Shot 1] Live-action, cinematic, handheld documentary style, a medium shot frames MATT in the open dirt yard of the Reston Wranglers ranch at golden-hour sunset. A weathered hand-carved wooden sign reading \"Reston Wranglers\" with two stars hangs from a rope across the top of frame. Behind the group, a fiery orange-and-gold cloud sky stretches above a ridge of hazy blue mountains. Warm low-angle sunset rim-light casts long soft shadows across the packed dirt. MATT, a stocky 35-year-old man with a thick brown mustache, short brown hair, a tan cowboy hat, a red paisley bandana, a brown-and-grey plaid button shirt, blue jeans and a big silver belt buckle, stands cinched tight by a coil of rope wrapped around his torso. RUBY, LUCY and TESS stand a few paces behind him, still holding their coiled ropes in their hands. The camera tracks MATT at a level height with small amplitude at moderate speed as he twists his torso left and right and shrugs his shoulders upward with a sharp grunt, slipping free of the rope. The coil slides off his plaid shirt and drops to the dirt with a soft thud. He bends at the waist, reaches down, and snatches a coiled lasso from the ground, then straightens up grinning broadly at the camera. Shallow depth of field keeps MATT sharp while the three women and the hanging sign soften slightly in the background.\n\noverall_soundscape: The coil of rope slides off MATT's plaid shirt with a soft friction rasp as he shrugs it free, followed by the dull thud of the rope hitting the dirt. A sharp grunt of effort escapes him as he twists. The coiled lasso uncoils with a light rustling snap as he snatches it. Faint dry wind brushes across the open yard.\n\nnon_diegetic_music: None",
+   "prompt_mode": "t2va",
+   "seed": 47835323,
+   "takes": [
+    {
+     "run": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/ee1cf61a8c6f449ba7c80d2ece1bf003",
+     "path": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/ee1cf61a8c6f449ba7c80d2ece1bf003/video.mp4",
+     "url": "http://127.0.0.1:8190/view?filename=video.mp4&subfolder=FreeVideo%2F2026-10-05%2Fee1cf61a8c6f449ba7c80d2ece1bf003&type=output",
+     "preset": "draft",
+     "seed": 47835323,
+     "created": 1791164954.6269689,
+     "final": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/director/ee1cf61a8c6f449ba7c80d2ece1bf003-final_00001-audio.mp4",
+     "final_url": "http://127.0.0.1:8190/view?filename=ee1cf61a8c6f449ba7c80d2ece1bf003-final_00001-audio.mp4&subfolder=director&type=output"
+    }
+   ],
+   "star": null
+  },
+  {
+   "id": "a84dd7",
+   "title": "The Wild Throw",
+   "seconds": 5,
+   "connect": "cut",
+   "action": "Medium-wide shot, MATT spins and hurls the lasso wildly into the air; the loop rises, misses everything, and snags his own cowboy hat right off his head, sending it tumbling up into the orange sky. Key sounds: a fast whoosh, the soft thump of the hat caught, then a startled yelp from MATT. Camera tilts up to follow the hat.",
+   "prompt": "subject_definitions:\n<Subject 1> is MATT, the stocky 35-year-old man in <Picture 1>, with a thick brown mustache, short brown hair, a tan cowboy hat, a red paisley bandana tied at his neck, a brown-and-grey plaid button shirt, blue jeans, and a big silver belt buckle.\n<Subject 2> is RUBY, the athletic 30-year-old woman in <Picture 1>, with long dark hair, a brown cowboy hat, a black bandana, a black tank top, and blue jeans with brown fringed leather chaps.\n<Subject 3> is LUCY, the athletic 32-year-old woman in <Picture 1>, with brown hair in a ponytail, a red bandana, a black tank top, and brown fringed leather chaps.\n<Subject 4> is TESS, the 28-year-old woman in <Picture 1>, with long dark hair, a cream cowboy hat, a black bandana, a black tank top, and brown fringed leather chaps.\n<Subject 5> is the weathered hand-carved wooden ranch sign reading \"Reston Wranglers\" with a star on each side, hung from a rope across the top of frame, as seen in <Picture 1>.\n<Subject 6> is the open dirt yard of the Reston Wranglers ranch at golden-hour sunset from <Picture 1>, with a fiery orange-and-gold cloud sky and a ridge of hazy blue mountains behind.\n\nsummary:\n[reference generation] The target video is a single medium-wide handheld shot in <Subject 6>, where <Subject 1> spins and hurls a coiled lasso wildly into the air; the rising loop misses everything and snags his own cowboy hat off his head, sending it tumbling up into the orange sky while <Subject 2>, <Subject 3>, and <Subject 4> react at the edges of frame and <Subject 5> hangs across the top. The look of all four characters and the sign is drawn from <Picture 1>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - MATT's stocky build, thick brown mustache, short brown hair, tan cowboy hat, red paisley bandana, brown-and-grey plaid shirt, blue jeans, and big silver belt buckle are retained.\n<Subject 2> (appears in [Shot 1]): fully_preserved - RUBY's long dark hair, brown cowboy hat, black bandana, black tank top, and fringed chaps are retained.\n<Subject 3> (appears in [Shot 1]): fully_preserved - LUCY's brown ponytail, red bandana, black tank top, and fringed chaps are retained.\n<Subject 4> (appears in [Shot 1]): fully_preserved - TESS's long dark hair, cream cowboy hat, black bandana, black tank top, and fringed chaps are retained.\n<Subject 5> (appears in [Shot 1]): fully_preserved - the weathered hand-carved \"Reston Wranglers\" sign with two stars, hung from a rope across the top of frame, is retained.\n<Subject 6> (appears in [Shot 1]): fully_preserved - the open dirt yard, fiery orange-and-gold cloud sky, and hazy blue mountain ridge at golden hour are retained.\n\ndetailed_description:\nThe target video is a single continuous medium-wide shot in a handheld documentary style with smooth dolly energy, shallow depth of field, warm low-angle golden-hour rim light casting long soft shadows, and a palette of amber, burnt orange, dusty brown, and faded denim blue, framed 16:9.\n[Shot 1] The scene opens hard-cut into <Subject 6>, the open dirt yard of the Reston Wranglers ranch at sunset, with the fiery orange-and-gold cloud sky and the hazy blue mountain ridge filling the background and <Subject 5>, the weathered hand-carved wooden \"Reston Wranglers\" sign with a star on each side, hanging from a rope across the very top of frame. In the center, <Subject 1>, the stocky man with the thick brown mustache, short brown hair, red paisley bandana, brown-and-grey plaid shirt, blue jeans, and big silver belt buckle, stands wearing his tan cowboy hat, gripping a coiled lasso in both hands; at the left and right edges of frame, <Subject 2>, <Subject 3>, and <Subject 4>, the three athletic women in cowboy hats, black bandanas, black tank tops, and brown fringed chaps, watch him. Over the first second, <Subject 1> winds up and spins his body, whipping the coiled rope overhead in a wide arc; a fast whoosh of the lasso cutting the air carries through the shot. As the loop rises high into the orange sky, it misses everything, and at about the two-second mark it catches the brim of his own tan cowboy hat and yanks it clean off his head. The hat tumbles end over end upward into the fiery clouds while <Subject 1> (S1) lets out a startled yelp, <d>[English] Whoa!</d>, his bare head and mustache now exposed and his eyes tracking the hat. The camera tilts up smoothly to follow the hat as it floats up toward the sign and the cloud sky, and <Subject 2>, <Subject 3>, and <Subject 4> lean back and laugh at the edges of frame as the hat drifts out past the top of the frame by the five-second mark.\n\noverall_soundscape:\nWarm golden-hour outdoor ambience with a low breeze moving across the open dirt yard and faint distant ranch sounds continues throughout the shot.\n\nnon_diegetic_music:\nNone",
+   "prompt_mode": "ref2va",
+   "seed": 142665540,
+   "takes": [
+    {
+     "run": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/3d629791f5724dbebf150a32d5192d3b",
+     "path": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/3d629791f5724dbebf150a32d5192d3b/video.mp4",
+     "url": "http://127.0.0.1:8190/view?filename=video.mp4&subfolder=FreeVideo%2F2026-10-05%2F3d629791f5724dbebf150a32d5192d3b&type=output",
+     "preset": "draft",
+     "seed": 142665540,
+     "created": 1791165067.213058,
+     "final": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/director/3d629791f5724dbebf150a32d5192d3b-final_00001-audio.mp4",
+     "final_url": "http://127.0.0.1:8190/view?filename=3d629791f5724dbebf150a32d5192d3b-final_00001-audio.mp4&subfolder=director&type=output"
+    }
+   ],
+   "star": null
+  },
+  {
+   "id": "977cc6",
+   "title": "Hatless Victory",
+   "seconds": 5,
+   "connect": "cut",
+   "action": "Medium close-up, MATT stands bare-headed and dazed while RUBY, LUCY and TESS throw their arms up and cheer, clapping and laughing. Key sounds: a burst of cheering and laughter, a triumphant 'yee-haw!'. Camera pushes in slightly on MATT's stunned face as the women celebrate behind him.",
+   "prompt": "subject_definitions:\n<Subject 1> is MATT, a 35-year-old stocky man taken from <Picture 1>, with a thick brown mustache, short brown hair, a red paisley bandana at the neck, a brown-and-grey plaid button shirt, blue jeans and a big silver belt buckle; in this scene he is bare-headed.\n<Subject 2> is RUBY, a 30-year-old athletic woman taken from <Picture 1>, with long dark hair, a brown cowboy hat, a black bandana, a black tank top and blue jeans with brown fringed leather chaps, holding a coiled rope.\n<Subject 3> is LUCY, a 32-year-old athletic woman taken from <Picture 1>, with brown hair in a ponytail, a red bandana, a black tank top and fringed leather chaps, holding a coiled rope.\n<Subject 4> is TESS, a 28-year-old woman taken from <Picture 1>, with long dark hair, a cream cowboy hat, a black bandana, a black tank top and fringed leather chaps, holding a coiled rope.\n<Subject 5> is the open dirt yard of the Reston Wranglers ranch taken from <Picture 1>, with a weathered hand-carved wooden sign reading \"Reston Wranglers\" and two stars hanging from a rope across the top of frame, a fiery orange-and-gold cloud sky and a ridge of hazy blue mountains behind it, lit by warm low-angle sunset rim-light with long soft shadows in an amber, burnt-orange, dusty-brown and faded-denim-blue palette.\n\nsummary:\n[reference generation] The target video is a single 5-second medium close-up in <Subject 5> in which <Subject 1> stands bare-headed and dazed in the foreground while <Subject 2>, <Subject 3> and <Subject 4> throw their arms up and cheer behind him; the camera slowly pushes in on <Subject 1>'s stunned face. The looks of all four characters and of the ranch sign and setting are taken from <Picture 1>, and the audio is diegetic cheering, laughter and a triumphant shout.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - MATT's stocky build, thick brown mustache, short brown hair, red paisley bandana, brown-and-grey plaid shirt, blue jeans and silver belt buckle are retained, with the tan cowboy hat removed so he is bare-headed.\n<Subject 2> (appears in [Shot 1]): fully_preserved - RUBY's long dark hair, brown cowboy hat, black bandana, black tank top, fringed leather chaps and coiled rope are retained.\n<Subject 3> (appears in [Shot 1]): fully_preserved - LUCY's brown ponytail, red bandana, black tank top, fringed chaps and coiled rope are retained.\n<Subject 4> (appears in [Shot 1]): fully_preserved - TESS's long dark hair, cream cowboy hat, black bandana, black tank top, fringed chaps and coiled rope are retained.\n<Subject 5> (appears in [Shot 1]): fully_preserved - the dirt yard, the hanging \"Reston Wranglers\" sign with two stars, the fiery orange-and-gold sky, the hazy blue mountain ridge and the warm low-angle sunset rim-light are retained.\n\ndetailed_description:\nThe target video is a handheld documentary medium close-up with shallow depth of field and a warm amber, burnt-orange, dusty-brown and faded-denim-blue sunset palette.\n[Shot 1] The shot opens on a medium close-up in <Subject 5>, the open dirt yard of the Reston Wranglers ranch at golden-hour sunset, the weathered hand-carved wooden sign reading \"Reston Wranglers\" with two stars hanging from a rope across the top of frame, a fiery orange-and-gold cloud sky and a hazy blue mountain ridge behind. In the sharp foreground, <Subject 1>, MATT the stocky man with a thick brown mustache and short brown hair, stands bare-headed, his red paisley bandana at his neck and his brown-and-grey plaid shirt and silver belt buckle visible; his eyes are wide and his mouth hangs slightly open in a dazed, stunned expression as he stares up and to the side. Behind him, softly out of focus, <Subject 2> RUBY on the left, <Subject 3> LUCY in the middle and <Subject 4> TESS on the right throw their arms up high, clap their hands and laugh, their cowboy hats, bandanas, black tank tops and fringed chaps catching the warm low-angle rim-light. As the women erupt in celebration, <Subject 2> (S1) shouts in an excited, breathless young-woman's voice, <d>[English] Yee-haw!</d> while the other two laugh along. The handheld camera then slowly and smoothly pushes in on <Subject 1>'s stunned, wide-eyed face, tightening the frame into a closer medium close-up over the five seconds, keeping the cheering, clapping women and the hanging sign as a soft bokeh backdrop until the final frame.\n\noverall_soundscape:\nA burst of outdoor cheering, clapping and laughter from the women, a low desert wind and open-yard ambience, and a single triumphant shouted \"yee-haw!\" fill the scene; no score is present.\n\nnon_diegetic_music:\nNone",
+   "prompt_mode": "ref2va",
+   "seed": 1430743960,
+   "takes": [
+    {
+     "run": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/2dcf6a23421541799e015030ffe548b5",
+     "path": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/FreeVideo/2026-10-05/2dcf6a23421541799e015030ffe548b5/video.mp4",
+     "url": "http://127.0.0.1:8190/view?filename=video.mp4&subfolder=FreeVideo%2F2026-10-05%2F2dcf6a23421541799e015030ffe548b5&type=output",
+     "preset": "draft",
+     "seed": 1430743960,
+     "created": 1791165169.2951055,
+     "final": "/home/paul/FreeVideo-ComfyUI/ComfyUI/output/director/2dcf6a23421541799e015030ffe548b5-final_00001-audio.mp4",
+     "final_url": "http://127.0.0.1:8190/view?filename=2dcf6a23421541799e015030ffe548b5-final_00001-audio.mp4&subfolder=director&type=output"
+    }
+   ],
+   "star": null
+  }
+ ],
+ "outputs": {
+  "animatic": {
+   "file": "animatic-20261004-215251.mp4",
+   "seconds": 20.7,
+   "scenes": 4,
+   "not_final": [],
+   "created": 1791165174.4579725
+  },
+  "film": {
+   "file": "film-20261004-220509.mp4",
+   "seconds": 20.6,
+   "scenes": 4,
+   "not_final": [],
+   "created": 1791165917.5577564
+  }
+ },
+ "created": 1791164616.5583076,
+ "updated": 1791165917.5579836
+}

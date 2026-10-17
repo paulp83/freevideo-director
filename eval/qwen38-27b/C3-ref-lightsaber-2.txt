@@ -1,0 +1,24 @@
+subject_definitions:
+<Subject 1> is the outdoor parking-lot environment in <Picture 1>: a flat asphalt lot with painted white parking lines, set in front of a tan brick building with a rust-orange corrugated metal roof, a brick chimney, dark window openings, and a green waste dumpster; the sky above is pale blue with thin white clouds.
+<Subject 2> is the woman on the right side of <Picture 1>, with blonde hair pulled back, purple-tinted wraparound sunglasses, a purple sleeveless "TEAM PIZZA" tank top printed with a cartoon pizza slice, black running shorts, and bright red running shoes.
+<Subject 3> is the man on the far right of <Picture 1>, with a short dark beard, a black baseball cap, dark sunglasses, a muscular build, a purple sleeveless "TEAM PIZZA" shirt printed with a cartoon pizza slice, black athletic shorts, and black running shoes.
+
+summary:
+[reference generation] The target video shows <Subject 2> and <Subject 3> from <Picture 1> engaged in a Jedi-style lightsaber duel inside <Subject 1>, the brick-building parking lot. The two fight with glowing energy blades, clashing and trading strikes across the asphalt, with their appearances and the environment taken from <Picture 1>.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the asphalt lot, white parking lines, tan brick building, rust-orange corrugated roof, brick chimney, green dumpster, and cloudy blue sky are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the blonde pulled-back hair, purple-tinted sunglasses, purple "TEAM PIZZA" tank top, black shorts, and red shoes are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the short beard, black cap, dark sunglasses, muscular build, purple "TEAM PIZZA" shirt, black shorts, and black shoes are retained.
+
+detailed_description:
+The target video uses a bright, realistic daytime action style with a slightly desaturated, sunlit color palette and crisp practical lighting.
+[Shot 1] A wide establishing shot frames <Subject 1>, the open asphalt parking lot with its white lines in front of the tan brick building, rust-orange corrugated roof, brick chimney, and green dumpster under a pale blue, lightly clouded sky. <Subject 2>, the blonde woman in the purple "TEAM PIZZA" tank top, purple-tinted sunglasses, black shorts, and red shoes, stands on the left of the frame, and <Subject 3>, the bearded man in the black cap, dark sunglasses, purple "TEAM PIZZA" shirt, and black shorts, stands on the right. Each raises a glowing lightsaber — <Subject 2> wielding a blue blade and <Subject 3> a red blade — and they lunge toward each other, the blades crossing in the center of the lot with a bright flash and a shower of small sparks. The camera holds steady with a slow push-in as they lock blades.
+[Shot 2] At 00:04.000, the shot cuts to a medium close-up at blade height, capturing the two energy blades locked together, their light flaring and flickering as <Subject 2> and <Subject 3> strain against each other, their faces set in concentration behind their sunglasses. They twist and parry, the blades scraping in short bursts that throw colored light across their purple shirts and the asphalt. The camera tracks slightly left to right following the push.
+[Shot 3] At 00:07.000, the shot cuts back to a wide view of <Subject 1> as the duel resolves: <Subject 3> swings his red blade in a wide arc and <Subject 2> ducks under it, then counter-strikes, and the two separate, each lowering their glowing saber into a ready stance facing off across the parking lot, the blades still humming and casting blue and red glows on the ground. The camera slowly pulls back to re-establish the full lot and brick building as the final frame.
+
+overall_soundscape:
+A continuous low electronic hum from the two lightsabers runs throughout, punctuated by bright electrical crackle and sharp metallic-sounding clashes each time the blades meet, set against quiet outdoor daytime ambience with faint wind.
+
+non_diegetic_music:
+N/A

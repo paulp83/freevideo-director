@@ -1,0 +1,30 @@
+subject_definitions:
+<Subject 1> is the man in the dark "PAYS" baseball cap in <Picture 1>, with a grey tie-dye t-shirt bearing a white skull print, black shorts, black running shoes, and visible tattoos on his left arm and right leg.
+<Subject 2> is the woman in <Picture 1> wearing a black racerback tank top with a circular rainbow logo, black leggings, and black sneakers, with dark hair pulled back.
+<Subject 3> is the woman in <Picture 1> wearing a purple "TEAM PIZZA" tank top with a dripping-pizza graphic, black shorts, red running shoes, and sunglasses, with blonde hair in a ponytail.
+<Subject 4> is the man in <Picture 1> wearing a purple "TEAM PIZZA" sleeveless shirt, black shorts, black sneakers, sunglasses, and a dark cap, with a short beard.
+<Subject 5> is the ranch environment in <Picture 2>: a weathered wooden sign reading "Reston Wranglers" flanked by stars, hanging from a horizontal log post, set against a desert plain, distant purple mountains, and a glowing orange-gold sunset sky.
+<Subject 6> are the three female wranglers in <Picture 2>, each in a cowboy hat, black tank top, patterned bandana, jeans, and fringed leather chaps, holding a coiled rope lasso.
+
+summary:
+[reference generation] The target video shows the four Team Pizza riders <Subject 1>–<Subject 4> from <Picture 1> galloping on horseback into the sunset ranch of <Subject 5> from <Picture 2>, where the three wranglers <Subject 6> then lasso <Subject 1>, the man in the cap, in a comedic western-style sequence.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the dark "PAYS" cap, grey tie-dye skull t-shirt, black shorts, and arm/leg tattoos are retained.
+<Subject 2> (appears in [Shot 1], [Shot 3]): fully_preserved - the black rainbow-logo tank top, black leggings, and pulled-back dark hair are retained.
+<Subject 3> (appears in [Shot 1], [Shot 3]): fully_preserved - the purple "TEAM PIZZA" pizza tank top, black shorts, red shoes, sunglasses, and blonde ponytail are retained.
+<Subject 4> (appears in [Shot 1], [Shot 3]): fully_preserved - the purple "TEAM PIZZA" sleeveless shirt, black shorts, sunglasses, dark cap, and short beard are retained.
+<Subject 5> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the "Reston Wranglers" wooden sign on the log post, the desert plain, the purple mountains, and the orange-gold sunset sky are retained.
+<Subject 6> (appears in [Shot 2], [Shot 3]): fully_preserved - the cowboy hats, black tank tops, bandanas, jeans, fringed chaps, and rope lasso are retained.
+
+detailed_description:
+The target video uses a cinematic western music-video style with warm golden-hour sunset lighting, a slightly saturated orange-and-purple palette, and dust kicked up by galloping horses.
+[Shot 1] The scene opens on <Subject 5>, the ranch at sunset: a weathered wooden sign reading "Reston Wranglers" flanked by stars hangs from a horizontal log post in the foreground, with a flat desert plain, distant purple mountains, and a glowing orange-gold sky behind. The camera tracks backward at a moderate speed as the four Team Pizza riders gallop into frame on horseback from the left. <Subject 1> rides at the front in his grey tie-dye skull t-shirt and dark "PAYS" cap, <Subject 2> beside him in the black rainbow-logo tank top, <Subject 3> in the purple "TEAM PIZZA" pizza tank top with sunglasses, and <Subject 4> in the matching purple sleeveless shirt. Their hooves churn up fine dust and their shirts flap in the wind.
+[Shot 2] At 00:06.000, the shot cuts to a medium two-shot as the riders bring their horses to a halt near the log post. From behind the post, <Subject 6>, the three female wranglers in cowboy hats, black tank tops, bandanas, and fringed leather chaps, spring forward together, each gripping a coiled rope lasso. They whirl the rope in a wide arc and loop it around <Subject 1>, the man in the cap, who turns in his saddle with wide eyes as the noose settles around his torso.
+[Shot 3] At 00:09.000, the shot cuts to a tighter medium shot as the three wranglers pull the lasso taut, the rope cinching around <Subject 1>'s midsection and lifting him slightly off his horse's back. <Subject 1> looks upward with a surprised, comedic expression and raises one hand. <Subject 2>, <Subject 3>, and <Subject 4> watch from their horses and laugh openly, while the wranglers grin and steady the rope.
+
+overall_soundscape:
+A dry desert wind, the rhythmic churning of horse hooves on dirt, heavy horse breathing, creaking leather reins and chaps, and the sharp snap and creak of a rope lasso tightening continue across the scene, with the riders' and wranglers' shouts and laughter layered over it.
+
+non_diegetic_music:
+A lively western-style acoustic score of strummed acoustic guitar, plucked banjo, and light percussion at a moderate, bouncy tempo, building in energy as the lasso tightens and holding a playful tone through the final frame.

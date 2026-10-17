@@ -1,0 +1,25 @@
+subject_definitions:
+<Subject 1> is the woman on the right side of <Picture 1>, wearing a purple "TEAM PIZZA" tank top with yellow lettering and a pizza graphic, black athletic shorts, and red sneakers.
+<Subject 2> is the man on the right side of <Picture 1>, wearing a matching purple "TEAM PIZZA" tank top, black shorts, a grey baseball cap, and dark sunglasses.
+<Subject 3> is the parking lot environment in <Picture 1>, featuring grey asphalt with white painted lines, a brick building facade, and an orange corrugated metal roof under a partly cloudy sky.
+
+summary:
+[reference generation] The target video shows <Subject 1> and <Subject 2> engaging in a playful lightsaber duel in <Subject 3>.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the purple "TEAM PIZZA" tank top, black shorts, and red sneakers are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the matching purple tank top, black shorts, cap, and sunglasses are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the asphalt parking lot, brick building, and orange roof are retained.
+
+detailed_description:
+The target video is a dynamic, playful action sequence set in a sunny outdoor parking lot.
+[Shot 1] The scene opens in a medium shot on <Subject 1> and <Subject 2> standing on the asphalt of <Subject 3>. <Subject 1>, the woman in the purple "TEAM PIZZA" tank top and red sneakers, ignites a blue lightsaber, the blade humming to life. <Subject 2>, the man in the matching purple shirt and sunglasses, raises a green lightsaber in response. They assume fighting stances, facing each other with determined expressions.
+[Shot 2] At 00:03.000, the camera cuts to a slightly closer two-shot as they begin to spar. <Subject 1> lunges forward with a sweeping blue arc, while <Subject 2> parries with a precise green slash. Sparks fly as the blades clash in mid-air. The background shows the brick building and orange roof under a bright blue sky.
+[Shot 3] At 00:06.000, the shot widens to capture their full movements. <Subject 2> spins, delivering a horizontal strike that <Subject 1> dodges with a quick side-step. They continue their playful duel, circling each other on the white parking lines, the lightsabers casting blue and green glows on their faces.
+[Shot 4] At 00:08.500, the action concludes as <Subject 1> gently taps <Subject 2>'s shoulder with her blue blade. They both lower their weapons, laughing and giving each other a high-five, the lightsabers deactivating with a soft snap.
+
+overall_soundscape:
+Sunny outdoor ambience with distant traffic hum and the crisp sound of their footsteps on asphalt.
+
+non_diegetic_music:
+An upbeat, adventurous orchestral track with percussive elements that builds during the lightsaber clash and resolves playfully at the end.

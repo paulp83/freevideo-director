@@ -1,0 +1,30 @@
+subject_definitions:
+<Subject 1> is the ranch environment in <Picture 2>: a weathered wooden sign reading "Reston Wranglers" hung from a horizontal log post, a warm orange-and-gold sunset sky with soft clouds, distant blue mountain ridges, and an open dusty field.
+<Subject 2> is the group of three female wranglers in <Picture 2>, each wearing a wide-brimmed cowboy hat, a black-and-white patterned bandana around the neck, a black tank top, jeans, and brown fringed leather chaps, carrying coiled rope.
+<Subject 3> is the man in the grey cap from <Picture 1>: athletic build, a grey tie-dye t-shirt with a white skull graphic, a grey baseball cap reading "PAW", a full sleeve tattoo on his left arm, a tattoo on his left shin, and black-and-gold sneakers.
+<Subject 4> is the woman from <Picture 1> with dark hair pulled back, a black tank top with a circular rainbow logo, black leggings, and black running shoes.
+<Subject 5> is the woman from <Picture 1> with blonde hair in a ponytail, purple sunglasses, a purple "TEAM PIZZA" tank top with a pizza graphic, black shorts, and red running shoes.
+<Subject 6> is the man from <Picture 1> with a short beard, a grey baseball cap, dark sunglasses, a purple "TEAM PIZZA" tank top with a pizza graphic, black shorts, and black sneakers.
+
+summary:
+[reference generation] The target video shows <Subject 3>, <Subject 4>, <Subject 5>, and <Subject 6> riding horses into <Subject 1> at sunset, where <Subject 2> lasso <Subject 3> and pull him from his horse. <Picture 1> provides the appearance of the four riders and <Picture 2> provides the ranch environment and the wranglers.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the "Reston Wranglers" wooden sign, the log post, the sunset sky, the distant mountains, and the open field are retained.
+<Subject 2> (appears in [Shot 2], [Shot 3]): fully_preserved - the three wranglers' cowboy hats, patterned bandanas, black tank tops, jeans, fringed chaps, and rope are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the grey skull t-shirt, grey "PAW" cap, arm and shin tattoos, and athletic build are retained.
+<Subject 4> (appears in [Shot 1]): fully_preserved - the black rainbow-logo tank top, black leggings, and pulled-back dark hair are retained.
+<Subject 5> (appears in [Shot 1]): fully_preserved - the purple "TEAM PIZZA" tank top, red shoes, ponytail, and purple sunglasses are retained.
+<Subject 6> (appears in [Shot 1]): fully_preserved - the purple "TEAM PIZZA" tank top, grey cap, sunglasses, and short beard are retained.
+
+detailed_description:
+The target video uses a warm cinematic western style, with golden sunset light, long shadows, and a slightly saturated orange-and-blue color palette.
+[Shot 1] A wide tracking shot establishes <Subject 1>, the ranch with its "Reston Wranglers" wooden sign on a log post, the glowing sunset sky, and the distant mountain ridges. Four riders approach the sign from the left on horseback: <Subject 3>, the man in the grey "PAW" cap and grey skull t-shirt with a tattooed left arm, leads; beside him <Subject 4> in the black rainbow-logo tank top and black leggings, <Subject 5> in the purple "TEAM PIZZA" tank top, red shoes, and purple sunglasses, and <Subject 6> in the matching purple tank top, grey cap, and sunglasses. The horses' hooves kick up fine dust as they cross the open field, and the camera drifts slowly forward to follow them toward the sign.
+[Shot 2] At 00:04.000, the shot cuts to a medium action shot in the same field. <Subject 2>, the three female wranglers in cowboy hats, patterned bandanas, black tank tops, and fringed chaps, swing their coiled rope from horseback. The loop of rope snaps taut around <Subject 3>'s torso, and the wranglers lean back to pull, dragging him sideways off his horse. <Subject 3> (S1) yells with a surprised, good-natured tone, <d>[English] Hey, hold on, easy there!</d> while <Subject 4>, <Subject 5>, and <Subject 6> watch from their horses, laughing.
+[Shot 3] At 00:08.000, the shot cuts to a medium close-up of <Subject 3> now standing on the ground, his torso wrapped in the wranglers' rope, the "Reston Wranglers" sign and the sunset visible behind him. <Subject 2> flank him on either side, still holding the rope, and <Subject 3> (S1) grins and shakes his head, <d>[English] Alright, you got me, I'm in.</d> The wranglers smile and ease the rope as the sunset light flares across the frame.
+
+overall_soundscape:
+Horses' hooves on dust, the snap and creak of rope, low wind, and the riders' voices and laughter continue across the scene.
+
+non_diegetic_music:
+A light acoustic western score with a solo steel-guitar lead and soft fingerpicked guitar at a moderate tempo, swelling gently under the lasso moment and settling by the final frame.

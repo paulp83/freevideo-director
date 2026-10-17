@@ -1,0 +1,9 @@
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium shot frames a street food chef standing behind a glowing wok station in a vibrant Bangkok night market. Steam and orange flames erupt from the wok as the chef grips the handle with a thick cloth. The camera holds a static shot as the chef lifts the wok and executes a precise toss, sending noodles and vegetables arcing through the fire. The chef, a middle-aged man with a warm, steady voice (S1), looks directly into the lens and says: <d>[English] This is how my grandmother did it.</d>
+
+[Shot 2] At 00:04.000, the camera cuts to a close-up of the wok as the chef catches the noodles perfectly, tossing them once more over the high flame. The camera pushes in with small amplitude at slow speed toward the sizzling ingredients while the chef's voice continues seamlessly across the cut. He stirs the mixture with a long metal spatula, flames licking the sides of the pan.
+
+[Shot 3] At 00:07.500, the shot transitions to a side profile of the chef as he plates the noodles onto a metal tray. The camera pans right with small amplitude at normal speed, following his movements as he sprinkles fresh herbs over the dish. The scene holds on the plated noodles and the chef's satisfied expression until the video reaches the 10.00-second mark.
+
+overall_soundscape: The bustling night market hums with distant chatter and passing motorbikes while the wok station provides a constant low roar. Oil crackles and sizzles as the chef flips the noodles, followed by the sharp metallic scrape of the spatula against the pan. Fresh herbs rustle as they are sprinkled onto the tray.
+
+non_diegetic_music: A fast-paced traditional Thai percussion pattern drives the rhythm, layered with bright plucked strings that spike in volume during the wok toss. The arrangement gradually thins out to a single bamboo flute note as the chef plates the dish.

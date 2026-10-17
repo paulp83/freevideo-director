@@ -1,0 +1,5 @@
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium-wide shot frames a middle-aged street food chef at a carbon-stove wok station on a Bangkok night market street. Bare-armed and wearing a stained white apron over a rolled-up black shirt, he grips a long-handled spatula and tosses a pile of flat rice noodles high into the air as a column of orange flame erupts from the wok. The camera pushes in with small amplitude at slow speed as the noodles arc and fall back into the sizzling oil. [Shot 2] At 00:05.500, the shot cuts to a medium close-up of the chef facing the camera directly, spatula still in hand, flames licking the wok rim behind him. The middle-aged chef with a warm, slightly raspy voice (S1) says: <d>[English] This is how my grandmother did it.</d> He gives a small nod and turns back toward the wok.
+
+overall_soundscape: A roaring gas flame and the sharp sizzle of oil and noodles fill the frame, punctuated by the metallic clatter of the spatula striking the wok. Distant street ambience and the low murmur of a night market drift underneath.
+
+non_diegetic_music: N/A

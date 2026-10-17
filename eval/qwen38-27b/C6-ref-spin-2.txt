@@ -1,0 +1,28 @@
+subject_definitions:
+<Subject 1> is the man in the center of <Picture 1>: a stocky adult with a short brown beard and mustache, wearing a tan felt cowboy hat, a blue-and-brown plaid button-up shirt, a red bandana tied at the neck, blue jeans, and a large ornate silver belt buckle; in the reference he is bound at the torso with thick natural-fiber rope.
+<Subject 2> is the woman on the left in <Picture 1>: a fit woman with long dark hair, a dark-brown cowboy hat, a black sleeveless tank top, a black bandana, blue jeans, and brown fringed leather chaps.
+<Subject 3> is the woman at center-left in <Picture 1>: a muscular woman with light-brown hair pulled into a high ponytail, a red bandana, a black tank top, and blue jeans.
+<Subject 4> is the woman on the right in <Picture 1>: a woman with long dark hair, a cream-colored cowboy hat, a black tank top, a black bandana, blue jeans, and brown fringed leather chaps.
+<Subject 5> is the environment in <Picture 1>: a rustic wooden sign reading "Reston Wranglers" with two star cut-outs, hung from a horizontal wooden pole, set against a warm orange sunset sky and distant desert mountains on dry, sandy ground.
+
+summary:
+[reference generation] The target video shows <Subject 2>, <Subject 3>, and <Subject 4> releasing the rope that binds <Subject 1> in <Subject 5>; the man spins free as the rope falls away, then tips his hat to the women in a closing gesture. The image supplies the appearance of all four people and the sign-and-sunset setting.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the tan cowboy hat, plaid shirt, red bandana, blue jeans, ornate belt buckle, and beard are retained; the binding rope is released as the action requires.
+<Subject 2> (appears in [Shot 1], [Shot 3]): fully_preserved - the dark-brown hat, black tank top, black bandana, fringed chaps, and build are retained.
+<Subject 3> (appears in [Shot 1], [Shot 3]): fully_preserved - the ponytail, red bandana, black tank top, and muscular build are retained.
+<Subject 4> (appears in [Shot 1], [Shot 3]): fully_preserved - the cream hat, black tank top, black bandana, fringed chaps, and build are retained.
+<Subject 5> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the "Reston Wranglers" wooden sign, hanging pole, sunset sky, and desert mountains are retained.
+
+detailed_description:
+The target video is in a warm, cinematic Western style with golden sunset light and a slightly saturated color palette.
+[Shot 1] A medium wide shot establishes <Subject 5>, the "Reston Wranglers" wooden sign on its pole against the orange sunset and desert ridges. In the foreground <Subject 2>, <Subject 3>, and <Subject 4> stand in a tight row, each gripping coils of thick natural-fiber rope that are wrapped around the torso of <Subject 1>, who stands bound at the center in his plaid shirt, red bandana, and tan hat. The three women smile at the camera while holding the rope taut. The camera holds steady, then the women begin to open their hands and let the rope slip, their grips relaxing one by one.
+[Shot 2] At 00:03.000, the shot cuts to a slightly tighter medium shot centered on <Subject 1>. The rope falls away from his torso in loose loops, and he twists his upper body and shoulders, spinning free in a quick half-turn as the coils drop to the sandy ground. His hat stays on his head. The three women remain at the edges of the frame, stepping back with pleased expressions as the rope lands. The camera tracks his rotation with a small horizontal pan.
+[Shot 3] At 00:05.500, the shot cuts to a medium shot of <Subject 1> facing the camera, now unbound, with <Subject 2>, <Subject 3>, and <Subject 4> smiling behind him on either side. He reaches up, grasps the brim of his tan cowboy hat, and tips it forward in a courteous gesture, then lets his hand drop into a relaxed grin. The women laugh and lean in. The camera slowly pushes in to a medium close-up on his face and the hat tip, holding on the gesture until the final frame.
+
+overall_soundscape:
+A dry desert wind and faint rustling of rope and leather chaps accompany the scene; the rope thuds softly onto the sandy ground as it falls, and light laughter from the women follows in the final shot.
+
+non_diegetic_music:
+A light, twangy solo acoustic-guitar riff at a moderate tempo plays underneath the whole sequence, swelling gently as the man tips his hat at the end.

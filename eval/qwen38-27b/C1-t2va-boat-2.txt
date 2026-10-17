@@ -1,0 +1,5 @@
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium close-up shot follows a small white paper boat drifting along a narrow concrete rain gutter filled with thin flowing rainwater. The camera tracks right at slow speed, keeping the boat centered as it bobs gently on the current. Rain streaks fall across the frame and the gutter walls glisten with moisture. As the boat reaches the open end of the gutter, it tips forward and drops into a shallow puddle below, creating a small splash and concentric ripples that spread outward. The boat settles in the center of the puddle, rocking slightly.
+
+overall_soundscape: Steady rain falls throughout, with a soft rush of water flowing through the gutter. The boat makes a small splash as it drops into the puddle, followed by gentle ripples and the sound of raindrops hitting the water's surface.
+
+non_diegetic_music: N/A
