@@ -438,6 +438,8 @@ function buildScene(s) {
       el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
       el('button', {class: 'btn small', 'data-k': 'bDraft', onclick: () => sceneAct('render', {scene: id, preset: 'draft'})}, 'Draft'),
       el('button', {class: 'btn ghost small', 'data-k': 'bReroll', onclick: () => sceneReroll(id)}, '🎲 Re-roll'),
+      el('select', {'data-k': 'vCount', title: 'How many variants'}, el('option', {value: '2'}, '×2'), el('option', {value: '3', selected: ''}, '×3'), el('option', {value: '4'}, '×4'), el('option', {value: '5'}, '×5'), el('option', {value: '6'}, '×6')),
+      el('button', {class: 'btn ghost small', 'data-k': 'bVariants', title: 'Render several Drafts with new seeds', onclick: () => sceneAct('variants', {scene: id, n: +card.querySelector('[data-k=vCount]').value})}, 'Draft variants'),
       el('button', {class: 'btn ghost small', 'data-k': 'bFinal', onclick: () => sceneAct('render', {scene: id, preset: 'final'})}, 'Final'),
       el('button', {class: 'btn ghost small', 'data-k': 'bEnhance', onclick: () => sceneAct('enhance', {scene: id})}, '✨ Enhance ★'),
       el('span', {class: 'status', 'data-k': 'sStatus'})),
@@ -459,7 +461,7 @@ function updateScene(s, i) {
   setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
   q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
   const job = s.job, running = job && !job.done;
-  ['bPrompt', 'bDraft', 'bReroll', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
+  ['bPrompt', 'bDraft', 'bReroll', 'bVariants', 'vCount', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
   q(card, 'bEnhance').hidden = !s.takes.length;
   // job progress
   const jb = q(card, 'job'); jb.replaceChildren();
@@ -482,6 +484,7 @@ function updateScene(s, i) {
         el('div', {class: 'meta'},
           el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'final 1080p48' : t.preset),
           el('span', {class: 'badge'}, 'seed ' + t.seed),
+          ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
           el('button', {class: 'btn small ' + (chosen ? '' : 'ghost'), onclick: () => sceneAct('star', {scene: s.id, run: t.run})}, chosen ? '★ chosen' : '☆ choose'))));
     });
   }
