@@ -95,9 +95,9 @@ def chat(url, model, system, content, think, temperature, max_tokens=12000, extr
     return text, reply.get('usage', {}).get('completion_tokens')
 
 
-def direct(idea, seconds=10, refs=(), first=None, last=None, think=True, temperature=0.7,
-           max_side=1024, url=None, model=None, retries=1):
-    """Return (mode, prompt, completion_tokens, model). Images are paths or raw bytes.
+def direct_report(idea, seconds=10, refs=(), first=None, last=None, think=True, temperature=0.7,
+                  max_side=1024, url=None, model=None, retries=1):
+    """Return a dict: mode, text, tokens, model, first_failures, final_failures, retried.
 
     A reply that fails the h3check format checks is sent back once (`retries`) with the failed check names."""
     if not idea.strip():
@@ -134,7 +134,10 @@ def direct(idea, seconds=10, refs=(), first=None, last=None, think=True, tempera
     if not text:
         raise DirectorError('empty reply (try again, or turn reasoning off)')
     bad = h3check.failures(mode, text, seconds, len(images))
+    first_failures = list(bad)
+    retried = False
     for _ in range(retries if bad else 0):
+        retried = True
         fix = ('Your reply failed these format checks: ' + ', '.join(bad) + '. Fix them and output ONLY the '
                'corrected final prompt text, exactly as before: no markdown fences, no commentary.')
         again, more = chat(url, model, system, content, think, temperature,
@@ -144,7 +147,15 @@ def direct(idea, seconds=10, refs=(), first=None, last=None, think=True, tempera
         again_bad = h3check.failures(mode, again, seconds, len(images)) if again else bad + ['empty']
         if len(again_bad) <= len(bad):                        # keep the better reply; a tie takes the later one
             text, bad = again or text, again_bad
-    return mode, text, tokens, model
+    return {'mode': mode, 'text': text, 'tokens': tokens, 'model': model,
+            'first_failures': first_failures, 'final_failures': list(bad), 'retried': retried}
+
+
+def direct(idea, seconds=10, refs=(), first=None, last=None, think=True, temperature=0.7,
+           max_side=1024, url=None, model=None, retries=1):
+    """Return (mode, prompt, completion_tokens, model). Images are paths or raw bytes."""
+    r = direct_report(idea, seconds, refs, first, last, think, temperature, max_side, url, model, retries)
+    return r['mode'], r['text'], r['tokens'], r['model']
 
 
 STORYBOARD_SYSTEM = """You are a film director planning a short film that will be generated scene by scene with the
