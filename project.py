@@ -116,6 +116,14 @@ def create(name, logline, seconds, aspect, refs, characters=()):
     pics = [c for c in chars if c.get('image')]
     if pics and len(refs) + len(pics) > 2:
         raise ProjectError('at most 2 reference pictures, including library characters')
+    sources = {}
+    for c in pics:                                 # resolve the files now: nothing exists yet if one is missing
+        try:
+            sources[c['slug']] = library.image_path(c['slug'])
+        except library.LibraryError as e:
+            raise ProjectError(f'picture of {c["name"]} is unavailable: {e}')
+        if not sources[c['slug']].is_file():
+            raise ProjectError(f'picture of {c["name"]} is missing')
     ROOT.mkdir(parents=True, exist_ok=True)
     slug = slugify(name or logline[:30])
     path(slug, 'refs').mkdir(parents=True)
@@ -129,7 +137,7 @@ def create(name, logline, seconds, aspect, refs, characters=()):
     for c in chars:
         if not c.get('image'):
             continue
-        src = library.image_path(c['slug'])
+        src = sources[c['slug']]
         n = len(names) + 1
         target = path(slug, 'refs', f'picture-{n}{src.suffix}')
         target.write_bytes(src.read_bytes())
