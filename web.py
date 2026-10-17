@@ -454,6 +454,18 @@ def serve_file(handler, file):
 # ---------------------------------------------------------------- HTTP
 
 class Handler(BaseHTTPRequestHandler):
+    extra_hosts = set()
+
+    def check_access(self):
+        """False after 403 when Host is missing/not allowed, or Origin is present and not same-origin."""
+        port = self.server.server_port
+        allowed = {f'127.0.0.1:{port}', f'localhost:{port}', f'[::1]:{port}'} | {h.lower() for h in self.extra_hosts}
+        host = (self.headers.get('Host') or '').strip().lower()
+        origin = self.headers.get('Origin')
+        if host not in allowed or (origin and origin.strip().lower() not in {f'http://{a}' for a in allowed}):
+            return self.reply(403, {'error': 'forbidden host/origin'}) or False
+        return True
+
     def reply(self, code, payload, kind='application/json'):
         body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
         self.send_response(code)
@@ -463,6 +475,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self.check_access():
+            return
         if self.path in ('/', '/index.html'):
             return self.reply(200, (HERE / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path in ('/project', '/project.html') or self.path.startswith('/project?'):
@@ -473,9 +487,12 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/p/'):
                 return self.reply(200, project_view(self.path.split('/')[3]))
             if self.path.startswith('/files/'):
-                _, _, slug, name = self.path.split('/', 3)
-                file = projects.path(slug, *urllib.parse.unquote(name).split('/'))
-                if '..' in name or not file.is_file():
+                parts = urllib.parse.unquote(self.path[len('/files/'):]).split('/')
+                if len(parts) < 2 or any(not p or p in ('.', '..') for p in parts):
+                    return self.reply(404, {'error': 'not found'})
+                root = projects.path(parts[0]).resolve()
+                file = projects.path(*parts).resolve()
+                if not file.is_relative_to(root) or not file.is_file():
                     return self.reply(404, {'error': 'not found'})
                 return serve_file(self, file)
         except projects.ProjectError as e:
@@ -486,6 +503,10 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(404, {'error': 'not found'})
 
     def do_POST(self):
+        if not self.check_access():
+            return
+        if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
+            return self.reply(415, {'error': 'use application/json'})
         try:
             data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
             refs = [decode(x) for x in data.get('refs', [])]
@@ -616,7 +637,10 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--host', default='127.0.0.1')
     p.add_argument('--port', type=int, default=8192)
+    p.add_argument('--allow-host', action='append', default=[], metavar='NAME',
+                   help='extra host name to admit (repeatable)')
     a = p.parse_args()
+    Handler.extra_hosts = set(a.allow_host)
     threading.Thread(target=ws_listen, daemon=True).start()
     print(f'FreeVideo director UI: http://{a.host}:{a.port}')
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
