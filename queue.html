@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeVideo Queue</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b6862; --line: #e3e0da;
+  --accent: #7c3aed; --accent-ink: #ffffff; --soft: #f1edfb; --ok: #15803d; --err: #b42318;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141312; --panel: #1d1c1a; --ink: #ecebe8; --muted: #a29e97; --line: #33312d;
+          --accent: #a78bfa; --accent-ink: #141312; --soft: #26213a; --ok: #4ade80; --err: #f97066; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; }
+.spacer { flex: 1; }
+a { color: var(--accent); text-decoration: none; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; border-top: 0; }
+.status { color: var(--muted); font-size: 14px; }
+.status.err { color: var(--err); }
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Queue</h1>
+    <span class="status" id="queueStatus"></span>
+    <span class="spacer"></span>
+    <a href="/project">Film projects →</a>
+    <a href="/">Single shot →</a>
+  </div>
+  <section>
+    <h2>Running now</h2>
+    <p class="hint" id="queueEmpty">Nothing is running.</p>
+    <div class="tablewrap">
+      <table id="queueTable" hidden>
+        <thead><tr><th>What</th><th>Where</th><th>Elapsed</th><th>Estimate left</th><th>Stage</th></tr></thead>
+        <tbody id="queueBody"></tbody>
+      </table>
+    </div>
+    <p class="hint">Estimates are the median of your last 20 runs of the same kind; they appear after a first run.</p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+
+function fmtSecs(s) {
+  if (typeof s !== 'number' || !isFinite(s)) return '–';
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+}
+
+function queueRows(data) {
+  const jobs = (data && data.jobs) || [], batches = (data && data.batches) || [];
+  const rows = jobs.map(j => ({
+    what: j.kind,
+    where: j.project ? (j.project_name || j.project) + (j.scene_title ? ' · ' + j.scene_title : '') : 'single shot',
+    elapsed: fmtSecs(j.elapsed), eta: fmtSecs(j.eta), stage: j.stage || ''}));
+  for (const b of batches) {
+    rows.push({what: b.label, where: b.project_name || b.project, elapsed: fmtSecs(b.seconds), eta: '–',
+               stage: b.step + '/' + (b.of || '?')});
+  }
+  return rows;
+}
+
+async function refresh() {
+  const st = $('queueStatus');
+  try {
+    const r = await fetch('/api/queue');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = queueRows(await r.json());
+    const body = $('queueBody');
+    body.replaceChildren();
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      for (const key of ['what', 'where', 'elapsed', 'eta', 'stage']) {
+        const td = document.createElement('td');
+        td.textContent = row[key];
+        tr.append(td);
+      }
+      body.append(tr);
+    }
+    $('queueTable').hidden = !rows.length;
+    $('queueEmpty').hidden = !!rows.length;
+    st.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    st.classList.remove('err');
+  } catch (e) {
+    st.textContent = e.message;
+    st.classList.add('err');
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
