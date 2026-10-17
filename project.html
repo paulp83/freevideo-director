@@ -197,6 +197,10 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
           <h2 style="margin-top:14px">Director's notes</h2>
           <textarea id="pNotes" rows="3" maxlength="1000" placeholder="Director's notes: e.g. no text on screen, always handheld"></textarea>
           <p class="hint">Rules for the whole film. Added to every scene prompt.</p>
+          <h2 style="margin-top:14px">LoRAs</h2>
+          <div id="loras"></div>
+          <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
+          <p class="hint" id="loraHint">Loading LoRAs…</p>
         </div>
         <div>
           <h2>Music bed</h2>
@@ -376,6 +380,9 @@ function draw(force) {
   setIfIdle($('pBible'), p.bible, 'bible');
   setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
   setIfIdle($('pNotes'), p.notes || '', 'notes');
+  if (!('loras' in dirtyTop) && JSON.stringify(loraList) !== JSON.stringify(p.loras || [])) {
+    loraList = structuredClone(p.loras || []); if (loraNames) loraRows(() => markDirty(null, 'loras', structuredClone(loraList)));
+  }
   setIfIdle($('pTitleCardText'), p.title_card ? p.title_card.text : '', 'title_card');
   setIfIdle($('pTitleCardSecs'), p.title_card ? p.title_card.seconds : 3, 'title_card');
   setIfIdle($('pEndCardText'), p.end_card ? p.end_card.text : '', 'end_card');
@@ -455,6 +462,38 @@ function markDirty(sceneId, key, value) {
   if (sceneId) (dirty[sceneId] ||= {})[key] = value; else dirtyTop[key] = value;
   clearTimeout(saveTimer); flash('Unsaved…'); saveTimer = setTimeout(save, 700);
 }
+// LoRAs: rows of {name, strength, enabled}; names come from ComfyUI via /api/loras
+let loraNames = null, loraList = [];
+function loraRows(onChange) {
+  const box = document.getElementById('loras'); box.replaceChildren();
+  const make = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+  loraList.forEach((item, i) => {
+    const row = make('div'); row.className = 'row';
+    const sel = make('select');
+    for (const n of new Set([item.name, ...(loraNames || [])])) sel.append(make('option', {value: n, textContent: n, selected: n === item.name}));
+    sel.onchange = () => { item.name = sel.value; onChange(); };
+    const str = make('input', {type: 'number', step: 0.05, min: -2, max: 2, value: item.strength, title: 'strength'});
+    str.style.width = '80px';
+    str.oninput = () => { item.strength = Math.max(-2, Math.min(2, +str.value || 0)); onChange(); };
+    const on = make('input', {type: 'checkbox', checked: item.enabled, title: 'enabled'});
+    on.onchange = () => { item.enabled = on.checked; onChange(); };
+    const rm = make('button', {className: 'btn ghost', textContent: 'Remove'});
+    rm.onclick = () => { loraList.splice(i, 1); loraRows(onChange); onChange(); };
+    row.append(sel, str, on, rm); box.append(row);
+  });
+  const add = document.getElementById('addLora');
+  add.disabled = loraList.length >= 8 || !(loraNames && loraNames.length);
+  document.getElementById('loraHint').textContent = loraNames === null ? 'Loading LoRAs…'
+    : loraNames.length ? '' : 'No LoRA files found in ComfyUI/models/loras.';
+}
+async function loadLoras(onChange) {
+  try { loraNames = (await (await fetch('/api/loras')).json()).loras || []; } catch (e) { loraNames = []; }
+  document.getElementById('addLora').onclick = () => {
+    loraList.push({name: loraNames[0], strength: 1, enabled: true}); loraRows(onChange); onChange();
+  };
+  loraRows(onChange);
+}
+loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)));
 async function save(structure) {
   clearTimeout(saveTimer);
   const scenes = (structure || proj.scenes).map(s => ({id: s.id, ...(dirty[s.id] || {})}));

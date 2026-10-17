@@ -140,6 +140,10 @@ input[type=range] { accent-color: var(--accent); }
         <ol><li>Render (sharp single-pass)</li><li>Upscale to 1080p (SeedVR2)</li><li>Smooth to 48 fps (RIFE)</li><li>Encode (high quality, original audio)</li></ol>
       </div>
     </div>
+    <h2 style="margin-top:14px">LoRAs</h2>
+    <div id="loras"></div>
+    <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
+    <p class="hint" id="loraHint">Loading LoRAs…</p>
     <div class="row">
       <label>Size <select id="size">
         <option value="1344x768">1344×768</option>
@@ -224,6 +228,38 @@ function media() {
   if (mode === 'ref') return {refs: set};
   return {first: images[0] || undefined, last: images[1] || undefined};
 }
+// LoRAs: rows of {name, strength, enabled}; names come from ComfyUI via /api/loras
+let loraNames = null, loraList = [];
+function loraRows(onChange) {
+  const box = document.getElementById('loras'); box.replaceChildren();
+  const make = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+  loraList.forEach((item, i) => {
+    const row = make('div'); row.className = 'row';
+    const sel = make('select');
+    for (const n of new Set([item.name, ...(loraNames || [])])) sel.append(make('option', {value: n, textContent: n, selected: n === item.name}));
+    sel.onchange = () => { item.name = sel.value; onChange(); };
+    const str = make('input', {type: 'number', step: 0.05, min: -2, max: 2, value: item.strength, title: 'strength'});
+    str.style.width = '80px';
+    str.oninput = () => { item.strength = Math.max(-2, Math.min(2, +str.value || 0)); onChange(); };
+    const on = make('input', {type: 'checkbox', checked: item.enabled, title: 'enabled'});
+    on.onchange = () => { item.enabled = on.checked; onChange(); };
+    const rm = make('button', {className: 'btn ghost', textContent: 'Remove'});
+    rm.onclick = () => { loraList.splice(i, 1); loraRows(onChange); onChange(); };
+    row.append(sel, str, on, rm); box.append(row);
+  });
+  const add = document.getElementById('addLora');
+  add.disabled = loraList.length >= 8 || !(loraNames && loraNames.length);
+  document.getElementById('loraHint').textContent = loraNames === null ? 'Loading LoRAs…'
+    : loraNames.length ? '' : 'No LoRA files found in ComfyUI/models/loras.';
+}
+async function loadLoras(onChange) {
+  try { loraNames = (await (await fetch('/api/loras')).json()).loras || []; } catch (e) { loraNames = []; }
+  document.getElementById('addLora').onclick = () => {
+    loraList.push({name: loraNames[0], strength: 1, enabled: true}); loraRows(onChange); onChange();
+  };
+  loraRows(onChange);
+}
+loadLoras(() => {});
 async function post(path, body) {
   const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   const j = await r.json();
@@ -343,6 +379,7 @@ $('render').onclick = async () => {
   if (!$('prompt').value.trim()) return status(st, 'Write or paste a prompt first.', true);
   const [width, height] = $('size').value.split('x').map(Number);
   const body = {prompt: $('prompt').value, seconds: +$('seconds').value, width, height, preset, ...media()};
+  if (loraList.length) body.loras = loraList;
   if ($('seed').value) body.seed = +$('seed').value;
   try { current = null; follow(await post('/api/render', body)); }
   catch (e) { status(st, e.message, true); }
