@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import director
+import library
 import enhance
 import project as projects
 
@@ -493,6 +494,10 @@ def project_view(slug):
     p['batch_job'] = public(JOBS[b['job']]) if b and b.get('job') in JOBS else None
     return p
 
+def library_view(c):
+    """Library reply row: the stored fields plus the URL for the character's picture."""
+    return dict(c, image_url=f'/library-files/{c["slug"]}/{c["image"]}' if c.get('image') else None)
+
 
 def serve_file(handler, file):
     """Static file with Range support (browser seeking in mp4)."""
@@ -562,6 +567,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (HERE / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path in ('/project', '/project.html') or self.path.startswith('/project?'):
             return self.reply(200, (HERE / 'project.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/api/library':
+            return self.reply(200, [library_view(c) for c in library.list_all()])
+        if self.path.startswith('/library-files/'):
+            parts = urllib.parse.unquote(self.path[len('/library-files/'):]).split('/')
+            if len(parts) != 2 or parts[1] not in library.IMAGE_FILES:
+                return self.reply(404, {'error': 'not found'})
+            try:
+                image = library.image_path(parts[0])
+            except library.LibraryError:
+                return self.reply(404, {'error': 'not found'})
+            if image is None or image.name != parts[1] or not image.is_file():
+                return self.reply(404, {'error': 'not found'})
+            return serve_file(self, image)
         try:
             if self.path == '/api/projects':
                 return self.reply(200, projects.listing())
@@ -615,6 +633,21 @@ class Handler(BaseHTTPRequestHandler):
                             last=last, two_pass=preset['two_pass'])
                 threading.Thread(target=run_render, args=(job, args, preset['finish']), daemon=True).start()
                 return self.reply(200, public(job))
+            if self.path == '/api/library':
+                img = data.get('image')
+                raw = None
+                if img is not None:
+                    if not isinstance(img, dict):
+                        raise library.LibraryError('image must be an object')
+                    raw = decode(img)[1]
+                return self.reply(200, library_view(library.save(data.get('name'), data.get('description'), raw)))
+            if self.path.startswith('/api/library/') and self.path.endswith('/delete'):
+                slug = urllib.parse.unquote(self.path.split('/')[3])
+                try:
+                    library.get(slug)
+                except library.LibraryError:
+                    return self.reply(404, {'error': 'no such character'})
+                return self.reply(200, library.delete(slug))
             if self.path == '/api/projects':
                 created = projects.create(data.get('name', ''), data.get('logline', ''), data.get('seconds', 30),
                                           data.get('aspect', '16:9'), refs)
@@ -633,7 +666,7 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=run_enhance, args=(job, run), daemon=True).start()
                 return self.reply(200, public(job))
             self.reply(404, {'error': 'not found'})
-        except (director.DirectorError, projects.ProjectError) as e:
+        except (director.DirectorError, projects.ProjectError, library.LibraryError) as e:
             self.reply(400, {'error': str(e)})
         except (KeyError, ValueError, TypeError) as e:
             self.reply(400, {'error': f'bad request: {e}'})
