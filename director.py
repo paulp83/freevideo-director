@@ -182,6 +182,7 @@ Rules:
 - No background music in scene actions; the score is added in editing."""
 
 CHARACTERS_HEAD = 'Recurring characters (keep exactly these looks):'
+NOTES_HEAD = "Director's notes (apply to every scene):"
 
 
 def _json_object(text):
@@ -263,6 +264,8 @@ def scene_idea(film, index):
              film.get('bible', ''), '']
     if (film.get('character_notes') or '').strip():
         lines += [CHARACTERS_HEAD, film['character_notes'].strip(), '']
+    if (film.get('notes') or '').strip():
+        lines += [NOTES_HEAD, film['notes'].strip(), '']
     lines.append(f'This scene ({scene["seconds"]} s): {scene["action"]}')
     if scene.get('connect') == 'continue' and index:
         lines.append('This scene continues directly from the previous scene, which ended with: '
