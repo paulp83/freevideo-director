@@ -255,6 +255,8 @@ def run_enhance(job, run, on_final=None):
         finish(job)
     except Exception as e:
         fail(job, e)
+    finally:
+        enhance.cleanup_intermediate(run)         # the lossless -raw.mkv is only needed while ComfyUI reads it
 
 
 def public(job):
@@ -497,15 +499,18 @@ def serve_file(handler, file):
     handler.send_header('Accept-Ranges', 'bytes')
     handler.send_header('Content-Length', str(end - start + 1))
     handler.end_headers()
-    with open(file, 'rb') as f:
-        f.seek(start)
-        left = end - start + 1
-        while left > 0:
-            chunk = f.read(min(1 << 20, left))
-            if not chunk:
-                break
-            handler.wfile.write(chunk)
-            left -= len(chunk)
+    try:
+        with open(file, 'rb') as f:
+            f.seek(start)
+            left = end - start + 1
+            while left > 0:
+                chunk = f.read(min(1 << 20, left))
+                if not chunk:
+                    break
+                handler.wfile.write(chunk)
+                left -= len(chunk)
+    except (ConnectionResetError, BrokenPipeError):       # the browser closed the connection (seeking in a video)
+        return
 
 
 # ---------------------------------------------------------------- HTTP

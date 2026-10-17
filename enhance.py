@@ -76,6 +76,15 @@ def intermediate(run):
     return out, frames
 
 
+def cleanup_intermediate(path):
+    """Delete the lossless <run>-raw.mkv that intermediate() wrote; a missing file or run is fine."""
+    try:
+        run = run_dir_of(path)
+    except FileNotFoundError:
+        return
+    (COMFY_ROOT / 'input' / 'director' / f'{run.name}-raw.mkv').unlink(missing_ok=True)
+
+
 def graph(source, run_name, **opts):
     o = {**DEFAULTS, **opts}
     return {
@@ -157,11 +166,15 @@ def main():
     p.add_argument('--batch-size', type=int, default=DEFAULTS['batch_size'], help='SeedVR2 frames per batch (4n+1)')
     a = p.parse_args()
     start = time.time()
-    pid, run = submit(a.take, resolution=a.resolution, multiplier=a.fps_multiplier, crf=a.crf, batch_size=a.batch_size)
-    print(f'enhance: queued {pid} for {run.name}')
-    while (r := result(pid)) is None:
-        time.sleep(5)
-    print(f'enhance: {r["path"]}  ({time.time() - start:.0f}s)')
+    try:
+        pid, run = submit(a.take, resolution=a.resolution, multiplier=a.fps_multiplier, crf=a.crf,
+                          batch_size=a.batch_size)
+        print(f'enhance: queued {pid} for {run.name}')
+        while (r := result(pid)) is None:
+            time.sleep(5)
+        print(f'enhance: {r["path"]}  ({time.time() - start:.0f}s)')
+    finally:
+        cleanup_intermediate(a.take)
 
 
 if __name__ == '__main__':
