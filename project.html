@@ -232,6 +232,7 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
     <section>
       <div class="row" style="margin-top:0"><h2 style="margin:0;flex:1">Scenes</h2>
         <span class="status" id="saveStatus"></span>
+        <button class="btn ghost small" id="freeSpace" title="Move unchosen takes to a trash folder">Free space…</button>
         <button class="btn ghost small" id="addScene">+ Add scene</button></div>
       <div id="scenes"></div>
     </section>
@@ -264,6 +265,12 @@ function el(tag, attrs = {}, ...kids) {
 function fmt(s) { return s == null ? '' : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; }
 function readFile(file) { return new Promise(res => { const r = new FileReader(); r.onload = () => res({name: file.name, data: r.result}); r.readAsDataURL(file); }); }
 function pick(accept) { return new Promise(res => { const f = el('input', {type: 'file', accept}); f.onchange = () => res(f.files[0]); f.click(); }); }
+function formatBytes(n) {
+  const u = ['B', 'KB', 'MB', 'GB']; let i = 0, v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (i ? v.toFixed(1) : String(v)) + ' ' + u[i];
+}
+
 function flash(msg, isErr) { $('saveStatus').textContent = msg; $('saveStatus').classList.toggle('err', !!isErr); }
 
 /* ---------- project list ---------- */
@@ -372,6 +379,7 @@ function draw(force) {
   setIfIdle($('pTitleCardSecs'), p.title_card ? p.title_card.seconds : 3, 'title_card');
   setIfIdle($('pEndCardText'), p.end_card ? p.end_card.text : '', 'end_card');
   setIfIdle($('pEndCardSecs'), p.end_card ? p.end_card.seconds : 3, 'end_card');
+  $('freeSpace').disabled = busy();
   const total = p.scenes.reduce((a, s) => a + s.seconds, 0);
   $('pMeta').textContent = `${p.logline}  ·  ${p.scenes.length} scenes · ${total} s of ${p.seconds} s · ${p.aspect}`;
   $('musicName').textContent = p.music_file ? `Track: ${p.music_file}` : 'No track: the film keeps the scenes\' own sound.';
@@ -591,6 +599,21 @@ function remove(id) {
   if (!confirm(`Delete scene "${s.title}"? Its takes stay on disk but leave the project.`)) return;
   delete dirty[id]; save(proj.scenes.filter(s => s.id !== id));
 }
+$('freeSpace').onclick = async () => {
+  const btn = $('freeSpace');
+  btn.disabled = true;
+  try {
+    if (Object.keys(dirty).length || Object.keys(dirtyTop).length) await save();
+    const plan = (await api(`/api/p/${slug}/prune`, {apply: false})).prune;
+    if (!plan.candidates.length) { flash('Nothing to free.'); return; }
+    if (!confirm(`Move ${plan.candidates.length} unchosen take(s) (${formatBytes(plan.total_bytes)}) to the output folder's .director-trash? Files are moved, not deleted. Starred takes stay.`)) return;
+    const r = await api(`/api/p/${slug}/prune`, {apply: true});
+    proj = r; draw();
+    flash(`Moved ${r.prune.moved} take(s) (${formatBytes(r.prune.bytes)}) to .director-trash`);
+  } catch (e) { flash(e.message, true); }
+  finally { btn.disabled = busy(); }
+};
+
 $('addScene').onclick = () => save([...proj.scenes, {id: 'new-' + Date.now()}]);
 $('musicBtn').onclick = async () => {
   const f = await pick('audio/*'); if (!f) return;
