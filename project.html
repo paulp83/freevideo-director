@@ -489,7 +489,7 @@ function buildScene(s) {
         el('button', {class: 'btn ghost small', title: 'Delete scene', onclick: () => remove(id)}, '✕'))),
     el('div', {style: 'margin-top:8px'}, input('action', {rows: 3, placeholder: 'What happens in this scene (shot, action, sound, dialogue)…'}, 'textarea')),
     el('details', {'data-k': 'details'},
-      el('summary', {}, 'H3 prompt ', el('span', {class: 'badge', 'data-k': 'mode'})),
+      el('summary', {}, 'H3 prompt ', el('span', {class: 'badge', 'data-k': 'mode'}), ' ', el('span', {class: 'badge', 'data-k': 'check'})),
       input('prompt', {rows: 12, class: 'mono', placeholder: 'Click "Write prompt", or paste your own.'}, 'textarea')),
     el('div', {class: 'row'},
       el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
@@ -505,6 +505,7 @@ function buildScene(s) {
   return card;
 }
 function q(card, k) { return card.querySelector(`[data-k="${k}"]`); }
+function checkLabel(c) { if (!c) return ''; if (c.final_failures && c.final_failures.length) return 'still failing: ' + c.final_failures.join(', '); return c.retried ? 'fixed on retry' : 'checked'; }
 function updateScene(s, i) {
   const card = document.getElementById('scene-' + s.id); if (!card) return;
   q(card, 'num').textContent = `${i + 1}`;
@@ -517,6 +518,7 @@ function updateScene(s, i) {
   setIfIdle(q(card, 'action'), s.action, 'action', s.id);
   setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
   q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
+  const ck = q(card, 'check'); ck.textContent = checkLabel(s.prompt_check); ck.hidden = !s.prompt_check; ck.classList.toggle('err', !!(s.prompt_check && s.prompt_check.final_failures.length)); ck.title = s.prompt_check && s.prompt_check.first_failures.length ? 'first reply failed: ' + s.prompt_check.first_failures.join(', ') : '';
   const job = s.job, running = job && !job.done;
   ['bPrompt', 'bDraft', 'bReroll', 'bVariants', 'vCount', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
   q(card, 'bEnhance').hidden = !s.takes.length;
