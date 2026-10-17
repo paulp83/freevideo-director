@@ -187,6 +187,25 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
     </section>
 
     <section>
+      <h2>Title and end cards</h2>
+      <div class="grid2">
+        <div>
+          <label class="inline">Title card</label>
+          <input type="text" id="pTitleCardText" maxlength="80" placeholder="Title card text (empty = none)">
+          <label class="inline" style="margin-top:10px">Seconds</label>
+          <input type="number" id="pTitleCardSecs" min="1" max="10" step="0.5" value="3">
+        </div>
+        <div>
+          <label class="inline">End card</label>
+          <input type="text" id="pEndCardText" maxlength="80" placeholder="End card text (empty = none)">
+          <label class="inline" style="margin-top:10px">Seconds</label>
+          <input type="number" id="pEndCardSecs" min="1" max="10" step="0.5" value="3">
+        </div>
+      </div>
+      <p class="hint">Black cards with centred white text, faded in and out, hard-cut to the film. Empty text = no card.</p>
+    </section>
+
+    <section>
       <div class="row" style="margin-top:0"><h2 style="margin:0;flex:1">Scenes</h2>
         <span class="status" id="saveStatus"></span>
         <button class="btn ghost small" id="addScene">+ Add scene</button></div>
@@ -287,6 +306,10 @@ function draw(force) {
   setIfIdle($('pTitle'), p.title || p.name, 'title');
   setIfIdle($('pBible'), p.bible, 'bible');
   setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
+  setIfIdle($('pTitleCardText'), p.title_card ? p.title_card.text : '', 'title_card');
+  setIfIdle($('pTitleCardSecs'), p.title_card ? p.title_card.seconds : 3, 'title_card');
+  setIfIdle($('pEndCardText'), p.end_card ? p.end_card.text : '', 'end_card');
+  setIfIdle($('pEndCardSecs'), p.end_card ? p.end_card.seconds : 3, 'end_card');
   const total = p.scenes.reduce((a, s) => a + s.seconds, 0);
   $('pMeta').textContent = `${p.logline}  ·  ${p.scenes.length} scenes · ${total} s of ${p.seconds} s · ${p.aspect}`;
   $('musicName').textContent = p.music_file ? `Track: ${p.music_file}` : 'No track: the film keeps the scenes\' own sound.';
@@ -375,6 +398,14 @@ async function save(structure) {
 $('pTitle').oninput = e => markDirty(null, 'title', e.target.value);
 $('pBible').oninput = e => markDirty(null, 'bible', e.target.value);
 $('pMusicBrief').oninput = e => markDirty(null, 'music_brief', e.target.value);
+$('pTitleCardText').oninput = $('pTitleCardSecs').oninput = () => cardChanged('title_card');
+$('pEndCardText').oninput = $('pEndCardSecs').oninput = () => cardChanged('end_card');
+function cardChanged(which) {
+  const text = which === 'title_card' ? $('pTitleCardText') : $('pEndCardText');
+  const secs = which === 'title_card' ? $('pTitleCardSecs') : $('pEndCardSecs');
+  if (which === 'title_card') markDirty(null, 'title_card', cardValue(text, secs)); else markDirty(null, 'end_card', cardValue(text, secs));
+}
+function cardValue(text, secs) { return text.value ? {text: text.value, seconds: +secs.value || 3} : null; }
 
 function buildScene(s) {
   const id = s.id;
@@ -386,12 +417,15 @@ function buildScene(s) {
   };
   const connect = input('connect', {}, 'select');
   connect.append(el('option', {value: 'cut'}, 'Cut (new shot)'), el('option', {value: 'continue'}, '↪ Continue'));
+  const transition = input('transition', {}, 'select');
+  transition.append(el('option', {value: 'cut'}, 'Cut'), el('option', {value: 'crossfade'}, 'Crossfade'), el('option', {value: 'dip'}, 'Dip to black'));
   const card = el('div', {class: 'scene', id: 'scene-' + id},
     el('div', {class: 'scene-head'},
       el('span', {class: 'num', 'data-k': 'num'}),
       input('title', {type: 'text'}),
       input('seconds', {type: 'number', min: 4, max: 15}),
       connect,
+      transition,
       el('span', {},
         el('button', {class: 'btn ghost small', title: 'Move up', onclick: () => move(id, -1)}, '↑'), ' ',
         el('button', {class: 'btn ghost small', title: 'Move down', onclick: () => move(id, 1)}, '↓'), ' ',
@@ -419,6 +453,8 @@ function updateScene(s, i) {
   setIfIdle(q(card, 'seconds'), s.seconds, 'seconds', s.id);
   setIfIdle(q(card, 'connect'), s.connect, 'connect', s.id);
   q(card, 'connect').disabled = i === 0;
+  setIfIdle(q(card, 'transition'), s.transition, 'transition', s.id);
+  q(card, 'transition').hidden = i === 0;
   setIfIdle(q(card, 'action'), s.action, 'action', s.id);
   setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
   q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
