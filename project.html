@@ -492,6 +492,7 @@ function buildScene(s) {
     el('details', {'data-k': 'details'},
       el('summary', {}, 'H3 prompt ', el('span', {class: 'badge', 'data-k': 'mode'}), ' ', el('span', {class: 'badge', 'data-k': 'check'})),
       input('prompt', {rows: 12, class: 'mono', placeholder: 'Click "Write prompt", or paste your own.'}, 'textarea')),
+    el('details', {'data-k': 'hist'}, el('summary', {'data-k': 'histSum'}), el('div', {'data-k': 'histList'})),
     el('div', {class: 'row'},
       el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
       el('button', {class: 'btn small', 'data-k': 'bDraft', onclick: () => sceneAct('render', {scene: id, preset: 'draft'})}, 'Draft'),
@@ -506,6 +507,9 @@ function buildScene(s) {
   return card;
 }
 function q(card, k) { return card.querySelector(`[data-k="${k}"]`); }
+function historyTitle(n) { return 'History (' + n + ')'; }
+function historyText(h) { const flat = h.prompt.replace(/\s+/g, ' ').trim(); return h.source + ' · ' + new Date(h.time * 1000).toLocaleTimeString() + ' · ' + (flat.length > 80 ? flat.slice(0, 80) + '…' : flat); }
+function historyRows(hs) { return hs.map((h, i) => ({index: i, source: h.source, text: historyText(h)})).reverse(); }
 function checkLabel(c) { if (!c) return ''; if (c.final_failures && c.final_failures.length) return 'still failing: ' + c.final_failures.join(', '); return c.retried ? 'fixed on retry' : 'checked'; }
 function updateScene(s, i) {
   const card = document.getElementById('scene-' + s.id); if (!card) return;
@@ -520,6 +524,7 @@ function updateScene(s, i) {
   setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
   q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
   const ck = q(card, 'check'); ck.textContent = checkLabel(s.prompt_check); ck.hidden = !s.prompt_check; ck.classList.toggle('err', !!(s.prompt_check && s.prompt_check.final_failures.length)); ck.title = s.prompt_check && s.prompt_check.first_failures.length ? 'first reply failed: ' + s.prompt_check.first_failures.join(', ') : '';
+  const hs = s.history || []; q(card, 'hist').hidden = !hs.length; q(card, 'histSum').textContent = historyTitle(hs.length); const hl = q(card, 'histList'), hsig = hs.map(x => x.time).join('|'); if (hl.dataset.sig !== hsig) { hl.dataset.sig = hsig; hl.replaceChildren(); historyRows(hs).forEach(row => hl.append(el('div', {class: 'row'}, el('span', {class: 'badge'}, row.source), el('span', {style: 'flex:1'}, row.text), el('button', {class: 'btn ghost small', onclick: () => sceneAct('restore_prompt', {scene: s.id, index: row.index})}, 'Restore')))); }
   const job = s.job, running = job && !job.done;
   ['bPrompt', 'bDraft', 'bReroll', 'bVariants', 'vCount', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
   q(card, 'bEnhance').hidden = !s.takes.length;
