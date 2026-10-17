@@ -55,7 +55,30 @@ def upload(name, raw):
     return f"{r['subfolder']}/{r['name']}" if r.get('subfolder') else r['name']
 
 
-def queue(prompt, seconds, width, height, seed, refs, first, last, two_pass=True):
+def clean_loras(items):
+    """Validate a LoRA list -> [{'name', 'strength', 'enabled'}]; ValueError on bad input (the handler answers 400)."""
+    if items is None:
+        return []
+    if not isinstance(items, list) or len(items) > 8:
+        raise ValueError('loras must be a list of at most 8 items')
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError('each lora must be an object')
+        name = item.get('name')
+        if not isinstance(name, str) or not name.endswith('.safetensors') or '/' in name or '..' in name:
+            raise ValueError('lora name must be a .safetensors file name')
+        strength = item.get('strength', 1.0)
+        if isinstance(strength, bool) or not isinstance(strength, (int, float)) or not -2 <= strength <= 2:
+            raise ValueError('lora strength must be a number from -2 to 2')
+        enabled = item.get('enabled', True)
+        if not isinstance(enabled, bool):
+            raise ValueError('lora enabled must be true or false')
+        out.append({'name': name, 'strength': float(strength), 'enabled': enabled})
+    return out
+
+
+def queue(prompt, seconds, width, height, seed, refs, first, last, two_pass=True, loras=None):
     """Build the FreeVideo graph for the mode and queue it; return the ComfyUI prompt id."""
     gen = {'text': prompt, 'width': width, 'height': height, 'seconds': float(seconds), 'seed': seed,
            'two_pass': two_pass, 'base_steps': 8, 'refine_steps': 2, 'force_regenerate': False}
@@ -79,6 +102,9 @@ def queue(prompt, seconds, width, height, seed, refs, first, last, two_pass=True
         gen['first'] = [load(*first), 0]
     if last:
         gen['last'] = [load(*last), 0]
+    active = clean_loras(loras)
+    if any(item['enabled'] for item in active):
+        gen['loras'] = [node('FreeVideoLoRAStack', {'adapters': json.dumps(active)}), 0]
     node('FreeVideoGenerate', gen)
     body = json.dumps({'prompt': wf, 'client_id': CLIENT_ID}).encode()
     return comfy('/prompt', body, {'Content-Type': 'application/json'})['prompt_id']
@@ -705,12 +731,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(400, {'error': 'unknown preset'})
                 if not str(data.get('prompt', '')).strip():
                     return self.reply(400, {'error': 'write or paste a prompt first'})
+                loras = clean_loras(data.get('loras'))
                 job = new_job(data.get('preset', 'draft'),
                               ['render', 'upscale', 'smooth', 'encode'] if preset['finish'] else ['render'])
                 args = dict(prompt=data['prompt'], seconds=data.get('seconds', 10),
                             width=int(data.get('width', 1344)), height=int(data.get('height', 768)),
                             seed=int(data.get('seed') or time.time_ns() % 2**31), refs=refs, first=first,
-                            last=last, two_pass=preset['two_pass'])
+                            last=last, two_pass=preset['two_pass'], loras=loras)
                 threading.Thread(target=run_render, args=(job, args, preset['finish']), daemon=True).start()
                 return self.reply(200, public(job))
             if self.path == '/api/library':
