@@ -12,6 +12,7 @@ from pathlib import Path
 
 import director
 import library
+import notify
 import enhance
 import project as projects
 
@@ -379,8 +380,25 @@ def start_batch(slug, label, steps, worker):
         state['finished'] = time.time()
         persist_batch(slug, state, done=True)     # on disk first, so readers of done never see a stale file
         state['done'] = True
+        notify_batch(slug, state)  # after done: a slow webhook must not hold the UI or the next batch
     threading.Thread(target=run, daemon=True).start()
     return state
+
+
+def notify_batch(slug, state):
+    """One notification when a batch ends: finished, failed or cancelled. Never raises."""
+    try:
+        err = state.get('error')
+        outcome = 'cancelled' if err and str(err).endswith('cancelled') else 'failed' if err else 'finished'
+        try:
+            name = projects.load(slug).get('name') or slug
+        except Exception:
+            name = slug
+        seconds = round((state.get('finished') or time.time()) - state['started'])
+        body = f'{name} · step {state["step"]}/{state["of"]} · {seconds}s' + (f' · {err}' if outcome == 'failed' else '')
+        notify.send(f'{state["label"]} {outcome}', body)
+    except Exception:
+        pass
 
 
 def persist_batch(slug, state, done=None):
