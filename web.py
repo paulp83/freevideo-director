@@ -13,6 +13,7 @@ from pathlib import Path
 import director
 import library
 import notify
+import stats
 import enhance
 import project as projects
 
@@ -199,11 +200,17 @@ def activate(job, key):
 
 
 def finish(job):
+    already = job['done']
     now = time.time()
     for s in job['stages']:
         if s['state'] in ('pending', 'active'):
             s.update(state='done', ended=now, started=s['started'] or now)
     job['done'] = True
+    if not already:                                # learn how long this kind of job takes (never breaks a job)
+        try:
+            stats.record(job['kind'], now - job['created'])
+        except Exception:
+            pass
 
 
 def fail(job, error):
