@@ -147,6 +147,15 @@ def scene_index(project, scene_id):
     raise ProjectError('unknown scene')
 
 
+def reroll_seed(project, scene_id):
+    """Give the scene a fresh seed (never the old one); nothing else changes."""
+    scene = project['scenes'][scene_index(project, scene_id)]
+    old = scene['seed']
+    while scene['seed'] == old:
+        scene['seed'] = secrets.randbelow(2**31)
+    return project
+
+
 def chosen(scene):
     """The take used downstream: the starred one, else the latest."""
     takes = scene.get('takes') or []

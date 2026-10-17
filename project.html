@@ -402,6 +402,7 @@ function buildScene(s) {
     el('div', {class: 'row'},
       el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
       el('button', {class: 'btn small', 'data-k': 'bDraft', onclick: () => sceneAct('render', {scene: id, preset: 'draft'})}, 'Draft'),
+      el('button', {class: 'btn ghost small', 'data-k': 'bReroll', onclick: () => sceneReroll(id)}, '🎲 Re-roll'),
       el('button', {class: 'btn ghost small', 'data-k': 'bFinal', onclick: () => sceneAct('render', {scene: id, preset: 'final'})}, 'Final'),
       el('button', {class: 'btn ghost small', 'data-k': 'bEnhance', onclick: () => sceneAct('enhance', {scene: id})}, '✨ Enhance ★'),
       el('span', {class: 'status', 'data-k': 'sStatus'})),
@@ -421,7 +422,7 @@ function updateScene(s, i) {
   setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
   q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
   const job = s.job, running = job && !job.done;
-  ['bPrompt', 'bDraft', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
+  ['bPrompt', 'bDraft', 'bReroll', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
   q(card, 'bEnhance').hidden = !s.takes.length;
   // job progress
   const jb = q(card, 'job'); jb.replaceChildren();
@@ -455,6 +456,7 @@ async function run(action, body) {
   catch (e) { flash(e.message, true); }
 }
 async function sceneAct(action, body) { await run(action, body); }
+async function sceneReroll(id) { await run('reroll', {scene: id}); await run('render', {scene: id, preset: 'draft'}); }
 async function scenePrompt(id) {
   const card = document.getElementById('scene-' + id), st = q(card, 'sStatus'), t0 = Date.now();
   const tick = setInterval(() => st.textContent = `Directing… ${Math.round((Date.now() - t0) / 1000)} s`, 500);

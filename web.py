@@ -597,6 +597,9 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=run_enhance, args=(job, run, final_recorder(slug, data['scene'], lambda: run)),
                              daemon=True).start()
             return self.reply(200, project_view(slug))
+        if action == 'reroll':                         # new seed for the next Draft / Final of this scene
+            projects.mutate(slug, lambda p: projects.reroll_seed(p, data['scene']))
+            return self.reply(200, project_view(slug))
         if action == 'star':
             def apply(p):
                 s = p['scenes'][projects.scene_index(p, data['scene'])]
