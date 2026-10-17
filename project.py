@@ -25,6 +25,7 @@ TRANSITIONS = ('cut', 'crossfade', 'dip')
 XFADE = 0.5
 DIP = 0.4
 HISTORY_MAX = 20
+EDIT_WINDOW = 300
 CARD_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
@@ -190,9 +191,16 @@ def update_from_editor(project, data):
                 if new != scene.get('prompt', ''):
                     if scene.get('prompt', '').strip() and not scene.get('history'):
                         push_history(scene, scene['prompt'], scene.get('prompt_mode'), 'edit')
+                    h = scene.get('history') or []
+                    if new.strip() and h and h[-1].get('live') and h[-1]['prompt'] == scene.get('prompt', '') and time.time() - h[-1]['time'] < EDIT_WINDOW:
+                        h[-1].update(prompt=new, time=time.time())  # still typing, update the entry in place
+                    else:
+                        last = h[-1] if h else None
+                        push_history(scene, new, scene.get('prompt_mode'), 'edit')
+                        if scene.get('history') and scene['history'][-1] is not last:
+                            scene['history'][-1]['live'] = True
                     scene['prompt'] = new
                     scene['prompt_check'] = None
-                    push_history(scene, new, scene.get('prompt_mode'), 'edit')
             if 'seconds' in item:
                 scene['seconds'] = min(15, max(4, int(item['seconds'])))
             if 'connect' in item:
