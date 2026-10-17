@@ -281,39 +281,56 @@ def assemble(project, kind):
         raise ProjectError('no scenes')
     w, h = FILM_SIZES[project['aspect']] if kind == 'film' else project['size']
     fps = 48 if kind == 'film' else 24
-    cmd, parts, vlabels = ['ffmpeg', '-v', 'error', '-y'], [], []
-    total = 0.0
+    cmd, parts, dur = ['ffmpeg', '-v', 'error', '-y'], [], []
     for i, clip in enumerate(clips):
         cmd += ['-i', str(clip)]
         d = _duration(clip)
-        total += d
+        dur.append(d)
         parts.append(f'[{i}:v]scale={w}:{h}:flags=lanczos,setsar=1,fps={fps},format=yuv420p[v{i}]')
         if _has_audio(clip):
             parts.append(f'[{i}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:{d:.3f},'
                          f'afade=t=in:d=0.03,afade=t=out:st={max(0, d - 0.03):.3f}:d=0.03[a{i}]')
         else:
             parts.append(f'anullsrc=r=48000:cl=stereo,atrim=0:{d:.3f}[a{i}]')
-        vlabels.append(f'[v{i}][a{i}]')
-    parts.append(''.join(vlabels) + f'concat=n={len(clips)}:v=1:a=1[v][dia]')
+    vcur, acur, tcur = 'v0', 'a0', dur[0]
+    for i, scene in enumerate(project['scenes'][1:], 1):
+        d, tr = dur[i], scene.get('transition', 'cut')
+        if tr == 'crossfade':
+            parts += [f'[{vcur}]settb=AVTB[m{i}]', f'[v{i}]settb=AVTB[n{i}]',
+                      f'[m{i}][n{i}]xfade=transition=fade:duration={XFADE}:offset={tcur - XFADE:.3f}[x{i}]']
+            parts.append(f'[{acur}][a{i}]acrossfade=d={XFADE}[y{i}]')
+            vcur, acur, tcur = f'x{i}', f'y{i}', tcur + d - XFADE
+        elif tr == 'dip':
+            parts += [f'[{vcur}]fade=t=out:st={tcur - DIP:.3f}:d={DIP}:color=black[p{i}]',
+                      f'[v{i}]fade=t=in:st=0:d={DIP}:color=black[q{i}]',
+                      f'[{acur}]afade=t=out:st={tcur - DIP:.3f}:d={DIP}[r{i}]',
+                      f'[a{i}]afade=t=in:st=0:d={DIP}[s{i}]',
+                      f'[p{i}][q{i}]concat=n=2:v=1:a=0[x{i}]',
+                      f'[r{i}][s{i}]concat=n=2:v=0:a=1[y{i}]']
+            vcur, acur, tcur = f'x{i}', f'y{i}', tcur + d
+        else:
+            parts.append(f'[{vcur}][v{i}]concat=n=2:v=1:a=0[x{i}]')
+            parts.append(f'[{acur}][a{i}]concat=n=2:v=0:a=1[y{i}]')
+            vcur, acur, tcur = f'x{i}', f'y{i}', tcur + d
     music = project.get('music_file')
     if music and path(project['slug'], music).is_file():
         cmd += ['-stream_loop', '-1', '-i', str(path(project['slug'], music))]
         m = len(clips)
-        fade = min(2.5, total / 4)
-        parts += [f'[{m}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{total:.3f},volume=0.6,'
-                  f'afade=t=in:d=0.5,afade=t=out:st={total - fade:.3f}:d={fade:.3f}[mus]',
-                  '[dia]asplit=2[dia1][key]',
+        fade = min(2.5, tcur / 4)
+        parts += [f'[{m}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{tcur:.3f},volume=0.6,'
+                  f'afade=t=in:d=0.5,afade=t=out:st={tcur - fade:.3f}:d={fade:.3f}[mus]',
+                  f'[{acur}]asplit=2[dia1][key]',
                   '[mus][key]sidechaincompress=threshold=0.04:ratio=6:attack=20:release=500[duck]',
                   '[dia1][duck]amix=inputs=2:duration=first:normalize=0[mix]',
                   '[mix]loudnorm=I=-14:TP=-1.5:LRA=11[aout]']
     else:
-        parts.append('[dia]loudnorm=I=-14:TP=-1.5:LRA=11[aout]')
+        parts.append(f'[{acur}]loudnorm=I=-14:TP=-1.5:LRA=11[aout]')
     out = path(project['slug'], f'{kind}-{time.strftime("%Y%m%d-%H%M%S")}.mp4')
-    cmd += ['-filter_complex', ';'.join(parts), '-map', '[v]', '-map', '[aout]',
+    cmd += ['-filter_complex', ';'.join(parts), '-map', f'[{vcur}]', '-map', '[aout]',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '16' if kind == 'film' else '20', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', str(out)]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode:
         raise ProjectError('ffmpeg failed: ' + result.stderr.strip()[-600:])
-    return {'file': out.name, 'seconds': round(total, 1), 'scenes': len(clips), 'not_final': not_final,
+    return {'file': out.name, 'seconds': round(tcur, 1), 'scenes': len(clips), 'not_final': not_final,
             'created': time.time()}
