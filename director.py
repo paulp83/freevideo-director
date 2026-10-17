@@ -14,6 +14,8 @@ A browser UI over the same function lives in web.py.
 import argparse, base64, json, os, re, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
+import h3check
+
 HERE = Path(__file__).resolve().parent
 SKILL = HERE / 'skill'
 # Director backends on GPU 1, in order of preference (see README / eval/). Whichever answers is used.
@@ -76,9 +78,28 @@ def select_mode(refs=(), first=None, last=None):
             'i2va' if first else 'l2va' if last else 't2va')
 
 
+def chat(url, model, system, content, think, temperature, max_tokens=12000, extra=()):
+    """POST one chat completion; return (text, completion_tokens). `extra` are messages after the user turn."""
+    body = {'model': model, 'temperature': temperature, 'max_tokens': max_tokens,
+            'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}, *extra],
+            'chat_template_kwargs': {'enable_thinking': think}}
+    req = urllib.request.Request(url, json.dumps(body).encode(), {'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            reply = json.load(r)
+    except OSError as e:
+        raise DirectorError(f'request to {url} failed: {e}. Is the director model up? '
+                            '(docker ps | grep freevideo-director)') from e
+    text = reply['choices'][0]['message'].get('content') or ''
+    text = re.sub(r'(?s)^.*?</think>', '', text).strip()          # reasoning left inline, if any
+    return text, reply.get('usage', {}).get('completion_tokens')
+
+
 def direct(idea, seconds=10, refs=(), first=None, last=None, think=True, temperature=0.7,
-           max_side=1024, url=None, model=None):
-    """Return (mode, prompt, completion_tokens). Images are paths or raw bytes."""
+           max_side=1024, url=None, model=None, retries=1):
+    """Return (mode, prompt, completion_tokens, model). Images are paths or raw bytes.
+
+    A reply that fails the h3check format checks is sent back once (`retries`) with the failed check names."""
     if not idea.strip():
         raise DirectorError('describe the idea first')
     if not 4 <= seconds <= 15:
@@ -108,22 +129,22 @@ def direct(idea, seconds=10, refs=(), first=None, last=None, think=True, tempera
              'No markdown fences, no headings, no commentary.')
 
     content = [{'type': 'text', 'text': user}] + [image_part(x, max_side) for x in images]
-    body = {'model': model, 'temperature': temperature, 'max_tokens': 12000,
-            'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}],
-            'chat_template_kwargs': {'enable_thinking': think}}
-    req = urllib.request.Request(url, json.dumps(body).encode(), {'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=600) as r:
-            reply = json.load(r)
-    except OSError as e:
-        raise DirectorError(f'request to {url} failed: {e}. Is the director model up? '
-                            '(docker ps | grep freevideo-director)') from e
-    text = reply['choices'][0]['message'].get('content') or ''
-    text = re.sub(r'(?s)^.*?</think>', '', text).strip()          # reasoning left inline, if any
+    text, tokens = chat(url, model, system, content, think, temperature)
     text = re.sub(r'^```\w*\n|\n```$', '', text).strip()
     if not text:
         raise DirectorError('empty reply (try again, or turn reasoning off)')
-    return mode, text, reply.get('usage', {}).get('completion_tokens'), model
+    bad = h3check.failures(mode, text, seconds, len(images))
+    for _ in range(retries if bad else 0):
+        fix = ('Your reply failed these format checks: ' + ', '.join(bad) + '. Fix them and output ONLY the '
+               'corrected final prompt text, exactly as before: no markdown fences, no commentary.')
+        again, more = chat(url, model, system, content, think, temperature,
+                           extra=[{'role': 'assistant', 'content': text}, {'role': 'user', 'content': fix}])
+        again = re.sub(r'^```\w*\n|\n```$', '', again).strip()
+        tokens = (tokens or 0) + (more or 0)
+        again_bad = h3check.failures(mode, again, seconds, len(images)) if again else bad + ['empty']
+        if len(again_bad) <= len(bad):                        # keep the better reply; a tie takes the later one
+            text, bad = again or text, again_bad
+    return mode, text, tokens, model
 
 
 STORYBOARD_SYSTEM = """You are a film director planning a short film that will be generated scene by scene with the
@@ -160,6 +181,15 @@ def _json_object(text):
         raise DirectorError(f'storyboard JSON did not parse: {e}') from e
 
 
+def _read_plan(text):
+    """(plan, scenes) from a storyboard reply; DirectorError when there is no JSON or no scene."""
+    plan = _json_object(text)
+    scenes = [s for s in plan.get('scenes', []) if isinstance(s, dict) and s.get('action')]
+    if not scenes:
+        raise DirectorError('the storyboard has no scenes')
+    return plan, scenes
+
+
 def _fit_durations(scenes, total):
     """Clamp scene lengths to 4-15 s and make them sum to `total` (when possible)."""
     secs = [min(15, max(4, int(round(float(s.get('seconds') or 8))))) for s in scenes]
@@ -190,20 +220,15 @@ def storyboard(logline, seconds=30, refs=(), aspect='16:9', think=True, url=None
                + ', '.join(f'<Picture {i + 1}>' for i in range(len(refs))) + '.\n' if refs else '')
             + 'Return the JSON storyboard now.')
     content = [{'type': 'text', 'text': user}] + [image_part(x, 1024) for x in refs]
-    body = {'model': model, 'temperature': 0.7, 'max_tokens': 12000,
-            'messages': [{'role': 'system', 'content': STORYBOARD_SYSTEM}, {'role': 'user', 'content': content}],
-            'chat_template_kwargs': {'enable_thinking': think}}
-    req = urllib.request.Request(url, json.dumps(body).encode(), {'Content-Type': 'application/json'})
+    text, _ = chat(url, model, STORYBOARD_SYSTEM, content, think, 0.7)
     try:
-        with urllib.request.urlopen(req, timeout=600) as r:
-            reply = json.load(r)
-    except OSError as e:
-        raise DirectorError(f'request to {url} failed: {e}') from e
-    text = re.sub(r'(?s)^.*?</think>', '', reply['choices'][0]['message'].get('content') or '')
-    plan = _json_object(text)
-    scenes = [s for s in plan.get('scenes', []) if isinstance(s, dict) and s.get('action')]
-    if not scenes:
-        raise DirectorError('the storyboard has no scenes')
+        plan, scenes = _read_plan(text)
+    except DirectorError as e:                                    # one corrective retry, then give up
+        fix = f'That reply was not usable ({e}). Return ONLY the corrected JSON storyboard object.'
+        text, _ = chat(url, model, STORYBOARD_SYSTEM, content, think, 0.7,
+                       extra=[{'role': 'assistant', 'content': text or '(empty reply)'},
+                              {'role': 'user', 'content': fix}])
+        plan, scenes = _read_plan(text)
     for i, s in enumerate(scenes):
         s['title'] = str(s.get('title') or f'Scene {i + 1}')[:60]
         s['connect'] = 'continue' if i and s.get('connect') == 'continue' else 'cut'
