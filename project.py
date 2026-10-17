@@ -8,7 +8,7 @@ A project lives in director/projects/<slug>/ :
   animatic-*.mp4, film-*.mp4   assembled cuts
 Takes stay in ComfyUI's output folder; the project only points at them. Stdlib + ffmpeg.
 """
-import json, re, secrets, subprocess, tempfile, threading, time
+import json, os, re, secrets, shutil, subprocess, tempfile, threading, time
 from pathlib import Path
 
 import enhance
@@ -265,6 +265,78 @@ def restore_prompt(project, scene_id, index):
     scene['prompt'], scene['prompt_mode'] = entry['prompt'], entry['mode']
     scene['prompt_check'] = None
     return project
+
+
+TRASH_NAME = '.director-trash'
+
+
+def _tree_bytes(path):
+    """Size in bytes of a file or of everything under a directory (0 when it is gone)."""
+    path = Path(path)
+    if path.is_file():
+        return path.stat().st_size
+    total = 0
+    for root, _, names in os.walk(path):
+        for n in names:
+            try:
+                total += (Path(root) / n).stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def _inside(path, root):
+    """True when `path` is strictly inside `root` (both resolved)."""
+    return Path(root).resolve() in Path(path).resolve().parents
+
+
+def prune_plan(project, trash_root=None):
+    """What prune_apply would move: unstarred takes of scenes that have a valid star. Changes nothing."""
+    out = enhance.COMFY_ROOT / 'output'
+    trash = Path(trash_root or out / TRASH_NAME).resolve()
+    candidates, skipped, seen = [], [], set()
+    for scene in project['scenes']:
+        star, takes = scene.get('star'), scene.get('takes') or []
+        if not star or not any(t['run'] == star for t in takes):
+            continue
+        star_path = Path(star).resolve()
+        for t in takes:
+            run = Path(t['run']).resolve()
+            if run == star_path or run in seen:
+                continue
+            seen.add(run)
+            if not _inside(run, out) or run == trash or trash in run.parents:
+                skipped.append({'scene': scene['id'], 'run': t['run'], 'reason': 'outside the output folder'})
+                continue
+            final, final_bytes = t.get('final'), 0
+            if final and Path(final).is_file() and _inside(final, out) and trash not in Path(final).resolve().parents:
+                final_bytes = _tree_bytes(final)
+            candidates.append({'scene': scene['id'], 'run': t['run'], 'bytes': _tree_bytes(run), 'final_bytes': final_bytes})
+    return {'candidates': candidates, 'skipped': skipped,
+            'total_bytes': sum(c['bytes'] + c['final_bytes'] for c in candidates)}
+
+
+def prune_apply(project, trash_root=None):
+    """Move the planned takes (run dir + final file) into <trash>/<stamp>/ and drop them from `takes`. Never deletes."""
+    out = enhance.COMFY_ROOT / 'output'
+    trash_root = Path(trash_root or out / TRASH_NAME)
+    plan = prune_plan(project, trash_root)
+    stamp = trash_root / time.strftime('%Y%m%d-%H%M%S')
+    moved = total = 0
+    for k, c in enumerate(plan['candidates'], 1):
+        scene = project['scenes'][scene_index(project, c['scene'])]
+        take = next(t for t in scene['takes'] if t['run'] == c['run'])
+        run = Path(c['run'])
+        if run.exists():
+            stamp.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(run), str(stamp / f'{k}-{run.name}'))
+        if c['final_bytes']:
+            (stamp / 'finals').mkdir(parents=True, exist_ok=True)
+            shutil.move(take['final'], str(stamp / 'finals' / f'{k}-{Path(take["final"]).name}'))
+        scene['takes'] = [t for t in scene['takes'] if t['run'] != c['run']]
+        moved += 1
+        total += c['bytes'] + c['final_bytes']
+    return {'moved': moved, 'bytes': total, 'trash': str(stamp), 'skipped': plan['skipped']}
 
 
 def scene_index(project, scene_id):
