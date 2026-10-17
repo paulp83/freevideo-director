@@ -284,6 +284,14 @@ def _files(paths):
     return [(Path(f).name, Path(f).read_bytes()) for f in paths]
 
 
+def project_busy(slug):
+    """True while a batch or any registered job of this film is still running."""
+    b = BATCH.get(slug)
+    if b and not b['done']:
+        return True
+    return any(s == slug and jid in JOBS and not JOBS[jid]['done'] for (s, _), jid in SCENE_JOB.items())
+
+
 def check_of(report):
     return {'retried': report['retried'], 'first_failures': report['first_failures'], 'final_failures': report['final_failures']}
 
@@ -732,6 +740,17 @@ class Handler(BaseHTTPRequestHandler):
         if action == 'restore_prompt':                 # history entry -> this scene's prompt
             projects.mutate(slug, lambda p: projects.restore_prompt(p, data['scene'], data['index']))
             return self.reply(200, project_view(slug))
+        if action == 'prune':                          # dry run unless apply is true; moves, never deletes
+            apply = data.get('apply', False)
+            if type(apply) is not bool:
+                raise projects.ProjectError('apply must be true or false')
+            if not apply:
+                return self.reply(200, dict(project_view(slug), prune=dict(projects.prune_plan(projects.load(slug)), applied=False)))
+            if project_busy(slug):
+                raise projects.ProjectError('busy: a render or batch is running for this film')
+            result = {}
+            projects.mutate(slug, lambda p: result.update(projects.prune_apply(p)))
+            return self.reply(200, dict(project_view(slug), prune=dict(result, applied=True)))
         if action == 'star':
             def apply(p):
                 s = p['scenes'][projects.scene_index(p, data['scene'])]
