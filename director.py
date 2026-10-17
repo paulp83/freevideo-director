@@ -170,6 +170,8 @@ Rules:
 - Keep characters' looks identical across scenes; refer to them by the names defined in the bible.
 - No background music in scene actions; the score is added in editing."""
 
+CHARACTERS_HEAD = 'Recurring characters (keep exactly these looks):'
+
 
 def _json_object(text):
     start, end = text.find('{'), text.rfind('}')
@@ -209,7 +211,7 @@ def _fit_durations(scenes, total):
     return scenes
 
 
-def storyboard(logline, seconds=30, refs=(), aspect='16:9', think=True, url=None, model=None):
+def storyboard(logline, seconds=30, refs=(), aspect='16:9', think=True, url=None, model=None, character_notes=''):
     """Plan a multi-scene film. Returns (plan dict, model). Images are paths or raw bytes."""
     if not logline.strip():
         raise DirectorError('describe the film first')
@@ -218,6 +220,7 @@ def storyboard(logline, seconds=30, refs=(), aspect='16:9', think=True, url=None
     user = (f'Logline: {logline}\nTotal length: {int(seconds)} seconds.\nAspect: {aspect}.\n'
             + (f'{len(refs)} reference picture(s) attached, in order: '
                + ', '.join(f'<Picture {i + 1}>' for i in range(len(refs))) + '.\n' if refs else '')
+            + (f'{CHARACTERS_HEAD}\n{character_notes.strip()}\n' if character_notes.strip() else '')
             + 'Return the JSON storyboard now.')
     content = [{'type': 'text', 'text': user}] + [image_part(x, 1024) for x in refs]
     text, _ = chat(url, model, STORYBOARD_SYSTEM, content, think, 0.7)
@@ -246,7 +249,10 @@ def scene_idea(film, index):
     scene = scenes[index]
     lines = [f'Scene {index + 1} of {len(scenes)} of the short film "{film.get("title", "")}".',
              'Style bible (keep every character, wardrobe, place and palette exactly as described):',
-             film.get('bible', ''), '', f'This scene ({scene["seconds"]} s): {scene["action"]}']
+             film.get('bible', ''), '']
+    if (film.get('character_notes') or '').strip():
+        lines += [CHARACTERS_HEAD, film['character_notes'].strip(), '']
+    lines.append(f'This scene ({scene["seconds"]} s): {scene["action"]}')
     if scene.get('connect') == 'continue' and index:
         lines.append('This scene continues directly from the previous scene, which ended with: '
                      + scenes[index - 1]['action'])
