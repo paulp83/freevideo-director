@@ -85,6 +85,7 @@ input[type=range] { accent-color: var(--accent); }
 .takes .when { color: var(--muted); font-size: 12px; min-width: 64px; }
 .badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
 .badge.final { border-color: var(--accent); color: var(--accent); }
+.badge.err { border-color: var(--err); color: var(--err); }
 @media (max-width: 640px) { .slots, .presets, .results { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -112,6 +113,7 @@ input[type=range] { accent-color: var(--accent); }
     <div class="row">
       <button class="btn" id="write">Write prompt</button>
       <span class="status" id="writeStatus"></span>
+      <span class="badge" id="checkBadge" hidden></span>
     </div>
   </section>
 
@@ -230,6 +232,8 @@ async function post(path, body) {
 }
 function status(el, text, err) { el.textContent = text; el.classList.toggle('err', !!err); }
 
+function checkLabel(c) { if (!c) return ''; if (c.final_failures && c.final_failures.length) return 'still failing: ' + c.final_failures.join(', '); return c.retried ? 'fixed on retry' : 'checked'; }
+$('prompt').addEventListener('input', () => { $('checkBadge').hidden = true; });
 $('write').onclick = async () => {
   const btn = $('write'), st = $('writeStatus'), t0 = Date.now();
   btn.disabled = true;
@@ -238,6 +242,7 @@ $('write').onclick = async () => {
     const j = await post('/api/direct', {idea: $('idea').value, seconds: +$('seconds').value,
                                         think: $('think').checked, ...media()});
     $('prompt').value = j.prompt;
+    const cb = $('checkBadge'); cb.textContent = checkLabel(j.check); cb.hidden = !cb.textContent; cb.classList.toggle('err', !!(j.check && j.check.final_failures && j.check.final_failures.length)); cb.title = j.check && j.check.first_failures && j.check.first_failures.length ? 'first reply failed: ' + j.check.first_failures.join(', ') : '';
     clearInterval(tick);
     status(st, `${j.mode.toUpperCase()} · ${j.model} · ${j.elapsed} s · ${j.tokens ?? '?'} tokens · saved ${j.saved.split('/').pop()}`);
   } catch (e) { clearInterval(tick); status(st, e.message, true); }
