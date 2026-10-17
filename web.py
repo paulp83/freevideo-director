@@ -650,9 +650,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, library.delete(slug))
             if self.path == '/api/projects':
                 created = projects.create(data.get('name', ''), data.get('logline', ''), data.get('seconds', 30),
-                                          data.get('aspect', '16:9'), refs)
+                                          data.get('aspect', '16:9'), refs, data.get('characters', ()))
                 plan, model = director.storyboard(created['logline'], created['seconds'],
-                                                  [r for _, r in refs], created['aspect'])
+                                                  projects.ref_files(created), created['aspect'],
+                                                  character_notes=created.get('character_notes', ''))
                 proj = projects.mutate(created['slug'], lambda pr: projects.apply_storyboard(pr, plan))
                 return self.reply(200, dict(proj, model=model))
             if self.path.startswith('/api/p/'):
@@ -683,7 +684,7 @@ class Handler(BaseHTTPRequestHandler):
         if action == 'storyboard':                     # re-plan: replaces scenes (the page confirms first)
             p = projects.load(slug)
             plan, _ = director.storyboard(data.get('logline') or p['logline'], p['seconds'],
-                                          projects.ref_files(p), p['aspect'])
+                                          projects.ref_files(p), p['aspect'], character_notes=p.get('character_notes', ''))
             def apply(proj):
                 proj['logline'] = data.get('logline') or proj['logline']
                 projects.apply_storyboard(proj, plan)
