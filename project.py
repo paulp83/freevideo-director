@@ -20,6 +20,9 @@ LOCK = threading.Lock()
 SIZES = {'16:9': (1344, 768), '9:16': (768, 1344)}
 FILM_SIZES = {'16:9': (1920, 1080), '9:16': (1080, 1920)}
 I2VA_LINE = 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.'
+TRANSITIONS = ('cut', 'crossfade', 'dip')
+XFADE = 0.5
+DIP = 0.4
 
 
 class ProjectError(Exception):
@@ -109,15 +112,15 @@ def create(name, logline, seconds, aspect, refs):
         names.append(target.name)
     project = {'slug': slug, 'name': name or logline[:40], 'logline': logline, 'seconds': seconds,
                'aspect': aspect, 'size': list(SIZES[aspect]), 'refs': names, 'music_file': None,
-               'title': '', 'bible': '', 'music_brief': '', 'scenes': [], 'outputs': {},
-               'created': time.time()}
+               'title': '', 'bible': '', 'music_brief': '', 'title_card': None, 'end_card': None,
+               'scenes': [], 'outputs': {}, 'created': time.time()}
     return save(project)
 
 
 def new_scene(title='New scene', seconds=6, connect='cut', action=''):
     return {'id': secrets.token_hex(3), 'title': title, 'seconds': int(seconds), 'connect': connect,
             'action': action, 'prompt': '', 'prompt_mode': None, 'seed': secrets.randbelow(2**31),
-            'takes': [], 'star': None}
+            'takes': [], 'star': None, 'transition': 'cut'}
 
 
 def apply_storyboard(project, plan):
@@ -145,11 +148,37 @@ def update_from_editor(project, data):
                 scene['seconds'] = min(15, max(4, int(item['seconds'])))
             if 'connect' in item:
                 scene['connect'] = 'continue' if i and item['connect'] == 'continue' else 'cut'
+            if 'transition' in item:
+                if item['transition'] not in TRANSITIONS:
+                    raise ProjectError('transition must be cut, crossfade or dip')
+                scene['transition'] = item['transition'] if i else 'cut'
             scenes.append(scene)
         if scenes:
             scenes[0]['connect'] = 'cut'
         project['scenes'] = scenes
+    for key in ('title_card', 'end_card'):
+        if key in data:
+            project[key] = _clean_card(data[key])
     return project
+
+
+def _clean_card(card):
+    """Validate an editor card: None or empty text clears it; text 1-80 chars, seconds 1-10."""
+    if card is None:
+        return None
+    if not isinstance(card, dict):
+        raise ProjectError('card must be an object')
+    text = card.get('text')
+    if not isinstance(text, str):
+        raise ProjectError('card text must be a string')
+    if not text:
+        return None
+    if not 1 <= len(text) <= 80:
+        raise ProjectError('card text must be 1-80 characters')
+    seconds = card.get('seconds')
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not 1 <= seconds <= 10:
+        raise ProjectError('card seconds must be 1-10')
+    return {'text': text, 'seconds': seconds}
 
 
 def scene_index(project, scene_id):
