@@ -12,6 +12,7 @@ import json, re, secrets, subprocess, tempfile, threading, time
 from pathlib import Path
 
 import enhance
+import library
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE / 'projects'
@@ -94,13 +95,27 @@ def recover_interrupted():
                 done=True, error='interrupted by restart', finished=time.time()))
 
 
-def create(name, logline, seconds, aspect, refs):
+def create(name, logline, seconds, aspect, refs, characters=()):
     """refs: [(filename, bytes)]. Returns the new (un-storyboarded) project."""
     if aspect not in SIZES:
         raise ProjectError('aspect must be 16:9 or 9:16')
     seconds = int(seconds)
     if not 8 <= seconds <= 180:
         raise ProjectError('film length must be 8-180 seconds')
+    if not isinstance(characters, (list, tuple)) or not all(isinstance(c, str) for c in characters):
+        raise ProjectError('characters must be a list of library names')
+    chars, seen = [], []
+    for slug in characters:
+        if slug in seen:
+            continue
+        seen.append(slug)
+        try:
+            chars.append(library.get(slug))
+        except library.LibraryError:
+            raise ProjectError(f'no such character: {slug}')
+    pics = [c for c in chars if c.get('image')]
+    if pics and len(refs) + len(pics) > 2:
+        raise ProjectError('at most 2 reference pictures, including library characters')
     ROOT.mkdir(parents=True, exist_ok=True)
     slug = slugify(name or logline[:30])
     path(slug, 'refs').mkdir(parents=True)
@@ -111,10 +126,26 @@ def create(name, logline, seconds, aspect, refs):
         target = path(slug, 'refs', f'picture-{i}{ext}')
         target.write_bytes(raw)
         names.append(target.name)
+    for c in chars:
+        if not c.get('image'):
+            continue
+        src = library.image_path(c['slug'])
+        n = len(names) + 1
+        target = path(slug, 'refs', f'picture-{n}{src.suffix}')
+        target.write_bytes(src.read_bytes())
+        c['picture'] = n
+        names.append(target.name)
+    notes = []
+    for c in chars:
+        line = f'{c["name"]}: {c["description"]}'
+        if c.get('picture'):
+            line += f' (see <Picture {c["picture"]}>)'
+        notes.append(line)
     project = {'slug': slug, 'name': name or logline[:40], 'logline': logline, 'seconds': seconds,
                'aspect': aspect, 'size': list(SIZES[aspect]), 'refs': names, 'music_file': None,
                'title': '', 'bible': '', 'music_brief': '', 'title_card': None, 'end_card': None,
-               'scenes': [], 'outputs': {}, 'created': time.time()}
+               'scenes': [], 'outputs': {}, 'characters': [c['slug'] for c in chars],
+               'character_notes': chr(10).join(notes), 'created': time.time()}
     return save(project)
 
 
