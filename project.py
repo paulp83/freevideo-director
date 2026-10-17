@@ -8,7 +8,7 @@ A project lives in director/projects/<slug>/ :
   animatic-*.mp4, film-*.mp4   assembled cuts
 Takes stay in ComfyUI's output folder; the project only points at them. Stdlib + ffmpeg.
 """
-import json, re, secrets, subprocess, threading, time
+import json, re, secrets, subprocess, tempfile, threading, time
 from pathlib import Path
 
 import enhance
@@ -23,6 +23,7 @@ I2VA_LINE = 'For the target video, at 0.00 seconds into the target video, <Pictu
 TRANSITIONS = ('cut', 'crossfade', 'dip')
 XFADE = 0.5
 DIP = 0.4
+CARD_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
 class ProjectError(Exception):
@@ -263,6 +264,30 @@ def _has_audio(file):
     return bool(out)
 
 
+def _make_card(card, w, h, fps, tmpdir, name):
+    """Render one black card with centred white text and silent stereo audio; return its mp4 path."""
+    seconds = float(card['seconds'])
+    s = f'{seconds:g}'
+    txt = Path(tmpdir, f'{name}.txt')
+    txt.write_text(card['text'])
+    fs = max(16, min(h // 12, int(1.3 * w / len(card['text']))))
+    alpha = f'if(lt(t,0.5),t/0.5,if(gt(t,{s}-0.5),({s}-t)/0.5,1))'
+    out = Path(tmpdir, f'{name}.mp4')
+    cmd = ['ffmpeg', '-v', 'error', '-y',
+           '-f', 'lavfi', '-i', f'color=c=black:s={w}x{h}:r={fps}:d={s}',
+           '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+           '-filter_complex',
+           f'[0:v]drawtext=fontfile={CARD_FONT}:textfile={txt}:expansion=none:fontcolor=white:'
+           f"fontsize={fs}:x=(w-text_w)/2:y=(h-text_h)/2:alpha='{alpha}'[v]",
+           '-map', '[v]', '-map', '1:a',
+           '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+           '-t', s, '-shortest', str(out)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode:
+        raise ProjectError('ffmpeg failed: ' + result.stderr.strip()[-600:])
+    return out
+
+
 def assemble(project, kind):
     """Cut the chosen takes into one video. kind: 'animatic' (takes, 24 fps) or 'film' (finals, 48 fps)."""
     clips, missing, not_final = [], [], []
@@ -281,6 +306,16 @@ def assemble(project, kind):
         raise ProjectError('no scenes')
     w, h = FILM_SIZES[project['aspect']] if kind == 'film' else project['size']
     fps = 48 if kind == 'film' else 24
+    n_scenes, cards = len(clips), None
+    trans = [s.get('transition', 'cut') for s in project['scenes']]
+    if project.get('title_card') or project.get('end_card'):
+        cards = tempfile.TemporaryDirectory()
+        if project.get('title_card'):
+            clips.insert(0, _make_card(project['title_card'], w, h, fps, cards.name, 'title'))
+            trans.insert(0, 'cut')
+        if project.get('end_card'):
+            clips.append(_make_card(project['end_card'], w, h, fps, cards.name, 'end'))
+            trans.append('cut')
     cmd, parts, dur = ['ffmpeg', '-v', 'error', '-y'], [], []
     for i, clip in enumerate(clips):
         cmd += ['-i', str(clip)]
@@ -293,8 +328,8 @@ def assemble(project, kind):
         else:
             parts.append(f'anullsrc=r=48000:cl=stereo,atrim=0:{d:.3f}[a{i}]')
     vcur, acur, tcur = 'v0', 'a0', dur[0]
-    for i, scene in enumerate(project['scenes'][1:], 1):
-        d, tr = dur[i], scene.get('transition', 'cut')
+    for i in range(1, len(clips)):
+        d, tr = dur[i], trans[i]
         if tr == 'crossfade':
             parts += [f'[{vcur}]settb=AVTB[m{i}]', f'[v{i}]settb=AVTB[n{i}]',
                       f'[m{i}][n{i}]xfade=transition=fade:duration={XFADE}:offset={tcur - XFADE:.3f}[x{i}]']
@@ -330,7 +365,9 @@ def assemble(project, kind):
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '16' if kind == 'film' else '20', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', str(out)]
     result = subprocess.run(cmd, capture_output=True, text=True)
+    if cards:
+        cards.cleanup()
     if result.returncode:
         raise ProjectError('ffmpeg failed: ' + result.stderr.strip()[-600:])
-    return {'file': out.name, 'seconds': round(tcur, 1), 'scenes': len(clips), 'not_final': not_final,
+    return {'file': out.name, 'seconds': round(tcur, 1), 'scenes': n_scenes, 'not_final': not_final,
             'created': time.time()}
