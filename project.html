@@ -193,6 +193,9 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
           <h2>Style bible</h2>
           <textarea id="pBible" rows="9" class="mono"></textarea>
           <p class="hint">Every scene prompt is written from this. Keep characters' looks here, not in scenes.</p>
+          <h2 style="margin-top:14px">Director's notes</h2>
+          <textarea id="pNotes" rows="3" maxlength="1000" placeholder="Director's notes: e.g. no text on screen, always handheld"></textarea>
+          <p class="hint">Rules for the whole film. Added to every scene prompt.</p>
         </div>
         <div>
           <h2>Music bed</h2>
@@ -364,6 +367,7 @@ function draw(force) {
   setIfIdle($('pTitle'), p.title || p.name, 'title');
   setIfIdle($('pBible'), p.bible, 'bible');
   setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
+  setIfIdle($('pNotes'), p.notes || '', 'notes');
   setIfIdle($('pTitleCardText'), p.title_card ? p.title_card.text : '', 'title_card');
   setIfIdle($('pTitleCardSecs'), p.title_card ? p.title_card.seconds : 3, 'title_card');
   setIfIdle($('pEndCardText'), p.end_card ? p.end_card.text : '', 'end_card');
@@ -456,6 +460,7 @@ async function save(structure) {
 $('pTitle').oninput = e => markDirty(null, 'title', e.target.value);
 $('pBible').oninput = e => markDirty(null, 'bible', e.target.value);
 $('pMusicBrief').oninput = e => markDirty(null, 'music_brief', e.target.value);
+$('pNotes').oninput = e => markDirty(null, 'notes', e.target.value);
 $('pTitleCardText').oninput = $('pTitleCardSecs').oninput = () => cardChanged('title_card');
 $('pEndCardText').oninput = $('pEndCardSecs').oninput = () => cardChanged('end_card');
 function cardChanged(which) {
