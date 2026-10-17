@@ -221,7 +221,28 @@ def update_from_editor(project, data):
     for key in ('title_card', 'end_card'):
         if key in data:
             project[key] = _clean_card(data[key])
+    if 'loras' in data:
+        project['loras'] = clean_loras(data['loras'])
     return project
+
+
+def clean_loras(items):
+    """Validate a film's LoRA list -> [{'name', 'strength', 'enabled'}]: at most 8, .safetensors names, strength -2..2."""
+    if not isinstance(items, list) or len(items) > 8:
+        raise ProjectError('loras must be a list of at most 8 items')
+    out = []
+    for item in items:
+        name = item.get('name') if isinstance(item, dict) else None
+        if not isinstance(name, str) or not name.endswith('.safetensors') or '/' in name or '..' in name:
+            raise ProjectError('lora name must be a .safetensors file name')
+        strength = item.get('strength', 1.0)
+        if isinstance(strength, bool) or not isinstance(strength, (int, float)) or not -2 <= strength <= 2:
+            raise ProjectError('lora strength must be a number from -2 to 2')
+        enabled = item.get('enabled', True)
+        if not isinstance(enabled, bool):
+            raise ProjectError('lora enabled must be true or false')
+        out.append({'name': name, 'strength': float(strength), 'enabled': enabled})
+    return out
 
 
 def _clean_card(card):

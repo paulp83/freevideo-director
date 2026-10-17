@@ -366,7 +366,7 @@ def render_scene(slug, scene_id, preset_name, job, variant=None):
     w, h = p['size']
     args = dict(prompt=prompt, seconds=scene['seconds'], width=w, height=h, seed=scene['seed'],
                 refs=_files(refs), first=_files([first])[0] if first else None, last=None,
-                two_pass=preset['two_pass'])
+                two_pass=preset['two_pass'], loras=p.get('loras'))
     def on_take(take):
         def apply(proj):
             s = proj['scenes'][projects.scene_index(proj, scene_id)]
@@ -671,6 +671,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, queue_view())
         if self.path == '/queue':
             return self.reply(200, (HERE / 'queue.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/api/loras':
+            try:
+                names = comfy('/object_info/FreeVideoLoRA')['FreeVideoLoRA']['input']['required']['lora'][0]
+            except (OSError, KeyError, IndexError, ValueError) as e:
+                return self.reply(502, {'error': f'ComfyUI LoRA list unavailable at {COMFY}: {e}'})
+            return self.reply(200, {'loras': [n for n in names if n != 'None']})
         if self.path == '/api/library':
             return self.reply(200, [library_view(c) for c in library.list_all()])
         if self.path.startswith('/library-files/'):
