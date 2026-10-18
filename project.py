@@ -21,6 +21,7 @@ LOCK = threading.Lock()
 SIZES = {'16:9': (1344, 768), '9:16': (768, 1344)}
 FILM_SIZES = {'16:9': (1920, 1080), '9:16': (1080, 1920)}
 I2VA_LINE = 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.'
+MAX_REFS = 4                                  # reference pictures per film, uploads and library characters together
 TRANSITIONS = ('cut', 'crossfade', 'dip')
 XFADE = 0.5
 DIP = 0.4
@@ -117,8 +118,8 @@ def create(name, logline, seconds, aspect, refs, characters=()):
         except library.LibraryError:
             raise ProjectError(f'no such character: {slug}')
     pics = [c for c in chars if c.get('image')]
-    if pics and len(refs) + len(pics) > 2:
-        raise ProjectError('at most 2 reference pictures, including library characters')
+    if pics and len(refs) + len(pics) > MAX_REFS:
+        raise ProjectError(f'at most {MAX_REFS} reference pictures, including library characters')
     sources = {}
     for c in pics:                                 # resolve the files now: nothing exists yet if one is missing
         try:
@@ -132,7 +133,7 @@ def create(name, logline, seconds, aspect, refs, characters=()):
     path(slug, 'refs').mkdir(parents=True)
     path(slug, 'frames').mkdir()
     names, cref = [], {}
-    for i, (fname, raw) in enumerate(refs[:2], 1):
+    for i, (fname, raw) in enumerate(refs[:MAX_REFS], 1):
         ext = (Path(fname).suffix or '.jpg').lower()
         target = path(slug, 'refs', f'picture-{i}{ext}')
         target.write_bytes(raw)
@@ -185,8 +186,8 @@ def set_characters(project, slugs):
         old = dict(zip(pic_slugs, project['refs'][len(project['refs']) - len(pic_slugs):])) if pic_slugs else {}
     uploaded = [n for n in project['refs'] if n not in old.values()]
     pics = [c for c in chars if c.get('image')]
-    if len(uploaded) + len(pics) > 2:
-        raise ProjectError('at most 2 reference pictures, including library characters')
+    if len(uploaded) + len(pics) > MAX_REFS:
+        raise ProjectError(f'at most {MAX_REFS} reference pictures, including library characters')
     sources = {}
     for c in pics:
         try:

@@ -72,8 +72,8 @@ def image_part(path, max_side):
 def select_mode(refs=(), first=None, last=None):
     if refs and (first or last):
         raise DirectorError('use either reference images or first/last frames, not both')
-    if len(refs) > 2:
-        raise DirectorError('at most 2 images (server limit)')
+    if len(refs) > 4:
+        raise DirectorError('at most 4 images (server limit)')
     return ('ref2va' if refs else 'fl2va' if first and last else
             'i2va' if first else 'l2va' if last else 't2va')
 
@@ -288,7 +288,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('idea', help='Rough idea, in any language')
     p.add_argument('--seconds', type=float, default=10, help='Target length, 4-15 s (default 10)')
-    p.add_argument('--ref', action='append', default=[], help='Reference image (Ref2VA); up to 2')
+    p.add_argument('--ref', action='append', default=[], help='Reference image (Ref2VA); up to 4')
     p.add_argument('--first', help='First-frame image (I2VA / FL2VA)')
     p.add_argument('--last', help='Last-frame image (L2VA / FL2VA)')
     p.add_argument('--no-think', action='store_true', help='Skip model reasoning (faster, usually weaker)')

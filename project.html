@@ -125,10 +125,12 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
         </div>
       </div>
       <div>
-        <label class="inline">Reference pictures (optional, up to 2): people and places to reuse</label>
+        <label class="inline">Reference pictures (optional, up to 4): people and places to reuse</label>
         <div class="grid2" style="margin-top:6px">
           <div class="slot" data-i="0">Picture 1</div>
           <div class="slot" data-i="1">Picture 2</div>
+          <div class="slot" data-i="2">Picture 3</div>
+          <div class="slot" data-i="3">Picture 4</div>
         </div>
       </div>
     </div>
@@ -139,7 +141,7 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
     <p class="hint">The director plans the scenes (4–15 s each), a style bible for consistent characters, and a music brief. About 20 s. Everything stays editable.</p>
     <div class="grid2" style="margin-top:10px">
       <div>
-        <label class="inline">Characters from your library (each picture takes one of the 2 picture slots)</label>
+        <label class="inline">Characters from your library (each picture takes one of the 4 picture slots)</label>
         <div id="nCharacters"></div>
       </div>
       <div>
@@ -200,7 +202,7 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
           <h2 style="margin-top:14px">Characters</h2>
           <div id="pChars"></div>
           <div class="row"><button class="btn ghost" id="pCharsApply">Apply characters</button><span id="pCharsStatus" class="hint"></span></div>
-          <p class="hint">From your character library. Pictures become reference pictures (2 in total with uploads). Scene prompts already written are not changed: use Rewrite prompt on those scenes.</p>
+          <p class="hint">From your character library. Pictures become reference pictures (4 in total with uploads). Scene prompts already written are not changed: use Rewrite prompt on those scenes.</p>
           <h2 style="margin-top:14px">LoRAs</h2>
           <div id="loras"></div>
           <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
@@ -309,7 +311,7 @@ $('createBtn').onclick = async () => {
   const st = $('createStatus'), t0 = Date.now();
   const chosen = [...document.querySelectorAll('#nCharacters input:checked')].map(x => x.value);
   const pics = chosen.filter(s => (library.find(c => c.slug === s) || {}).image_url).length + newRefs.filter(Boolean).length;
-  if (pics > 2) { st.textContent = 'Pick at most 2 pictures in total (uploads plus characters with a picture).'; st.classList.add('err'); return; }
+  if (pics > 4) { st.textContent = 'Pick at most 4 pictures in total (uploads plus characters with a picture).'; st.classList.add('err'); return; }
   $('createBtn').disabled = true;
   const tick = setInterval(() => st.textContent = `Storyboarding… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
   try {
