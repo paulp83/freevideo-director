@@ -392,13 +392,18 @@ def ref_files(project):
 # ---------------------------------------------------------------- continuity
 
 def last_frame(project, run):
-    """Write the take's final frame (lossless, from rgb.npy) to frames/ and return its path."""
+    """Write the take's final frame (lossless from rgb.npy; from video.mp4 when that is gone) to frames/ and return its path."""
     run = enhance.run_dir_of(run)
     npy = run / 'video.artifacts' / 'rgb.npy'
-    (frames, height, width, _), offset = enhance.npy_header(npy)
     out = path(project['slug'], 'frames', f'{run.name}-last.png')
     if out.is_file():
         return out
+    if not npy.is_file():                         # FreeVideo 0.4.9+ frees the raw frames: take it from the MP4
+        out.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-sseof', '-0.5', '-i', str(run / 'video.mp4'),
+                        '-update', '1', str(out)], check=True)
+        return out
+    (frames, height, width, _), offset = enhance.npy_header(npy)
     size = height * width * 3
     with open(npy, 'rb') as f:
         f.seek(offset + (frames - 1) * size)
