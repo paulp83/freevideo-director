@@ -131,7 +131,7 @@ def create(name, logline, seconds, aspect, refs, characters=()):
     slug = slugify(name or logline[:30])
     path(slug, 'refs').mkdir(parents=True)
     path(slug, 'frames').mkdir()
-    names = []
+    names, cref = [], {}
     for i, (fname, raw) in enumerate(refs[:2], 1):
         ext = (Path(fname).suffix or '.jpg').lower()
         target = path(slug, 'refs', f'picture-{i}{ext}')
@@ -146,6 +146,7 @@ def create(name, logline, seconds, aspect, refs, characters=()):
         target.write_bytes(src.read_bytes())
         c['picture'] = n
         names.append(target.name)
+        cref[c['slug']] = target.name
     notes = []
     for c in chars:
         line = f'{c["name"]}: {c["description"]}'
@@ -156,8 +157,63 @@ def create(name, logline, seconds, aspect, refs, characters=()):
                'aspect': aspect, 'size': list(SIZES[aspect]), 'refs': names, 'music_file': None,
                'title': '', 'bible': '', 'music_brief': '', 'notes': '', 'title_card': None, 'end_card': None,
                'scenes': [], 'outputs': {}, 'characters': [c['slug'] for c in chars],
-               'character_notes': chr(10).join(notes), 'created': time.time()}
+               'character_notes': chr(10).join(notes), 'character_refs': cref, 'created': time.time()}
     return save(project)
+
+
+def set_characters(project, slugs):
+    """Replace the film's library characters: their pictures in refs/ (uploads stay) and the character notes.
+
+    Scene prompts already written are not touched; rewrite them to mention the new characters."""
+    if not isinstance(slugs, list) or not all(isinstance(c, str) for c in slugs):
+        raise ProjectError('characters must be a list of library names')
+    chars = []
+    for slug in dict.fromkeys(slugs):
+        try:
+            chars.append(library.get(slug))
+        except library.LibraryError:
+            raise ProjectError(f'no such character: {slug}')
+    old = project.get('character_refs')
+    if old is None:                                # made before character_refs: the library pictures came last
+        pic_slugs = []
+        for slug in project.get('characters', []):
+            try:
+                if library.get(slug).get('image'):
+                    pic_slugs.append(slug)
+            except library.LibraryError:
+                pass
+        old = dict(zip(pic_slugs, project['refs'][len(project['refs']) - len(pic_slugs):])) if pic_slugs else {}
+    uploaded = [n for n in project['refs'] if n not in old.values()]
+    pics = [c for c in chars if c.get('image')]
+    if len(uploaded) + len(pics) > 2:
+        raise ProjectError('at most 2 reference pictures, including library characters')
+    sources = {}
+    for c in pics:
+        try:
+            sources[c['slug']] = library.image_path(c['slug'])
+        except library.LibraryError as e:
+            raise ProjectError(f'picture of {c["name"]} is unavailable: {e}')
+        if not sources[c['slug']].is_file():
+            raise ProjectError(f'picture of {c["name"]} is missing')
+    for name in old.values():
+        path(project['slug'], 'refs', name).unlink(missing_ok=True)
+    names, cref = list(uploaded), {}
+    for c in pics:
+        src = sources[c['slug']]
+        target = path(project['slug'], 'refs', f'character-{c["slug"]}{src.suffix}')
+        target.write_bytes(src.read_bytes())
+        names.append(target.name)
+        c['picture'] = len(names)
+        cref[c['slug']] = target.name
+    notes = []
+    for c in chars:
+        line = f'{c["name"]}: {c["description"]}'
+        if c.get('picture'):
+            line += f' (see <Picture {c["picture"]}>)'
+        notes.append(line)
+    project.update(refs=names, characters=[c['slug'] for c in chars], character_refs=cref,
+                   character_notes=chr(10).join(notes))
+    return project
 
 
 def new_scene(title='New scene', seconds=6, connect='cut', action=''):

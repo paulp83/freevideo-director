@@ -197,6 +197,10 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
           <h2 style="margin-top:14px">Director's notes</h2>
           <textarea id="pNotes" rows="3" maxlength="1000" placeholder="Director's notes: e.g. no text on screen, always handheld"></textarea>
           <p class="hint">Rules for the whole film. Added to every scene prompt.</p>
+          <h2 style="margin-top:14px">Characters</h2>
+          <div id="pChars"></div>
+          <div class="row"><button class="btn ghost" id="pCharsApply">Apply characters</button><span id="pCharsStatus" class="hint"></span></div>
+          <p class="hint">From your character library. Pictures become reference pictures (2 in total with uploads). Scene prompts already written are not changed: use Rewrite prompt on those scenes.</p>
           <h2 style="margin-top:14px">LoRAs</h2>
           <div id="loras"></div>
           <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
@@ -319,7 +323,27 @@ $('createBtn').onclick = async () => {
 
 let library = [];
 let libImage = null;
-async function loadLibrary() { library = await api('/api/library'); renderLibrary(); }
+async function loadLibrary() { library = await api('/api/library'); renderLibrary(); renderProjChars(); }
+// Characters of the open film: checkboxes from the library; kept while the user is choosing
+let charSig = '';
+function renderProjChars() {
+  if (typeof proj === 'undefined' || !proj || !$('pChars')) return;
+  const sig = JSON.stringify([proj.slug, proj.characters || [], library.map(c => c.slug)]);
+  if (sig === charSig) return;
+  charSig = sig; $('pChars').replaceChildren();
+  for (const c of library) {
+    const cb = el('input', {type: 'checkbox', value: c.slug});
+    cb.checked = (proj.characters || []).includes(c.slug);
+    $('pChars').append(el('label', {class: 'inline'}, cb, ' ' + c.name + (c.image_url ? ' · picture' : '')));
+  }
+  if (!library.length) $('pChars').textContent = 'No characters yet: add some in the library on the New film screen.';
+}
+$('pCharsApply').onclick = async () => {
+  const st = $('pCharsStatus'); st.classList.remove('err');
+  const chosen = [...document.querySelectorAll('#pChars input:checked')].map(x => x.value);
+  try { await api(`/api/p/${slug}/characters`, {characters: chosen}); st.textContent = 'Applied'; charSig = ''; await refresh(true); }
+  catch (e) { st.textContent = e.message; st.classList.add('err'); }
+};
 function renderLibrary() {
   const box = $('nCharacters');
   const checked = new Set([...box.querySelectorAll('input')].filter(x => x.checked).map(x => x.value));
@@ -380,6 +404,7 @@ function draw(force) {
   setIfIdle($('pBible'), p.bible, 'bible');
   setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
   setIfIdle($('pNotes'), p.notes || '', 'notes');
+  renderProjChars();
   if (!('loras' in dirtyTop) && JSON.stringify(loraList) !== JSON.stringify(p.loras || [])) {
     loraList = structuredClone(p.loras || []); if (loraNames) loraRows(() => markDirty(null, 'loras', structuredClone(loraList)));
   }
