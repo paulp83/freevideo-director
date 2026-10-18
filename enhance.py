@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Enhance a finished FreeVideo take: SeedVR2 upscale -> RIFE frame interpolation -> CRF encode.
 
-Works from the render's retained raw frames (video.artifacts/rgb.npy + audio.wav), so the
-take's own lossy MP4 is never re-compressed. Runs as a ComfyUI graph on the FreeVideo
+Works from the render's retained raw frames (video.artifacts/rgb.npy + audio.wav) when they exist, so the
+take's own lossy MP4 is never re-compressed. FreeVideo 0.4.9+ deletes them once the MP4 is saved; then the MP4 is the source. Runs as a ComfyUI graph on the FreeVideo
 workspace (:8190, GPU 0); FreeVideo's idle engine is released first via ComfyUI's /free.
 
   python3 enhance.py <freevideo run dir | video.mp4> [--resolution 1080] [--fps-multiplier 2]
@@ -36,7 +36,9 @@ def run_dir_of(path):
     for candidate in (p, *p.parents):
         if (candidate / 'video.artifacts' / 'rgb.npy').is_file():
             return candidate
-    raise FileNotFoundError(f'no video.artifacts/rgb.npy at or above {p} (only FreeVideo renders can be enhanced)')
+        if (candidate / 'video.mp4').is_file() and (candidate / 'video.artifacts').is_dir():
+            return candidate                      # FreeVideo 0.4.9+ frees the raw frames after saving the MP4
+    raise FileNotFoundError(f'no video.artifacts/rgb.npy or video.mp4 at or above {p} (only FreeVideo renders can be enhanced)')
 
 
 def npy_header(path):
@@ -54,7 +56,12 @@ def npy_header(path):
 
 
 def intermediate(run):
-    """Write the raw frames (+ audio) losslessly to ComfyUI/input/director/<run>-raw.mkv."""
+    """Write the raw frames (+ audio) losslessly to ComfyUI/input/director/<run>-raw.mkv.
+
+    Without raw frames (FreeVideo 0.4.9+) return the take's own video.mp4 and no frame count.
+    """
+    if not (run / 'video.artifacts' / 'rgb.npy').is_file():
+        return run / 'video.mp4', None
     shape, offset = npy_header(run / 'video.artifacts' / 'rgb.npy')
     frames, height, width, _ = shape
     out = COMFY_ROOT / 'input' / 'director' / f'{run.name}-raw.mkv'
