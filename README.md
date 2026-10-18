@@ -60,3 +60,22 @@ a logline, and you draft, pick, and finish scenes step by step:
 | `docs/` | Documentation and screenshots |
 
 All servers bind to `127.0.0.1` by default.
+
+## Credits
+
+This tool is glue around other people's work. None of it is bundled except the prompt-writing skill.
+
+- **[FreeVideo](https://github.com/FlashML-org/FreeVideo)** (FlashML): the local video and audio
+  generation engine and its ComfyUI node. It runs MiniMax's open
+  [H3 model weights](https://huggingface.co/OpenVDN/vdn-minimax-h3-edge) under the MiniMax H3
+  Community License, which has territorial and acceptable-use restrictions. Read it before you share anything you generate.
+- **[MiniMax-H3](https://github.com/MiniMax-AI/MiniMax-H3):** the `h3-prompt-writing` skill in
+  [`skill/`](skill/) is a pinned copy of MiniMax's own, and defines the prompt format the director writes.
+- **[ComfyUI](https://github.com/comfy-org/ComfyUI)** runs the render and finishing graphs, with these custom nodes:
+  - [ComfyUI-SeedVR2_VideoUpscaler](https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler) (numz): 1080p upscale
+  - [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (Fannovel16): RIFE 48 fps smoothing
+  - [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) (Kosinkadink): video load and H.264 encode
+- **Director models:** [Qwen3.8-27B and Qwen3.6-35B-A3B](https://huggingface.co/Qwen) from the Qwen team
+  at Alibaba, served with SGLang and vLLM using the recipes in
+  [club-3090](https://github.com/noonghunna/club-3090).
+- **[FFmpeg](https://ffmpeg.org)** for image scaling, cuts, audio mixing and loudness normalisation.
