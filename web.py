@@ -673,7 +673,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (HERE / 'queue.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/api/loras':
             try:
-                names = comfy('/object_info/FreeVideoLoRA')['FreeVideoLoRA']['input']['required']['lora'][0]
+                spec = comfy('/object_info/FreeVideoLoRA')['FreeVideoLoRA']['input']['required']['lora']
+                names = spec[1]['options'] if spec[0] == 'COMBO' else spec[0]      # newer ComfyUI: ['COMBO', {'options': [...]}]
             except (OSError, KeyError, IndexError, ValueError) as e:
                 return self.reply(502, {'error': f'ComfyUI LoRA list unavailable at {COMFY}: {e}'})
             return self.reply(200, {'loras': [n for n in names if n != 'None']})
