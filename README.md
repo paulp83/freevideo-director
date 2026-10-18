@@ -78,4 +78,5 @@ This tool is glue around other people's work. None of it is bundled except the p
 - **Director models:** [Qwen3.8-27B and Qwen3.6-35B-A3B](https://huggingface.co/Qwen) from the Qwen team
   at Alibaba, served with SGLang and vLLM using the recipes in
   [club-3090](https://github.com/noonghunna/club-3090).
+- **[noonghunna](https://github.com/noonghunna)**, who built the club-3090 community and encouraged me to experiment in this space. This project exists because of that support.
 - **[FFmpeg](https://ffmpeg.org)** for image scaling, cuts, audio mixing and loudness normalisation.
