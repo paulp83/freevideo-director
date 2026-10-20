@@ -1,14 +1,14 @@
 """Film projects: storyboard -> scenes -> takes -> animatic / film. Storage, continuity and assembly.
 
 A project lives in director/projects/<slug>/ :
-  project.json      title, logline, bible, scenes (prompt, seed, takes, star), outputs
+  project.json      title, logline, bible, scenes (prompt, seed, takes, star), outputs, rev + key_revs
   refs/             reference pictures (used as <Picture N> for cut scenes)
   frames/           last frames handed to "continue" scenes (lossless, from the take's rgb.npy)
   music.*           optional music bed for the film
   animatic-*.mp4, film-*.mp4   assembled cuts
 Takes stay in ComfyUI's output folder; the project only points at them. Stdlib + ffmpeg.
 """
-import json, os, re, secrets, shutil, subprocess, tempfile, threading, time
+import copy, json, os, re, secrets, shutil, subprocess, tempfile, threading, time
 from pathlib import Path
 
 import enhance
@@ -68,11 +68,93 @@ def save(project):
 
 
 def mutate(slug, fn):
-    """Load, apply fn(project), save, under the process lock. Returns the project."""
+    """Load, apply fn(project), save, under the process lock; bumps `rev`. Returns the project."""
     with LOCK:
+        return _mutate(slug, fn)
+
+
+def _mutate(slug, fn):
+    """mutate() without the lock: callers that must check and write as one step hold LOCK themselves."""
+    project = load(slug)
+    before = copy.deepcopy(_flat(project))       # fn edits nested lists/dicts in place, so snapshot
+    fn(project)
+    _stamp(project, before)
+    return save(project)
+
+
+# ---------------------------------------------------------------- revisions
+#
+# Every write through mutate() bumps the project's integer `rev` and stamps each field it changed in
+# `key_revs` (field -> the rev that field last changed). An editor save may carry the `rev` it was
+# loaded at as `base_rev`: when none of the fields that save touches changed since then the patch merges
+# on its own, otherwise the save is refused with HTTP 409 plus the current project and the client keeps
+# its draft. Server-side writes (recorded takes, stars, seeds, batch state) never consult base_rev,
+# they only bump `rev`. Projects written before revisions have no `rev` key: rev_of() reads 0.
+
+BOOKKEEPING = ('rev', 'key_revs', 'updated')
+EDITOR_FIELDS = ('title', 'bible', 'music_brief', 'notes', 'title_card', 'end_card', 'loras', 'scenes')
+SCENE_FIELDS = ('title', 'action', 'prompt', 'seconds', 'connect', 'transition')
+_MISSING = object()
+
+
+def rev_of(project):
+    return int(project.get('rev') or 0)
+
+
+def _flat(project):
+    """The fields that get a rev stamp, as field -> value. Scenes are tracked per scene per field, so a
+    take recorded on one scene does not collide with an edit of another; the `scenes` field itself covers
+    only the order and identity of the list (reorder, add, remove)."""
+    out = {k: v for k, v in project.items() if k not in BOOKKEEPING}
+    out['scenes'] = [s.get('id') for s in project.get('scenes', [])]
+    for scene in project.get('scenes', []):
+        for key, value in scene.items():
+            out[f'scenes.{scene.get("id")}.{key}'] = value
+    return out
+
+
+def _stamp(project, before):
+    """Bump `rev` and record in `key_revs` the fields that differ from the `before` snapshot."""
+    rev = rev_of(project) + 1
+    project['rev'] = rev
+    key_revs = dict(project.get('key_revs') or {})
+    for field, value in _flat(project).items():
+        if before.get(field, _MISSING) != value:
+            key_revs[field] = rev
+    alive = {s.get('id') for s in project.get('scenes', [])}
+    project['key_revs'] = {f: r for f, r in key_revs.items()
+                           if not (f.startswith('scenes.') and len(p := f.split('.')) == 3 and p[1] not in alive)}
+
+
+def patch_fields(data):
+    """The fields an editor patch would touch, named the way `key_revs` names them."""
+    fields = {key for key in EDITOR_FIELDS if key in data}
+    for item in data.get('scenes') or []:
+        if isinstance(item, dict) and item.get('id'):
+            fields |= {f"scenes.{item['id']}.{key}" for key in SCENE_FIELDS if key in item}
+    return fields
+
+
+def conflicts(project, base_rev, data):
+    """The patch fields that changed after base_rev; empty when the patch merges cleanly. A base_rev that
+    is not an integer in 0..rev is a conflict whatever the patch touches."""
+    if type(base_rev) is not int or not 0 <= base_rev <= rev_of(project):
+        return sorted(patch_fields(data)) or ['rev']
+    key_revs = project.get('key_revs') or {}
+    return sorted(f for f in patch_fields(data) if int(key_revs.get(f, 0)) > base_rev)
+
+
+def save_editor(slug, data, base_rev=None):
+    """Apply the editor's patch, returning (project, fields). With base_rev the patch merges only when it
+    conflicts on nothing; otherwise nothing is written and `fields` names what got in the way."""
+    if base_rev is None:
+        return mutate(slug, lambda p: update_from_editor(p, data)), []
+    with LOCK:                                   # the check and the write are one step
         project = load(slug)
-        fn(project)
-        return save(project)
+        fields = conflicts(project, base_rev, data)
+        if fields:
+            return None, fields
+        return _mutate(slug, lambda p: update_from_editor(p, data)), []
 
 
 def listing():

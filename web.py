@@ -793,8 +793,12 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(502, {'error': f'ComfyUI unreachable at {COMFY}: {e}'})
 
     def project_action(self, slug, action, data):
-        if action == 'save':
-            return self.reply(200, projects.mutate(slug, lambda p: projects.update_from_editor(p, data)))
+        if action == 'save':                         # base_rev: the rev the editor was loaded at (optional)
+            project, fields = projects.save_editor(slug, data, data.get('base_rev'))
+            if fields:                               # the film changed underneath this editor: keep its draft
+                return self.reply(409, {'error': 'the film changed while you were editing', 'fields': fields,
+                                        'project': project_view(slug)})
+            return self.reply(200, project)
         if action == 'storyboard':                     # re-plan: replaces scenes (the page confirms first)
             p = projects.load(slug)
             plan, _ = director.storyboard(data.get('logline') or p['logline'], p['seconds'],

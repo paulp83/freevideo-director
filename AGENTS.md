@@ -18,13 +18,15 @@ what the code does not say.
 
 ## Verify
 
-There is no test suite. Check a change by running it:
+Check a change by running it:
 
 1. `python3 -m py_compile *.py`
-2. Start the UI on a spare port (`python3 web.py --port 8199`) and `curl` the pages and `/api/...`
+2. `python3 -m unittest discover tests` — the suite lives in `tests/`, runs from the repo root, and keeps
+   to a temp projects dir, so it never touches `projects/`.
+3. Start the UI on a spare port (`python3 web.py --port 8199`) and `curl` the pages and `/api/...`
    endpoints you touched. The UI runs without a director model or ComfyUI; only *Write prompt* and
    *Render* need them.
-3. For prompt changes, run `eval.py` against a live director model and compare with `eval/*/results.json`;
+4. For prompt changes, run `eval.py` against a live director model and compare with `eval/*/results.json`;
    the pass count (`passed` / `total`) must not drop.
 
 ## Gotchas
