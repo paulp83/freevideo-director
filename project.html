@@ -254,15 +254,92 @@ const $ = id => document.getElementById(id);
 let slug = new URLSearchParams(location.search).get('p');
 let proj = null, aspect = '16:9';
 const newRefs = [null, null];
-const dirty = {};            // scene id -> {field: value}
-let dirtyTop = {};           // title / bible / music_brief
-let saveTimer = null;
+/* Pure autosave state: DOM-free and fetch-free. tests/autosave_check.js lifts the
+   block between the AUTOSAVE markers and runs it under node, so keep it dependency-free.
+   Every editable field carries a generation counter; while an edit is unacknowledged it
+   lives in pendingTop / pendingScene as {value, gen}. A save snapshots {value, gen}; the
+   ack clears a field only while its generation still matches, so typing during a request
+   keeps the field dirty and a follow-up save carries it. A 409 never touches the draft:
+   only Reload does. */
+/* ==AUTOSAVE-CORE-BEGIN== */
+function autosaveState(slug) {
+  return {slug: slug || null, rev: 0,               // revision the next save is based on
+          genTop: {}, genScene: {},                 // per-field generation counters
+          pendingTop: {}, pendingScene: {},         // field -> {value, gen} not yet acknowledged
+          structure: null,                          // pending scene list (move/add/delete), else null
+          conflict: null,                           // {fields, rev} while "changed elsewhere" is unresolved
+          error: null};                             // last save failure, cleared on success
+}
+function asMark(st, sceneId, key, value) {          // one edit: bump the field's generation, keep the draft
+  if (sceneId === null || sceneId === undefined) {
+    st.genTop[key] = (st.genTop[key] || 0) + 1;
+    st.pendingTop[key] = {value: value, gen: st.genTop[key]};
+  } else {
+    const gen = st.genScene[sceneId] ||= {}, pen = st.pendingScene[sceneId] ||= {};
+    gen[key] = (gen[key] || 0) + 1;
+    pen[key] = {value: value, gen: gen[key]};
+  }
+}
+function asSnapshot(st) {   // what one request sends: values plus the generations they were tagged with
+  const snap = {rev: st.rev, structure: st.structure, top: {}, scenes: {}};
+  for (const [k, r] of Object.entries(st.pendingTop)) snap.top[k] = {value: r.value, gen: r.gen};
+  for (const [sid, fields] of Object.entries(st.pendingScene)) {
+    const out = {};
+    for (const [k, r] of Object.entries(fields)) out[k] = {value: r.value, gen: r.gen};
+    snap.scenes[sid] = out;
+  }
+  return snap;
+}
+function asBody(snap, sceneList) {                  // the JSON patch for one save request
+  const body = {};
+  for (const [k, r] of Object.entries(snap.top)) body[k] = r.value;
+  body.scenes = sceneList.map(s => {
+    const patch = {id: s.id};
+    for (const [k, r] of Object.entries(snap.scenes[s.id] || {})) patch[k] = r.value;
+    return patch;
+  });
+  body.base_rev = snap.rev;
+  return body;
+}
+function asAck(st, snap) {   // clear only fields whose generation still matches what was sent
+  for (const [k, r] of Object.entries(snap.top))
+    if (st.pendingTop[k] && st.pendingTop[k].gen === r.gen) delete st.pendingTop[k];
+  for (const [sid, fields] of Object.entries(snap.scenes)) {
+    const cur = st.pendingScene[sid];
+    if (!cur) continue;                             // the scene was deleted while the save was out
+    for (const [k, r] of Object.entries(fields))
+      if (cur[k] && cur[k].gen === r.gen) delete cur[k];
+    if (!Object.keys(cur).length) delete st.pendingScene[sid];
+  }
+  if (st.structure && snap.structure === st.structure) st.structure = null;
+}
+function asHasPending(st) {
+  return Object.keys(st.pendingTop).length > 0 || st.structure !== null ||
+         Object.values(st.pendingScene).some(f => Object.keys(f).length > 0);
+}
+function asStale(st, requestSlug) { return requestSlug !== st.slug; }  // response for a project we left
+function asConflict(st, fields, projectRev) {       // 409: the draft stays pending, untouched
+  st.conflict = {fields: fields || [], rev: projectRev};
+}
+function asResolveConflict(st, keepMine) {
+  if (!st.conflict) return null;
+  const rev = st.conflict.rev;
+  st.conflict = null;
+  if (keepMine) return rev;                         // Keep mine: resend the draft on this rev
+  st.pendingTop = {}; st.pendingScene = {}; st.structure = null;   // Reload: drop the draft
+  st.rev = rev;                                     // and adopt the server revision
+  return null;
+}
+/* ==AUTOSAVE-CORE-END== */
+
+let st = autosaveState(slug);
+let saveTimer = null, saveBusy = null, saveAgain = false, viewToken = 0;
 
 /* ---------- helpers ---------- */
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || r.statusText);
+  if (!r.ok) { const e = new Error(j.error || r.statusText); e.status = r.status; e.payload = j; throw e; }
   return j;
 }
 function el(tag, attrs = {}, ...kids) {
@@ -308,18 +385,18 @@ document.querySelectorAll('#newBox .slot').forEach(slot => {
   show();
 });
 $('createBtn').onclick = async () => {
-  const st = $('createStatus'), t0 = Date.now();
+  const stat = $('createStatus'), t0 = Date.now();
   const chosen = [...document.querySelectorAll('#nCharacters input:checked')].map(x => x.value);
   const pics = chosen.filter(s => (library.find(c => c.slug === s) || {}).image_url).length + newRefs.filter(Boolean).length;
-  if (pics > 4) { st.textContent = 'Pick at most 4 pictures in total (uploads plus characters with a picture).'; st.classList.add('err'); return; }
+  if (pics > 4) { stat.textContent = 'Pick at most 4 pictures in total (uploads plus characters with a picture).'; stat.classList.add('err'); return; }
   $('createBtn').disabled = true;
-  const tick = setInterval(() => st.textContent = `Storyboarding… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
+  const tick = setInterval(() => stat.textContent = `Storyboarding… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
   try {
     const p = await api('/api/projects', {name: $('nName').value, logline: $('nLogline').value, seconds: +$('nSeconds').value,
                                           aspect, refs: newRefs.filter(Boolean), characters: chosen});
-    clearInterval(tick); st.textContent = '';
+    clearInterval(tick); stat.textContent = '';
     await loadList(); open(p.slug);
-  } catch (e) { clearInterval(tick); st.textContent = e.message; st.classList.add('err'); }
+  } catch (e) { clearInterval(tick); stat.textContent = e.message; stat.classList.add('err'); }
   $('createBtn').disabled = false;
 };
 
@@ -341,10 +418,13 @@ function renderProjChars() {
   if (!library.length) $('pChars').textContent = 'No characters yet: add some in the library on the New film screen.';
 }
 $('pCharsApply').onclick = async () => {
-  const st = $('pCharsStatus'); st.classList.remove('err');
+  const stat = $('pCharsStatus'); stat.classList.remove('err');
   const chosen = [...document.querySelectorAll('#pChars input:checked')].map(x => x.value);
-  try { await api(`/api/p/${slug}/characters`, {characters: chosen}); st.textContent = 'Applied'; charSig = ''; await refresh(true); }
-  catch (e) { st.textContent = e.message; st.classList.add('err'); }
+  const requestSlug = slug;
+  try { await api(`/api/p/${requestSlug}/characters`, {characters: chosen});
+        if (asStale(st, requestSlug)) return;
+        viewToken++; stat.textContent = 'Applied'; charSig = ''; await refresh(true); }
+  catch (e) { stat.textContent = e.message; stat.classList.add('err'); }
 };
 function renderLibrary() {
   const box = $('nCharacters');
@@ -380,14 +460,20 @@ $('libAdd').onclick = async () => {
 /* ---------- open + poll ---------- */
 async function open(s) {
   slug = s; history.replaceState(null, '', '/project?p=' + s);
+  st = autosaveState(s); viewToken++;   // the old draft is dropped; in-flight responses fail asStale
   $('newBox').hidden = true; $('projBox').hidden = false; $('picker').value = s;
-  $('scenes').replaceChildren();
+  $('scenes').replaceChildren(); $('scenes').dataset.ids = '';
   await refresh(true);
+  if (proj && typeof proj.rev === 'number') st.rev = proj.rev;
 }
 async function refresh(force) {
   if (!slug) return;
-  try { proj = await api('/api/p/' + slug); } catch (e) { flash(e.message, true); return; }
-  draw(force);
+  const requestSlug = slug, token = viewToken;
+  try {
+    const p = await api('/api/p/' + requestSlug);
+    if (asStale(st, requestSlug) || token !== viewToken) return;   // project switched or a newer view applied
+    proj = p; draw(force);
+  } catch (e) { flash(e.message, true); }
 }
 setInterval(() => refresh(false), 3000);
 
@@ -407,7 +493,7 @@ function draw(force) {
   setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
   setIfIdle($('pNotes'), p.notes || '', 'notes');
   renderProjChars();
-  if (!('loras' in dirtyTop) && JSON.stringify(loraList) !== JSON.stringify(p.loras || [])) {
+  if (!('loras' in st.pendingTop) && JSON.stringify(loraList) !== JSON.stringify(p.loras || [])) {
     loraList = structuredClone(p.loras || []); if (loraNames) loraRows(() => markDirty(null, 'loras', structuredClone(loraList)));
   }
   setIfIdle($('pTitleCardText'), p.title_card ? p.title_card.text : '', 'title_card');
@@ -474,20 +560,35 @@ function draw(force) {
     onclick: () => document.getElementById('scene-' + s.id)?.scrollIntoView({behavior: 'smooth', block: 'center'})},
     `${s.connect === 'continue' ? '↪ ' : ''}${i + 1} · ${s.seconds}s`)));
 
-  // scenes: rebuild only when the set/order changes
+  // scenes: rebuild only when the set/order changes — and never on a poll while a structural
+  // save is pending, or a response still carrying the old order would shuffle the cards back
   const ids = p.scenes.map(s => s.id).join(',');
-  if (force || $('scenes').dataset.ids !== ids) { $('scenes').dataset.ids = ids; $('scenes').replaceChildren(...p.scenes.map(buildScene)); }
+  if (force || (st.structure === null && ids !== $('scenes').dataset.ids)) rebuildScenes(p.scenes);
   p.scenes.forEach((s, i) => updateScene(s, i));
+}
+function rebuildScenes(list) {   // rebuild without losing typing focus or the caret
+  const a = document.activeElement;
+  let focus = null;
+  try {
+    if (a && a.closest && a.closest('#scenes') && a.dataset.k)
+      focus = {card: a.closest('.scene').id, k: a.dataset.k, start: a.selectionStart, end: a.selectionEnd};
+  } catch (e) { focus = null; }
+  $('scenes').dataset.ids = list.map(s => s.id).join(',');
+  $('scenes').replaceChildren(...list.map(buildScene));
+  if (focus && focus.start != null) {
+    const n = document.querySelector('#' + CSS.escape(focus.card) + ' [data-k="' + focus.k + '"]');
+    if (n) { n.focus(); try { n.setSelectionRange(focus.start, focus.end); } catch (e) {} }
+  }
 }
 
 function setIfIdle(input, value, key, sceneId) {
-  const d = sceneId ? (dirty[sceneId] || {}) : dirtyTop;
-  if (document.activeElement === input || key in d) return;
+  const d = sceneId ? (st.pendingScene[sceneId] || {}) : st.pendingTop;   // skip fields with an unacknowledged draft
+  if (document.activeElement === input || key in d) return;               // and the field being typed in
   if (input.value !== String(value ?? '')) input.value = value ?? '';
 }
 function markDirty(sceneId, key, value) {
-  if (sceneId) (dirty[sceneId] ||= {})[key] = value; else dirtyTop[key] = value;
-  clearTimeout(saveTimer); flash('Unsaved…'); saveTimer = setTimeout(save, 700);
+  asMark(st, sceneId, key, value);
+  clearTimeout(saveTimer); flash('Unsaved…'); saveTimer = setTimeout(pump, 700);
 }
 // LoRAs: rows of {name, strength, enabled}; names come from ComfyUI via /api/loras
 let loraNames = null, loraList = [];
@@ -521,16 +622,62 @@ async function loadLoras(onChange) {
   loraRows(onChange);
 }
 loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)));
-async function save(structure) {
+function save(structure) {        // immediate kick; structure = the new scene list after move/add/delete
   clearTimeout(saveTimer);
-  const scenes = (structure || proj.scenes).map(s => ({id: s.id, ...(dirty[s.id] || {})}));
-  const body = {...dirtyTop, scenes};
-  const sent = {top: dirtyTop, scenes: structuredClone(dirty)};
-  try {
-    await api(`/api/p/${slug}/save`, body);
-    dirtyTop = {}; for (const k of Object.keys(sent.scenes)) delete dirty[k];
-    flash('Saved'); await refresh(!!structure);
-  } catch (e) { flash(e.message, true); }
+  if (structure) st.structure = structure;
+  return pump();
+}
+function pump() {                 // drain the pending drafts; never more than one request in flight
+  if (saveBusy) { saveAgain = true; return saveBusy; }
+  saveBusy = (async () => {
+    while (slug && !st.conflict && asHasPending(st)) {
+      saveAgain = false;
+      await doSave();
+      if (st.error && saveAgain) continue;    // edits typed during the failed attempt deserve one more try
+    }
+  })();
+  saveBusy.finally(() => { saveBusy = null; });
+  return saveBusy;
+}
+async function doSave() {
+  const requestSlug = slug;
+  const snap = asSnapshot(st);
+  st.error = null;
+  let updated;
+  try { updated = await api(`/api/p/${requestSlug}/save`, asBody(snap, snap.structure || proj.scenes)); }
+  catch (e) {
+    if (asStale(st, requestSlug)) return;
+    if (e.status === 409 && e.payload && e.payload.project) {
+      asConflict(st, e.payload.fields, e.payload.project.rev);
+      const fields = (e.payload.fields || []).join(', ');
+      const mine = confirm('The film changed while you were editing' + (fields ? ' (' + fields + ')' : '') +
+        '. Your draft is kept. OK keeps your draft and overwrites the server copy; Cancel discards your draft and reloads the server copy.');
+      if (asStale(st, requestSlug)) return;
+      const rev = asResolveConflict(st, mine);
+      if (rev !== null) st.rev = rev;                       // Keep mine: the loop below resends on the new rev
+      else { proj = e.payload.project; viewToken++; draw(true); flash('Reloaded the saved copy'); }
+      return;
+    }
+    st.error = e;
+    flash('Not saved: ' + e.message, true);
+    return;
+  }
+  if (asStale(st, requestSlug)) return;
+  asAck(st, snap);
+  if (typeof updated.rev === 'number') st.rev = updated.rev;
+  flash(asHasPending(st) ? 'Saving…' : 'Saved');
+  viewToken++;                                             // this acked view beats any poll still in flight
+  await refresh(!!snap.structure);
+}
+async function flushEdits() {   // dependent actions await this; it rejects unless every edit landed
+  clearTimeout(saveTimer);
+  for (;;) {
+    if (saveBusy) { await saveBusy; continue; }
+    if (st.conflict || !asHasPending(st)) break;
+    await pump();
+  }
+  if (st.conflict) throw new Error('not saved: the film changed while you were editing — pick Reload or Keep mine first');
+  if (asHasPending(st)) throw new Error('not saved: ' + (st.error ? st.error.message : 'the save failed') + ' — your draft is still here; fix it and retry');
 }
 $('pTitle').oninput = e => markDirty(null, 'title', e.target.value);
 $('pBible').oninput = e => markDirty(null, 'bible', e.target.value);
@@ -636,59 +783,93 @@ function updateScene(s, i) {
 }
 
 /* ---------- actions ---------- */
-async function run(action, body) {
-  try { if (Object.keys(dirty).length || Object.keys(dirtyTop).length) await save(); proj = await api(`/api/p/${slug}/${action}`, body); draw(); }
+async function run(action, body) {   // every action that reads the film: saved state must be current first
+  try { await flushEdits();
+        const requestSlug = slug;
+        const p = await api(`/api/p/${requestSlug}/${action}`, body);
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; draw(); }
+  catch (e) { flash(e.message, true); }
+}
+async function runNow(action, body) {  // bookkeeping that never reads the editor: no flush needed
+  try { const requestSlug = slug;
+        const p = await api(`/api/p/${requestSlug}/${action}`, body);
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; draw(); }
   catch (e) { flash(e.message, true); }
 }
 async function sceneAct(action, body) { await run(action, body); }
 async function sceneReroll(id) { await run('reroll', {scene: id}); await run('render', {scene: id, preset: 'draft'}); }
 async function scenePrompt(id) {
-  const card = document.getElementById('scene-' + id), st = q(card, 'sStatus'), t0 = Date.now();
-  const tick = setInterval(() => st.textContent = `Directing… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
-  try { if (Object.keys(dirty).length || Object.keys(dirtyTop).length) await save();
-        proj = await api(`/api/p/${slug}/prompt`, {scene: id}); delete (dirty[id] || {}).prompt;
-        clearInterval(tick); st.textContent = ''; q(card, 'details').open = true; draw(); }
-  catch (e) { clearInterval(tick); st.textContent = e.message; st.classList.add('err'); }
+  const card = document.getElementById('scene-' + id), stat = q(card, 'sStatus'), t0 = Date.now();
+  const tick = setInterval(() => stat.textContent = `Directing… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
+  const requestSlug = slug;
+  try {
+    await flushEdits();                                     // the director reads the saved title and action
+    const draft = (st.pendingScene[id] || {}).prompt;       // typed while the flush was in flight
+    const p = await api(`/api/p/${requestSlug}/prompt`, {scene: id});
+    clearInterval(tick);
+    if (asStale(st, requestSlug)) return;
+    if (draft && (st.pendingScene[id] || {}).prompt && st.pendingScene[id].prompt.gen === draft.gen)
+      delete st.pendingScene[id].prompt;                    // typing during the call itself stays pending
+    proj = p; viewToken++; stat.textContent = ''; q(card, 'details').open = true; draw();
+  }
+  catch (e) { clearInterval(tick); stat.textContent = e.message; stat.classList.add('err'); }
 }
 async function replan() {
   const logline = prompt('Re-plan the storyboard from this logline. This REPLACES all scenes, prompts and takes in the project.', proj.logline);
   if (logline === null) return;
+  try { await flushEdits(); } catch (e) { flash(e.message, true); return; }
   flash('Re-planning… ~20 s');
-  try { proj = await api(`/api/p/${slug}/storyboard`, {logline}); flash('Re-planned'); draw(true); } catch (e) { flash(e.message, true); }
+  const requestSlug = slug;
+  try { const p = await api(`/api/p/${requestSlug}/storyboard`, {logline});
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; flash('Re-planned'); draw(true); } catch (e) { flash(e.message, true); }
 }
 function move(id, dir) {
-  const list = [...proj.scenes], i = list.findIndex(s => s.id === id), j = i + dir;
+  const list = [...(st.structure || proj.scenes)], i = list.findIndex(s => s.id === id), j = i + dir;
   if (j < 0 || j >= list.length) return;
   [list[i], list[j]] = [list[j], list[i]]; save(list);
 }
 function remove(id) {
-  const s = proj.scenes.find(s => s.id === id);
+  const s = (st.structure || proj.scenes).find(x => x.id === id);
   if (!confirm(`Delete scene "${s.title}"? Its takes stay on disk but leave the project.`)) return;
-  delete dirty[id]; save(proj.scenes.filter(s => s.id !== id));
+  delete st.pendingScene[id];                                // the scene is gone; its unsaved fields are moot
+  save((st.structure || proj.scenes).filter(x => x.id !== id));
 }
 $('freeSpace').onclick = async () => {
   const btn = $('freeSpace');
   btn.disabled = true;
   try {
-    if (Object.keys(dirty).length || Object.keys(dirtyTop).length) await save();
-    const plan = (await api(`/api/p/${slug}/prune`, {apply: false})).prune;
+    await flushEdits();                                      // prune acts on the saved star choices
+    const requestSlug = slug;
+    const plan = (await api(`/api/p/${requestSlug}/prune`, {apply: false})).prune;
     if (!plan.candidates.length) { flash('Nothing to free.'); return; }
     if (!confirm(`Move ${plan.candidates.length} unchosen take(s) (${formatBytes(plan.total_bytes)}) to the output folder's .director-trash? Files are moved, not deleted. Starred takes stay.`)) return;
-    const r = await api(`/api/p/${slug}/prune`, {apply: true});
-    proj = r; draw();
+    const r = await api(`/api/p/${requestSlug}/prune`, {apply: true});
+    if (asStale(st, requestSlug)) return;
+    proj = r; viewToken++; draw();
     flash(`Moved ${r.prune.moved} take(s) (${formatBytes(r.prune.bytes)}) to .director-trash`);
   } catch (e) { flash(e.message, true); }
   finally { btn.disabled = busy(); }
 };
 
-$('addScene').onclick = () => save([...proj.scenes, {id: 'new-' + Date.now()}]);
+$('addScene').onclick = () => save([...(st.structure || proj.scenes), {id: 'new-' + Date.now()}]);
 $('musicBtn').onclick = async () => {
   const f = await pick('audio/*'); if (!f) return;
   flash('Uploading music…');
-  try { proj = await api(`/api/p/${slug}/music`, {file: await readFile(f)}); flash('Music added'); draw(); } catch (e) { flash(e.message, true); }
+  const requestSlug = slug;
+  try { const p = await api(`/api/p/${requestSlug}/music`, {file: await readFile(f)});
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; flash('Music added'); draw(); } catch (e) { flash(e.message, true); }
 };
-$('batchCancel').onclick = () => run('cancel', {});
-$('musicRemove').onclick = async () => { proj = await api(`/api/p/${slug}/music`, {remove: true}); draw(); };
+$('batchCancel').onclick = () => runNow('cancel', {});   // cancelling a job does not read the editor
+$('musicRemove').onclick = async () => {
+  const requestSlug = slug;
+  try { const p = await api(`/api/p/${requestSlug}/music`, {remove: true});
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; draw(); } catch (e) { flash(e.message, true); }
+};
 
 loadList().then(() => { if (slug) open(slug); });
 loadLibrary().catch(() => {});
