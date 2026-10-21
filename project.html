@@ -166,9 +166,11 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 #cmpDiff .badge { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 #cmpSync { font-size: 14px; }
 
-/* the header band budget gets tight beside the three chips: they keep their state words
-   (Ready/Limited/Down) and drop the label, which aria-label and title still carry */
-@media (max-width: 1500px) { #hdr .rchip .wide { display: none; } }
+/* chips never shrink to a bare state word: below 1500 px the group rides the stage nav row
+   (placeReadiness in the script moves it) so every chip keeps name + state everywhere */
+@media (max-width: 1500px) {
+  #stages #readiness { flex: 0 0 auto; }
+}
 
 /* the chips get their own scroll window (the next action beside them never scrolls); this plus
    the tighter strip keeps the viewer >= 40% of the viewport height down to 1100 px wide */
@@ -185,6 +187,13 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
       .timeline { min-height: 32px; }
   .take .btn { padding: 0 8px; }
   #viewerInfo { padding: 2px 2px; }
+}
+/* 601-1199 px: the readiness group rides the stage row with full names, so the row must not
+   wrap the next action onto three lines - the stage chips give way and scroll instead - and
+   the header row fits the buttons only when the film name (already in the picker) stands down */
+@media (max-width: 1199px) and (min-width: 601px) {
+  #stages #nextAction { flex: 0 0 auto; }
+  #hdr #nameTitle { display: none; }
 }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
 
@@ -260,10 +269,10 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   #hdr #saveStatus { order: 1; flex: 1 1 0; min-height: 44px; line-height: 44px; }
   #hdr #newBtn { order: 2; } #hdr #openSettings { order: 3; } #hdr .btn-queue { order: 4; }
   #hdr .btn-shot { order: 5; }
-  /* the three chips shrink to their state words (the .wide labels hide above) and take the
-     picker's row, so the phone header stays within the two-row + stages budget */
-  #hdr #readiness { order: 1; gap: 2px; flex: 0 1 170px; min-width: 170px; }
-  #hdr .rchip { padding: 2px 6px; min-height: 44px; overflow: hidden; }
+  /* the chips keep name + state on the phone too: the name stacks over the state inside the
+     44 px pill, so they still share the picker's row and the header stays within budget */
+  #hdr #readiness { order: 1; gap: 1px; flex: 0 1 auto; }
+  #hdr .rchip { padding: 2px 1px; min-height: 44px; flex-direction: column; gap: 0; line-height: 1.15; overflow: hidden; text-align: center; }
   #hdr select { min-height: 44px; }
   #hdr .wide, #hdr .bmsg, #hdr .spacer { display: none; }
   #stages { flex-wrap: wrap; padding: 0 10px 4px; }
@@ -321,9 +330,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <span class="status" id="saveStatus" role="status"></span>
     <span class="spacer"></span>
     <span id="readiness" role="status" aria-label="backend readiness">
-      <button class="rchip" id="rd-prompt" aria-expanded="false" title="Checking the prompt model"><span class="wide">Prompts: </span><span class="rstate">Checking…</span></button>
-      <button class="rchip" id="rd-video" aria-expanded="false" title="Checking ComfyUI"><span class="wide">Video: </span><span class="rstate">Checking…</span></button>
-      <button class="rchip" id="rd-finishing" aria-expanded="false" title="Checking the finishing install"><span class="wide">Finishing: </span><span class="rstate">Checking…</span></button>
+      <button class="rchip" id="rd-prompt" aria-expanded="false" title="Checking the prompt model"><span class="rname">Prompts </span><span class="rstate">Checking…</span></button>
+      <button class="rchip" id="rd-video" aria-expanded="false" title="Checking ComfyUI"><span class="rname">Video </span><span class="rstate">Checking…</span></button>
+      <button class="rchip" id="rd-finishing" aria-expanded="false" title="Checking the finishing install"><span class="rname">Finishing </span><span class="rstate">Checking…</span></button>
     </span>
     <button class="btn ghost" id="openSettings" hidden title="Project settings">Settings</button>
     <button class="btn ghost btn-queue" id="openQueue" title="Live jobs: this film first, then everything else running">Queue<span id="queueCount"></span></button>
@@ -741,7 +750,7 @@ function showNew() { $('newBox').hidden = false; $('projWrap').hidden = true; }
 function showProj() { $('newBox').hidden = true; $('projWrap').hidden = false; }
 $('picker').onchange = () => { if ($('picker').value) open($('picker').value); };
 $('newBtn').onclick = () => { slug = null; history.replaceState(null, '', '/project'); showNew(); showProjHide(); $('picker').value = ''; };
-function showProjHide() { $('projWrap').hidden = true; $('stages').hidden = true; $('batch').classList.remove('show'); }
+function showProjHide() { $('projWrap').hidden = true; $('stages').hidden = true; $('batch').classList.remove('show'); placeReadiness(); }
 
 /* ---------- new film ---------- */
 $('nSeconds').oninput = () => $('nSecondsOut').textContent = $('nSeconds').value + ' s';
@@ -856,7 +865,7 @@ async function open(s) {
   slug = s; history.replaceState(null, '', '/project?p=' + s);
   st = autosaveState(s); viewToken++;   // the old draft is dropped; in-flight responses fail asStale
   selId = null; previewRef = null; viewMode = 'scene';
-  showProj(); $('picker').value = s; $('openSettings').hidden = false; $('stages').hidden = false;
+  showProj(); $('picker').value = s; $('openSettings').hidden = false; $('stages').hidden = false; placeReadiness();
   $('nameTitle').textContent = s;
   takeOpen.clear(); takeData.clear();   // open Details panels and fetched provenance belong to the film being left
   await refresh(true);
@@ -1040,7 +1049,8 @@ function drawStages(p) {
   if (drawStages.sig === sig) { drawNext(p); return; }
   drawStages.sig = sig;
   closeStageMenu();
-  const box = $('stages'); box.replaceChildren();
+  const box = $('stages'), savedRd = $('readiness');   // the group may ride this row: save it
+  box.replaceChildren();
   const chips = el('div', {id: 'stageChips'});
   steps.forEach((s, i) => {
     const item = el('span', {class: 'stage' + (s.done ? ' done' : '') + (i === next ? ' next' : ''), title: s.t + ' — click for its action',
@@ -1057,6 +1067,7 @@ function drawStages(p) {
       el('button', {class: 'caret', 'aria-expanded': 'false', 'aria-label': 'Next step action',
         onclick: (ev) => { ev.stopPropagation(); openStageMenu(ev.currentTarget, steps[next], next, drafted, n); }}, '▾')));
   box.append(chips, el('button', {class: 'btn', id: 'nextAction'}));   // drawNext updates it in place
+  placeReadiness(savedRd);   // a rebuilt stage row must not strand the chip group
   drawNext(p);
 }
 function drawNext(p) {
@@ -1760,6 +1771,17 @@ async function loadLoras(onChange, probeOnly) {
 let RD = null, rdOpen = null;
 const RD_LABEL = {prompt: 'Prompts', video: 'Video', finishing: 'Finishing'};
 const RD_STATE = {ready: 'Ready', limited: 'Limited', unavailable: 'Down'};
+/* ≤1500 px the chip group joins the stage nav row (the header row would overflow and the
+   header budget forbids a third line); while the stage row is hidden - the new-film view -
+   the group stays in the header, where there is room. The name always travels with it. */
+const RD_NARROW = matchMedia('(max-width: 1500px) and (min-width: 601px)');
+function placeReadiness(rd) {
+  rd = rd instanceof Node ? rd : $('readiness');
+  const st = $('stages'), na = $('nextAction');
+  if (RD_NARROW.matches && !st.hidden && na) { if (rd.parentElement !== st) st.insertBefore(rd, na); }
+  else if (rd.parentElement !== $('hdr')) $('hdr').insertBefore(rd, $('openSettings'));
+}
+RD_NARROW.addEventListener('change', () => placeReadiness());
 function rdReason(kind) {
   const c = RD && RD.checks && RD.checks[kind];
   if (!c || c.level !== 'unavailable') return null;    // 'limited' warns in the chip, never disables

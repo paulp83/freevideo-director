@@ -224,7 +224,7 @@ def main():
         chips = d.js("return [...document.querySelectorAll('#readiness .rchip')].map(function (c) "
                      "{return c.textContent.replace(/\\s+/g, ' ').trim();});")
         check('readiness chips report all three checks in words',
-              chips == ['Prompts: Down', 'Video: Down', 'Finishing: Down'], str(chips))
+              chips == ['Prompts Down', 'Video Down', 'Finishing Down'], str(chips))
         d.js("""document.querySelectorAll('#navigator .navitem')[4].click();""")
         d.wait("""[...document.querySelectorAll('#scFlags .badge')].some(b => b.textContent.includes('legacy'))""")
         flags = d.js("""return [...document.querySelectorAll('#scFlags .badge')].map(b => b.textContent);""")

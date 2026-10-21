@@ -227,6 +227,36 @@ def main():
             f'http://127.0.0.1:{WEB_PORT}/api/readiness/video?refresh=1', timeout=5).getcode()
         check('per-check refresh endpoint answers for one check', code == 200, str(code))
 
+        # every chip keeps name + state word at every desktop width (never a state-only chip)
+        NARROW_NAMES = {'prompt': 'Prompts', 'video': 'Video', 'finishing': 'Finishing'}
+        WANTED = {'prompt': 'Down', 'video': 'Ready', 'finishing': 'Down'}
+        for (w, h) in [(1920, 1080), (1440, 900), (1100, 900), (768, 900)]:
+            d.resize(w, h)
+            time.sleep(0.4)                       # let the media-query hook move the group
+            g = d.js("""const seen = [];
+                for (const k of ['prompt', 'video', 'finishing']) {
+                  const c = document.getElementById('rd-' + k);
+                  const nm = c.querySelector('.rname'), st = c.querySelector('.rstate');
+                  seen.push({k, visible: c.offsetParent !== null, nmw: nm.offsetWidth, stw: st.offsetWidth,
+                             text: c.textContent.replace(/\\s+/g, ' ').trim(),
+                             where: c.closest('#stages') ? 'stages' : 'hdr'});
+                }
+                const rd = document.getElementById('readiness');
+                const kidR = (sel) => [...document.querySelector(sel).children]
+                    .map(e => [e.id || e.className, Math.round(e.getBoundingClientRect().top),
+                               Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]);
+                return {vw: innerWidth, seen, rdw: Math.round(rd.getBoundingClientRect().width),
+                        where: seen[0].where, hdrKids: kidR('#hdr'), stKids: kidR('#stages'),
+                        hdr: Math.round(document.querySelector('header').getBoundingClientRect().height),
+                        hscroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth};""")
+            okg = (g['vw'] == w and g['hscroll'] and g['hdr'] <= 110
+                   and all(s['visible'] and s['nmw'] > 0 and s['stw'] > 0
+                           and NARROW_NAMES[s['k']] in s['text'] and WANTED[s['k']] in s['text']
+                           for s in g['seen']))
+            check(f'{w} px: every chip shows name + state, header <= 110 px, no horizontal scroll',
+                  okg, json.dumps(g))
+            print(f"GEOM {w} hdr={g['hdr']} readiness={g['rdw']} group={g['where']}")
+
         # phone: headless firefox floors real windows at 500 px wide, so measure the chips in
         # an exact 390x844 iframe (the same trick browser_layout uses)
         d.resize(500, 930)
@@ -234,18 +264,32 @@ def main():
                 'src=' + JSON.stringify('http://127.0.0.1:' + arguments[1] + '/project?p=' + arguments[0]) + ' ' +
                 'style="width:390px;height:844px;border:0;display:block"></iframe></body>'); return 1;""", slug, WEB_PORT)
         d.s('POST', '/frame', {'id': d.s('POST', '/element', {'using': 'css selector', 'value': '#__f'})})
-        ok = d.wait("document.querySelectorAll('#readiness .rchip').length === 3", timeout=20)
+        ok = d.wait("['prompt', 'finishing'].every(k => document.getElementById('rd-' + k).classList.contains('down')) "
+                    "&& !document.getElementById('rd-video').classList.contains('down')", timeout=30)
         m = d.js("""window.scrollTo(0, 0);
           const chips = [...document.querySelectorAll('#readiness .rchip')];
-          return {vw: window.innerWidth,
+          const texts = chips.map(c => {
+            const k = c.id.replace('rd-', '');
+            return {k, text: c.textContent.replace(/\\s+/g, ' ').trim(),
+                    nmw: c.querySelector('.rname').offsetWidth,
+                    stw: c.querySelector('.rstate').offsetWidth};
+          });
+          return {vw: window.innerWidth, texts,
                   hdr: document.getElementById('hdr').offsetHeight + document.getElementById('stages').offsetHeight,
                   visible: chips.filter(c => c.offsetParent !== null).length,
                   heights: chips.map(c => c.getBoundingClientRect().height),
+                  rows: [...document.getElementById('hdr').children].map(e => [e.id || e.className,
+                         Math.round(e.getBoundingClientRect().top), Math.round(e.getBoundingClientRect().width)]),
                   hscroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth};""")
         d.s('POST', '/frame', {'id': None})
-        check('phone 390x844: three chips visible, header budget holds, no horizontal scroll',
-              bool(ok) and m['vw'] == 390 and m['visible'] == 3 and m['hdr'] <= 190
-              and m['hscroll'] and min(m['heights']) >= 28, json.dumps(m))
+        wanted390 = {'prompt': 'Down', 'video': 'Ready', 'finishing': 'Down'}
+        ok390 = (bool(ok) and m['vw'] == 390 and m['visible'] == 3 and m['hdr'] <= 190
+                 and m['hscroll'] and min(m['heights']) >= 28
+                 and all(t['nmw'] > 0 and t['stw'] > 0 and NARROW_NAMES[t['k']] in t['text']
+                         and wanted390[t['k']] in t['text'] for t in m['texts']))
+        check('phone 390x844: chips show name + state, header budget holds, no horizontal scroll',
+              ok390, json.dumps(m))
+        print(f"GEOM 390 hdr={m['hdr']}")
     finally:
         if d: d.close()
         for p in (web, stub):
