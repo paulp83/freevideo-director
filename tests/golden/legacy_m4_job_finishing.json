@@ -1,0 +1,10 @@
+{
+ "batch_size": 21,
+ "crf": 16,
+ "fps": 24,
+ "multiplier": 2,
+ "resolution": 1080,
+ "rife": "rife49.pth",
+ "temporal_overlap": 3,
+ "upscaler": "seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors"
+}

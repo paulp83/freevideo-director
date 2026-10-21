@@ -1,0 +1,86 @@
+{
+ "aspect": "16:9",
+ "bible": "A kite crosses a dusk field.",
+ "character_notes": "",
+ "character_refs": {},
+ "characters": [],
+ "created": 1735689600.0,
+ "end_card": null,
+ "logline": "A kite crosses a dusk field.",
+ "music_brief": "",
+ "music_file": null,
+ "name": "Legacy M4 Film",
+ "notes": "",
+ "outputs": {},
+ "refs": [],
+ "scenes": [
+  {
+   "action": "",
+   "connect": "cut",
+   "history": [],
+   "id": "aa11aa",
+   "prompt": "At 00:01.0, [Shot 1] a red kite climbs over a dusk field, its line taut.",
+   "prompt_check": null,
+   "prompt_mode": "t2va",
+   "seconds": 5,
+   "seed": 1001,
+   "selected_take": null,
+   "star": null,
+   "takes": [
+    {
+     "created": 1735689601.0,
+     "final": null,
+     "final_url": null,
+     "path": "{{ROOT}}/legacy-m4-film/scenes/01/20250101-000001-kite/take.mkv",
+     "preset": "draft",
+     "run": "20250101-000001-kite",
+     "seed": 2001,
+     "source_take": null,
+     "thumb_url": "/files/legacy-m4-film/thumbs/20250101-000001-kite.jpg",
+     "url": "/files/legacy-m4-film/media/20250101-000001-kite.mp4",
+     "variant": null
+    }
+   ],
+   "title": "Kite in the wind",
+   "transition": "cut"
+  },
+  {
+   "action": "",
+   "connect": "continue",
+   "history": [],
+   "id": "bb22bb",
+   "prompt": "At 00:01.0, [Shot 1] the kite drifts to the left edge of the frame.",
+   "prompt_check": null,
+   "prompt_mode": "t2va",
+   "seconds": 4,
+   "seed": 1002,
+   "selected_take": null,
+   "star": null,
+   "takes": [
+    {
+     "created": 1735689602.0,
+     "final": null,
+     "final_url": null,
+     "path": "{{ROOT}}/legacy-m4-film/scenes/02/20250102-000002-field/take.mkv",
+     "preset": "draft",
+     "run": "20250102-000002-field",
+     "seed": 2002,
+     "source_take": null,
+     "thumb_url": "/files/legacy-m4-film/thumbs/20250102-000002-field.jpg",
+     "url": "/files/legacy-m4-film/media/20250102-000002-field.mp4",
+     "variant": null
+    }
+   ],
+   "title": "The field",
+   "transition": "crossfade"
+  }
+ ],
+ "seconds": 9,
+ "size": [
+  1024,
+  576
+ ],
+ "slug": "legacy-m4-film",
+ "title": "Legacy M4 Film",
+ "title_card": null
+}

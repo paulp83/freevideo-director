@@ -1,0 +1,42 @@
+{
+ "cards": {
+  "end": null,
+  "title": null
+ },
+ "export": {
+  "audio_bitrate": "192k",
+  "audio_codec": "aac",
+  "audio_rate": 48000,
+  "crf": "20",
+  "crossfade": 0.5,
+  "dip": 0.4,
+  "faststart": true,
+  "fps": 24,
+  "height": 576,
+  "pix_fmt": "yuv420p",
+  "preset": "medium",
+  "video_codec": "libx264",
+  "width": 1024
+ },
+ "music": null,
+ "takes": [
+  {
+   "file": "draft",
+   "run": "20250101-000001-kite",
+   "scene": "aa11aa",
+   "selection": "auto",
+   "take": "20250101-000001-kite"
+  },
+  {
+   "file": "draft",
+   "run": "20250102-000002-field",
+   "scene": "bb22bb",
+   "selection": "auto",
+   "take": "20250102-000002-field"
+  }
+ ],
+ "transitions": [
+  "cut",
+  "crossfade"
+ ]
+}
