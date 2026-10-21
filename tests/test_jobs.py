@@ -1,0 +1,333 @@
+"""Job lifecycle: every job reaches a terminal state, scenes/takes are reserved while a job
+runs, doomed work is refused before acceptance, and an unanswered submit is never retried.
+
+    python3 -m unittest discover tests      (from the repo root)
+
+ComfyUI is a local stub: it answers /prompt, /history, /free and can be told to hang, drop
+the connection or reject the graph. FreeVideo itself is never involved.
+"""
+import json, shutil, sys, tempfile, threading, time, unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import enhance
+import project as projects
+import stats
+import web
+
+
+class StubComfy(BaseHTTPRequestHandler):
+    mode = 'complete'        # complete | hang | drop | reject
+    submits = 0
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _json(self, code, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        if self.path == '/prompt':
+            StubComfy.submits += 1
+            if StubComfy.mode == 'reject':
+                return self._json(400, {'error': 'bad graph'})
+            if StubComfy.mode == 'drop':
+                self.connection.close()        # answer nothing: the submit stays ambiguous
+                return
+            return self._json(200, {'prompt_id': f'stub-{StubComfy.submits}'})
+        self._json(200, {})
+
+    def do_GET(self):
+        if self.path.startswith('/history/'):
+            pid = self.path.rsplit('/', 1)[-1]
+            if StubComfy.mode == 'hang':
+                return self._json(200, {})     # never finishes
+            outputs = {'9': {'gifs': [{'filename': 'take.mp4', 'subfolder': 'director', 'type': 'output'}]}}
+            return self._json(200, {pid: {'status': {'completed': True}, 'outputs': outputs}})
+        self._json(200, {})
+
+
+PLAN = {'title': 'Job test', 'bible': 'the bible', 'music': '',
+        'scenes': [{'title': 'One', 'seconds': 6, 'connect': 'cut', 'action': 'one acts'},
+                   {'title': 'Two', 'seconds': 6, 'connect': 'continue', 'action': 'two acts'}]}
+
+
+class Jobs(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.stub = ThreadingHTTPServer(('127.0.0.1', 0), StubComfy)
+        threading.Thread(target=cls.stub.serve_forever, daemon=True).start()
+        cls.stub_url = f'http://127.0.0.1:{cls.stub.server_address[1]}'
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.stub.shutdown()
+        cls.stub.server_close()
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix='director-jobs-'))
+        StubComfy.mode, StubComfy.submits = 'complete', 0
+        self.saved = (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+                      web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS)
+        projects.ROOT = self.root
+        stats.FILE = self.root / 'stats.json'
+        enhance.COMFY = web.COMFY = self.stub_url
+        enhance.COMFY_ROOT = self.root / 'comfy'
+        web.COMFY_OUTPUT = self.root / 'comfy' / 'output'
+        web.JOB_TIMEOUT = 120.0
+        web.POLL_SECONDS = 0.05
+        for table in (web.JOBS, web.RESERVES, web.SCENE_JOB, web.BATCH, web.PROGRESS):
+            table.clear()
+        self.slug = projects.create('Jobs film', 'nothing', 30, '16:9', [])['slug']
+        projects.mutate(self.slug, lambda p: projects.apply_storyboard(p, PLAN))
+        self.ids = [s['id'] for s in projects.load(self.slug)['scenes']]
+        def give_prompts(p):
+            for s in p['scenes']:
+                s['prompt'] = 'a cat walks left'
+        projects.mutate(self.slug, give_prompts)
+
+    def tearDown(self):
+        (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+         web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS) = self.saved
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def take_dir(self, name='run-7'):
+        """A take dir FreeVideo 0.4.9+ leaves behind: the mp4, with the raw frames gone."""
+        run = web.COMFY_OUTPUT / 'director' / name
+        (run / 'video.artifacts').mkdir(parents=True, exist_ok=True)
+        (run / 'video.mp4').write_bytes(b'mp4')
+        return str(run)
+
+    def wait_for(self, cond, seconds=10):
+        end = time.time() + seconds
+        while time.time() < end:
+            if cond():
+                return True
+            time.sleep(0.05)
+        return False
+
+    # ---------------------------------------------------------------- states
+
+    def test_every_job_reaches_a_terminal_state(self):
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, 'missing-scene', 'draft')
+        self.assertEqual(job['state'], 'failed')
+        self.assertTrue(job['done'])
+        self.assertEqual(job['error'], 'unknown scene')
+        self.assertEqual(web.RESERVES, {})
+
+    def test_illegal_transitions_are_programmer_errors(self):
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'])
+        with self.assertRaises(AssertionError):
+            web.transition(job, 'running')                      # queued -> running skips preparing
+        web.transition(job, 'preparing')
+        web.transition(job, 'submitted')
+        web.transition(job, 'running')
+        web.finish(job)
+        with self.assertRaises(AssertionError):
+            web.transition(job, 'running')                      # terminal states are locked
+
+    def test_public_exposes_state(self):
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'])
+        self.assertEqual(web.public(job)['state'], 'queued')
+        self.assertIs(web.public(job)['done'], False)
+
+    # ---------------------------------------------------------------- cancel
+
+    def test_cancel_before_start_never_submits(self):
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        job['cancel'] = True
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'cancelled')
+        self.assertEqual(job['error'], 'cancelled')
+        self.assertEqual(StubComfy.submits, 0)
+        self.assertEqual(web.RESERVES, {})
+
+    def test_cancel_mid_prep_never_submits(self):
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        ready, release = threading.Barrier(2), threading.Event()
+        def sleepy(j):
+            ready.wait(5)
+            release.wait(5)          # the cancel lands while we are still preparing
+            web.check_cancel(j)
+        t = threading.Thread(target=web.run_job, args=(job, sleepy))
+        t.start()
+        ready.wait(5)
+        job['cancel'] = True
+        release.set()
+        t.join(10)
+        self.assertEqual(job['state'], 'cancelled')
+        self.assertEqual(StubComfy.submits, 0)
+
+    def test_cancel_mid_poll_does_not_resubmit(self):
+        StubComfy.mode = 'hang'
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        t = threading.Thread(target=web.run_job,
+                             args=(job, web.render_job, self.slug, self.ids[0], 'draft'))
+        t.start()
+        self.assertTrue(self.wait_for(lambda: StubComfy.submits == 1))
+        job['cancel'] = True
+        t.join(30)
+        self.assertEqual(job['state'], 'cancelled')
+        self.assertEqual(StubComfy.submits, 1)
+        self.assertEqual(web.RESERVES, {})
+
+    def test_cancel_project_flags_only_that_films_jobs(self):
+        other = projects.create('Other film', 'nothing else', 30, '16:9', [])['slug']
+        mine_a = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug)
+        mine_b = web.new_job('render-final', ['render'], project=self.slug, scene=self.ids[1])
+        theirs = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=other)
+        web.cancel_project(self.slug)
+        self.assertTrue(mine_a['cancel'] and mine_b['cancel'])
+        self.assertFalse(theirs['cancel'])
+
+    # ---------------------------------------------------------------- reservations
+
+    def test_second_render_of_a_scene_is_refused(self):
+        first = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        second = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.reserve(first, [web.scene_key(self.slug, self.ids[0])])
+        with self.assertRaises(web.Busy) as caught:
+            web.reserve(second, [web.scene_key(self.slug, self.ids[0])])
+        self.assertEqual(caught.exception.args[0], f'busy: scene {self.ids[0]} already has a running job')
+        self.assertEqual(web.SCENE_JOB[(self.slug, self.ids[0])], first['id'])
+        web.release(first)
+        web.reserve(second, [web.scene_key(self.slug, self.ids[0])])
+        web.release(second)
+
+    def test_reservation_race_admits_exactly_one(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 2.0                            # the holder keeps the scene until it times out
+        first = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        t = threading.Thread(target=web.run_job,
+                             args=(first, web.render_job, self.slug, self.ids[0], 'draft'))
+        t.start()
+        self.assertTrue(self.wait_for(lambda: StubComfy.submits == 1))
+        second = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(second, web.render_job, self.slug, self.ids[0], 'draft')   # refused at the reservation
+        self.assertEqual(second['state'], 'failed')
+        self.assertTrue(second['error'].startswith('busy:'))
+        t.join(30)
+        self.assertEqual(first['state'], 'unknown')
+        self.assertEqual(StubComfy.submits, 1)
+        self.assertEqual(web.RESERVES, {})
+
+    def test_save_must_keep_reserved_scenes(self):
+        held = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[1])
+        web.reserve(held, [web.scene_key(self.slug, self.ids[1])])
+        kept = [{'id': self.ids[0]}, {'id': self.ids[1], 'prompt': 'x'}]
+        web.check_keeps_reserved(self.slug, {'scenes': kept})          # keeping every scene: fine
+        with self.assertRaises(web.Busy) as caught:
+            web.check_keeps_reserved(self.slug, {'scenes': [{'id': self.ids[0]}]})
+        self.assertIn(f'scene {self.ids[1]} has a running job', caught.exception.args[0])
+        web.transition(held, 'preparing')
+        web.finish(held)
+        web.check_keeps_reserved(self.slug, {'scenes': [{'id': self.ids[0]}]})   # released: deletion is fine
+
+    def test_start_batch_refuses_while_a_job_lives(self):
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug)
+        with self.assertRaises(web.Busy) as caught:
+            web.start_batch(self.slug, 'Drafting scenes', 0, lambda state: None)
+        self.assertTrue(caught.exception.args[0].startswith('busy:'))
+        self.assertEqual(web.BATCH, {})
+        web.abandon(job)
+
+    def test_duplicate_enhance_returns_the_live_job(self):
+        run = self.take_dir('run-1')
+        first = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug)
+        self.assertIsNone(web.reserve(first, [web.take_key(run)]))
+        dup = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug)
+        self.assertIs(web.reserve(dup, [web.take_key(run)], reuse=True), first)
+        web.transition(first, 'preparing')
+        web.finish(first)                                  # terminal: a fresh enhance may start
+        self.assertIsNone(web.reserve(dup, [web.take_key(run)], reuse=True))
+
+    # ---------------------------------------------------------------- pre-acceptance validation
+
+    def test_missing_reference_picture_is_refused(self):
+        projects.mutate(self.slug, lambda p: p.__setitem__('refs', ['cat.png']))
+        with self.assertRaises(projects.ProjectError) as caught:
+            web.validate_scene_media(projects.load(self.slug), 0)
+        self.assertIn('reference picture missing: cat.png', caught.exception.args[0])
+
+    def test_continue_without_previous_take_dir_is_refused(self):
+        def star_missing_take(p):
+            s = p['scenes'][0]
+            s['takes'].append({'run': 'director/gone', 'path': 'x', 'url': None, 'preset': 'draft',
+                               'seed': 1, 'created': 0.0, 'final': None, 'final_url': None, 'variant': None})
+        projects.mutate(self.slug, star_missing_take)
+        with self.assertRaises(FileNotFoundError):
+            web.validate_scene_media(projects.load(self.slug), 1)   # scene 2 continues scene 1
+
+    def test_happy_render_finishes_and_records_the_take(self):
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'finished')
+        self.assertIsNone(job['error'])
+        self.assertEqual(StubComfy.submits, 1)
+        self.assertEqual(len(job['prompt_ids']), 1)
+        scene = projects.load(self.slug)['scenes'][0]
+        self.assertEqual(len(scene['takes']), 1)
+        self.assertTrue(str(scene['takes'][0]['run']).endswith('/director'))
+        self.assertEqual(web.RESERVES, {})
+
+    # ---------------------------------------------------------------- submit and timeout
+
+    def test_rejected_graph_fails_not_unknown(self):
+        StubComfy.mode = 'reject'
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'failed')
+        self.assertIn('ComfyUI rejected the job', job['error'])
+        self.assertEqual(StubComfy.submits, 1)
+
+    def test_dropped_submit_is_unknown_and_never_resubmitted(self):
+        StubComfy.mode = 'drop'
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'unknown')
+        self.assertEqual(StubComfy.submits, 1)                 # exactly one POST /prompt, no retry
+        self.assertIn('may still be executing', job['error'])
+        self.assertEqual(web.RESERVES, {})
+
+    def test_timeout_keeps_the_prompt_id_and_says_unknown(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'unknown')
+        self.assertEqual(len(job['prompt_ids']), 1)
+        self.assertIn('may still be executing', job['error'])
+        self.assertEqual(web.RESERVES, {})
+
+    # ---------------------------------------------------------------- enhance
+
+    def test_enhance_finishes_and_releases_the_take(self):
+        run = self.take_dir('run-9')
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug, scene=self.ids[0])
+        finals = []
+        web.run_job(job, web.enhance_job, run, finals.append)
+        self.assertEqual(job['state'], 'finished')
+        self.assertIn('/take.mp4', job['final']['path'])
+        self.assertEqual(finals, [job['final']])
+        self.assertEqual(web.RESERVES, {})
+
+    def test_enhance_dies_cleanly_on_a_missing_take(self):
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug)
+        web.run_job(job, web.enhance_job, str(self.root / 'nope'))
+        self.assertEqual(job['state'], 'failed')
+        self.assertIn('only FreeVideo renders can be enhanced', job['error'])
+        self.assertEqual(StubComfy.submits, 0)
+        self.assertEqual(web.RESERVES, {})
+
+
+if __name__ == '__main__':
+    unittest.main()

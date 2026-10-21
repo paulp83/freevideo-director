@@ -7,10 +7,10 @@ workspace (:8190, GPU 0); FreeVideo's idle engine is released first via ComfyUI'
 
   python3 enhance.py <freevideo run dir | video.mp4> [--resolution 1080] [--fps-multiplier 2]
 """
-import argparse, ast, json, subprocess, time, urllib.parse, urllib.request
+import argparse, ast, json, os, subprocess, time, urllib.parse, urllib.request
 from pathlib import Path
 
-COMFY = 'http://127.0.0.1:8190'
+COMFY = os.environ.get('COMFY_URL') or 'http://127.0.0.1:8190'
 COMFY_ROOT = Path(__file__).resolve().parent.parent / 'ComfyUI'
 FPS = 24
 
