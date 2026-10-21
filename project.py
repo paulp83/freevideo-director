@@ -1223,6 +1223,8 @@ def assemble(project, kind, cancel=None):
     cmd += ['-filter_complex', ';'.join(parts), '-map', f'[{vcur}]', '-map', '[aout]',
             '-c:v', 'libx264', '-preset', 'medium',
             '-crf', str(finishing.for_project(project)['encode']['crf']) if kind == 'film' else str(PREVIEW_CRF),
+            '-pix_fmt', 'yuv420p',      # xfade negotiates yuv444p even for yuv420p inputs;
+                                        # players (QuickTime, browsers, TV HW) reject 4:4:4 H.264
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', str(out)]
     if cancel and cancel():
         if cards:
