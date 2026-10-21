@@ -756,6 +756,203 @@ def take_for_run(project, run):
     return None, None
 
 
+# ---------------------------------------------------------------- dependency status
+#
+# scene_status() answers, per scene and purely ON READ: does the take the scene currently resolves
+# to still match what the scene would produce today? Every flag is derived from authoritative
+# records only -- the selected take's job snapshot (jobs/<id>.json), the current scene fields, the
+# reference pictures hashed now, the previous scene's current selection (explicit or auto), and the
+# current bible/notes -- and NONE of it is ever stored: project.json gains no status key, so a
+# flag can never go stale between a change and a save. File hashes replay from an in-memory cache
+# keyed by path+mtime_ns+size, so a GET costs no rehashing while inputs are untouched.
+#
+# Flags speak about content validity, never about execution: running/failed/cancelled is job state
+# and lives in the scene's `job`; a flagged take keeps its record and media, nothing is deleted or
+# re-queued here. Flag vocabulary: state is 'same' (compared, matches), 'changed' (compared,
+# differs), 'not_applicable' (the check does not apply to this scene/take) or 'unknown_legacy'
+# (the check needs a snapshot the take does not have -- old takes answer this instead of guessing).
+# `outdated` lists the flags that read 'changed' -- the scene is DIRECTLY outdated. `downstream_of`
+# is separate and informational: scenes further along a continuation chain that a regeneration of
+# this one would eventually affect; they are NOT outdated while their own immediate source stands.
+
+STATUS_FLAGS = ('prompt_changed', 'refs_changed', 'settings_changed',
+                'continuity_outdated', 'instructions_changed')
+HASH_CACHE = {}                                          # path -> (mtime_ns, size, sha256); memory only
+
+
+def _file_sha256(f):
+    """sha256 of a file, or None when it is gone; the bytes are re-read only when mtime_ns or size moved."""
+    try:
+        st = Path(f).stat()
+    except OSError:
+        return None
+    key = str(f)
+    hit = HASH_CACHE.get(key)
+    if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit[2]
+    sha = hashlib.sha256(Path(f).read_bytes()).hexdigest()
+    if len(HASH_CACHE) > 512:
+        HASH_CACHE.clear()
+    HASH_CACHE[key] = (st.st_mtime_ns, st.st_size, sha)
+    return sha
+
+
+def instructions_of(project):
+    """Hashes of the global text every director prompt is assembled from: the style bible and the
+    director notes. New job snapshots carry these so editing the bible later can FLAG the prompts
+    affected -- the scene text itself is never rewritten automatically."""
+    return {'bible_sha256': hashlib.sha256((project.get('bible') or '').encode()).hexdigest(),
+            'notes_sha256': hashlib.sha256((project.get('notes') or '').encode()).hexdigest()}
+
+
+def _flag(state, reason, text):
+    return {'state': state, 'reason': reason, 'text': text}
+
+
+def _flag_compare(parts, what):
+    """No parts -> 'same'; parts -> 'changed', the machine reason being the parts joined."""
+    if parts:
+        return _flag('changed', '; '.join(parts), f'{what} now differ from what produced the selected take: '
+                                                  + '; '.join(parts) + '.')
+    return _flag('same', '', f'{what} match the request that produced the selected take.')
+
+
+def _loras_key(loras):
+    return [(l['name'], float(l.get('strength', 1.0)), bool(l.get('enabled', True))) for l in loras or []]
+
+
+def _downstream_scenes(project, i):
+    """The continuation chain running forward from scene `i`: those scenes WOULD be affected if
+    this scene's take were regenerated (their starting frame comes, hop by hop, from it). Each of
+    them is judged only against its own immediate source, so a chain member is informational here,
+    never marked outdated by an ancestor's status."""
+    out = []
+    for j in range(i + 1, len(project['scenes'])):
+        s = project['scenes'][j]
+        if s.get('connect') != 'continue':
+            break
+        via = project['scenes'][j - 1]
+        out.append({'index': j, 'id': s['id'], 'title': s.get('title') or '', 'via': via['id'],
+                    'reason': f"continues from scene {via['id']}",
+                    'text': f'"{s.get("title") or s["id"]}" continues from "{via.get("title") or via["id"]}": '
+                            'regenerating this scene would give it a new starting frame.'})
+    return out
+
+
+def scene_status(project, scene):
+    """All derived dependency state for one scene, computed from records on disk plus the current
+    project -- and stored nowhere. Keys: provenance ('recorded'/'legacy'/'none'), take (the
+    selected take this verdict describes), flags (one entry per STATUS_FLAGS, each
+    {'state', 'reason', 'text'}), outdated (flags reading 'changed' -- directly outdated),
+    unknown_legacy (flags a legacy take cannot answer), downstream_of (informational chain)."""
+    i = scene_index(project, scene['id'])
+    take = chosen(scene)
+    status = {'provenance': 'none', 'take': None, 'flags': {}, 'outdated': [], 'unknown_legacy': [],
+              'downstream_of': _downstream_scenes(project, i)}
+    flags = status['flags']
+    if take is None:
+        for name in STATUS_FLAGS:
+            flags[name] = _flag('not_applicable', 'no take selected',
+                                'The scene has no take to compare against yet.')
+        return status
+
+    provenance = take_provenance(take)
+    snapshot = read_job(project['slug'], take['job'])[0] if provenance == 'recorded' and take.get('job') else None
+    status['provenance'] = provenance
+    status['take'] = {'id': take.get('id'), 'ref': take_ref(take), 'job': take.get('job'), 'run': take['run']}
+    missing = _flag('unknown_legacy', 'no generation snapshot',
+                    'The selected take predates generation records (or its snapshot is gone): '
+                    'this cannot be checked without inventing what the old run did.')
+
+    f = {}
+
+    if snapshot is None:
+        f['prompt_changed'] = f['refs_changed'] = f['settings_changed'] = f['instructions_changed'] = missing
+    else:
+        parts = []
+        want = ensure_i2va(scene.get('prompt') or '') if snapshot.get('first') else (scene.get('prompt') or '')
+        if want != (snapshot.get('prompt') or ''):
+            parts.append('prompt text')
+        # a continue scene's submitted mode is forced by the starting frame, so its prompt_mode
+        # (written before the frame existed) is not comparable to the snapshot's mode.
+        if scene.get('prompt_mode') and scene['connect'] != 'continue' \
+                and scene['prompt_mode'] != snapshot.get('mode'):
+            parts.append(f"mode {snapshot.get('mode')} -> {scene['prompt_mode']}")
+        f['prompt_changed'] = _flag_compare(parts, 'The prompt and mode')
+
+        snap_refs = snapshot.get('refs') or []
+        parts = []
+        for r in snap_refs:
+            sha = _file_sha256(path(project['slug'], 'refs', r['name']))
+            if sha is None:
+                parts.append(f"{r['name']} missing")
+            elif sha != r['sha256']:
+                parts.append(f"{r['name']} content")
+        if not parts and not snapshot.get('first') and len(snap_refs) != len(project.get('refs') or []):
+            parts.append(f"count {len(snap_refs)} -> {len(project.get('refs') or [])}")
+        f['refs_changed'] = _flag_compare(parts, 'The reference pictures')
+
+        parts = []
+        if snapshot.get('seed') != scene.get('seed'):
+            parts.append(f"seed {snapshot.get('seed')} -> {scene.get('seed')}")
+        size = project.get('size') or []
+        if [snapshot.get('width'), snapshot.get('height')] != list(size):
+            parts.append(f"size {snapshot.get('width')}x{snapshot.get('height')} -> {'x'.join(map(str, size))}")
+        if snapshot.get('seconds') != scene.get('seconds'):
+            parts.append(f"seconds {snapshot.get('seconds')} -> {scene.get('seconds')}")
+        if _loras_key(snapshot.get('loras')) != _loras_key(project.get('loras')):
+            parts.append('loras')
+        f['settings_changed'] = _flag_compare(parts, 'The generation settings')
+
+        snap_instr = snapshot.get('instructions')
+        if not snap_instr:
+            f['instructions_changed'] = _flag('unknown_legacy', 'no instructions hash in snapshot',
+                                              'This take was recorded before the style bible/notes were hashed: '
+                                              'whether the bible changed since cannot be known.')
+        else:
+            now = instructions_of(project)
+            parts = [label for k, label in (('bible_sha256', 'bible'), ('notes_sha256', 'notes'))
+                     if now[k] != snap_instr.get(k)]
+            f['instructions_changed'] = _flag_compare(parts, 'The global style bible/notes')
+            f['instructions_changed']['text'] += ' Prompts are flagged only, never rewritten.'
+
+    if scene.get('connect') != 'continue' or not i:
+        f['continuity_outdated'] = _flag('not_applicable', 'not a continuation',
+                                         'The scene does not start from the previous scene, so no upstream take matters.')
+    else:
+        prev = project['scenes'][i - 1]
+        if snapshot is not None:
+            first = snapshot.get('first')
+            src = dict(first['source'], frame_sha256=first.get('sha256')) if first and first.get('source') else False
+        else:
+            src = take.get('source_take')                     # legacy: only data the record itself holds
+        if src is False:
+            f['continuity_outdated'] = _flag('not_applicable', 'take had no starting frame',
+                                             'The selected take was generated without a frame from the previous scene.')
+        elif not src:
+            f['continuity_outdated'] = _flag('unknown_legacy', 'no recorded source take',
+                                             'The legacy take records no upstream take, so its continuity cannot be '
+                                             'checked without inventing what it started from.')
+        else:
+            cur = chosen(prev)
+            parts = []
+            if not cur:
+                parts.append('previous scene has no take')
+            elif src.get('scene') != prev['id']:              # scenes were reordered since the take ran
+                parts.append(f"previous scene {src.get('scene')} -> {prev['id']}")
+            elif src.get('take') != take_ref(cur) or src.get('run') != cur['run']:
+                parts.append(f"source take {src.get('take')} -> {take_ref(cur)}")
+            f['continuity_outdated'] = _flag_compare(parts, 'The upstream take this continuation started from')
+
+    for name in STATUS_FLAGS:
+        flags[name] = f[name]
+        if f[name]['state'] == 'changed':
+            status['outdated'].append(name)
+        elif f[name]['state'] == 'unknown_legacy':
+            status['unknown_legacy'].append(name)
+    return status
+
+
 # ---------------------------------------------------------------- assembly
 
 def _duration(file):

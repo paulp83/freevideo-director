@@ -609,13 +609,14 @@ def write_enhance_snapshot(job, run):
     """Record an enhance request for a project take BEFORE submitting it: the finishing settings plus
     what was known about the source take. Ad-hoc enhances have no project and are not recorded."""
     slug = job['project']
-    scene_id, take = projects.take_for_run(projects.load(slug), run)
+    p = projects.load(slug)
+    scene_id, take = projects.take_for_run(p, run)
     projects.write_job_snapshot(slug, {
         'id': job['id'], 'kind': 'enhance', 'created': job['created'], 'project': slug,
         'scene': job.get('scene') or scene_id,
         'source': {'take': take and take.get('id'), 'run': run,
                    'provenance': projects.take_provenance(take) if take else 'unknown'},
-        'finishing': job_finishing()})
+        'finishing': job_finishing(), 'instructions': projects.instructions_of(p)})
 
 
 def write_job_result(job, take_id=None):
@@ -876,6 +877,7 @@ def render_snapshot(job, slug, scene_id, take_id, preset_name, variant, args, gr
         'seconds': args['seconds'], 'two_pass': args['two_pass'],
         'refs': refs, 'first': first, 'loras': args['loras'], 'graph': graph,
         'director': {'model': model, 'skill_revision': director.skill_revision()},
+        'instructions': projects.instructions_of(projects.load(slug)),
         'finishing': job_finishing() if PRESETS[preset_name]['finish'] else None}
 
 
@@ -1113,6 +1115,7 @@ def project_view(slug):
         ref, mode = projects.selection_of(s)   # derived: like provenance, a GET stores nothing
         s['selected_take'] = ref
         s['selection'] = mode
+        s['status'] = projects.scene_status(p, s)   # derived per request; never stored (project.py)
         for t in s.get('takes') or []:          # derived: legacy takes never grow stored keys
             t['provenance'] = projects.take_provenance(t)
             t['selected'] = t is c
