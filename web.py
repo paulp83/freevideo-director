@@ -1032,11 +1032,17 @@ def _chain_verdict(job, out, msg, enhance_side=False):
     `enhance_side`: the render landed and its take is already recorded -- only the finishing
     prompt vanished, so the scene keeps its reservation until reconciled or dismissed."""
     if out == 'failed':
+        if job.get('workdir'):
+            enhance.remove_workdir(Path(job['workdir']))   # a kept temp dir dies with the verdict
+            job['workdir'] = None
         fail(job, msg or 'ComfyUI reported an error')
         release(job)
         db_note(job)
         return 'failed'
     if out == 'interrupted':
+        if job.get('workdir'):
+            enhance.remove_workdir(Path(job['workdir']))
+            job['workdir'] = None
         cancel_job(job)
         job['error'] = msg or 'interrupted by ComfyUI'
         release(job)
