@@ -11,6 +11,7 @@ import argparse, ast, json, shutil, subprocess, sys, tempfile, time, urllib.pars
 from pathlib import Path
 
 import config
+import finishing
 
 COMFY = config.value('comfy_url')                       # --comfy-url / COMFY_URL / config.json
 COMFY_ROOT = config.value('comfy_root')                 # --comfy-root / COMFY_ROOT / config.json
@@ -131,33 +132,69 @@ def sweep_workdirs(keep=(), max_age=86400):
     return removed
 
 
-def graph(source, run_name, **opts):
+def graph(source, run_name, settings=None, **opts):
+    """The finishing graph, with the stages the settings switch off omitted entirely.
+
+    `settings` is the project's finishing settings (finishing.py canonical shape; None =
+    the legacy pipeline: upscale to 1080, RIFE x2, CRF 16). `opts` stay the CLI's flat
+    overrides (resolution/multiplier/crf plus the config-level model names); they map onto
+    the same settings, and multiplier 1 there simply means "interpolation off". Node ids
+    are stable; the node set shrinks with the stages (see node_stages())."""
+    s = finishing.clean_finishing(settings)
     o = {**DEFAULTS, **opts}
-    return {
-        '1': {'class_type': 'VHS_LoadVideoPath', 'inputs': {
-            'video': str(source), 'force_rate': 0, 'custom_width': 0, 'custom_height': 0,
-            'frame_load_cap': 0, 'skip_first_frames': 0, 'select_every_nth': 1, 'format': 'None'}},
-        '2': {'class_type': 'SeedVR2LoadDiTModel', 'inputs': {
+    if 'resolution' in opts:                       # CLI flags: the stage they name runs
+        s['upscale'] = {'enabled': True, 'height': int(o['resolution'])}
+    if 'multiplier' in opts:
+        m = max(1, int(o['multiplier']))
+        s['interpolation'] = {'enabled': m > 1, 'factor': m}
+        s['fps_policy'] = 'interpolated' if m > 1 else 'original'
+    if 'crf' in opts:
+        s['encode'] = {'crf': int(o['crf']), 'preset': None}
+    upscale = s['upscale']['enabled']
+    interp = s['interpolation']['enabled']
+    g = {'1': {'class_type': 'VHS_LoadVideoPath', 'inputs': {
+        'video': str(source), 'force_rate': 0, 'custom_width': 0, 'custom_height': 0,
+        'frame_load_cap': 0, 'skip_first_frames': 0, 'select_every_nth': 1, 'format': 'None'}}}
+    if upscale:
+        g['2'] = {'class_type': 'SeedVR2LoadDiTModel', 'inputs': {
             'model': o['upscaler'], 'device': 'cuda:0', 'offload_device': 'cpu', 'cache_model': False,
-            'blocks_to_swap': 0, 'swap_io_components': False, 'attention_mode': 'sdpa'}},
-        '3': {'class_type': 'SeedVR2LoadVAEModel', 'inputs': {
+            'blocks_to_swap': 0, 'swap_io_components': False, 'attention_mode': 'sdpa'}}
+        g['3'] = {'class_type': 'SeedVR2LoadVAEModel', 'inputs': {
             'model': 'ema_vae_fp16.safetensors', 'device': 'cuda:0', 'offload_device': 'cpu', 'cache_model': False,
-            'encode_tiled': True, 'decode_tiled': True}},
-        '4': {'class_type': 'SeedVR2VideoUpscaler', 'inputs': {
-            'image': ['1', 0], 'dit': ['2', 0], 'vae': ['3', 0], 'seed': 42, 'resolution': o['resolution'],
+            'encode_tiled': True, 'decode_tiled': True}}
+        g['4'] = {'class_type': 'SeedVR2VideoUpscaler', 'inputs': {
+            'image': ['1', 0], 'dit': ['2', 0], 'vae': ['3', 0], 'seed': 42,
+            'resolution': s['upscale']['height'],
             'max_resolution': 0, 'batch_size': o['batch_size'], 'uniform_batch_size': False,
-            'color_correction': 'lab', 'temporal_overlap': o['temporal_overlap'], 'offload_device': 'cpu'}},
-        '5': {'class_type': 'RIFE VFI', 'inputs': {
-            'frames': ['4', 0], 'ckpt_name': o['rife'], 'clear_cache_after_n_frames': 10,
-            'multiplier': o['multiplier'], 'fast_mode': True, 'ensemble': True, 'scale_factor': 1.0,
-            'dtype': 'float32', 'torch_compile': False, 'batch_size': 1}},
-        '6': {'class_type': 'VHS_VideoCombine', 'inputs': {
-            'images': ['5', 0] if o['multiplier'] > 1 else ['4', 0], 'audio': ['1', 2],
-            'frame_rate': FPS * max(1, o['multiplier']), 'loop_count': 0,
-            'filename_prefix': f'director/{run_name}-final', 'format': 'video/h264-mp4',
-            'pix_fmt': 'yuv420p', 'crf': o['crf'], 'save_metadata': True, 'trim_to_audio': False,
-            'pingpong': False, 'save_output': True}},
-    }
+            'color_correction': 'lab', 'temporal_overlap': o['temporal_overlap'], 'offload_device': 'cpu'}}
+    if interp:
+        g['5'] = {'class_type': 'RIFE VFI', 'inputs': {
+            'frames': ['4', 0] if upscale else ['1', 0], 'ckpt_name': o['rife'],
+            'clear_cache_after_n_frames': 10,
+            'multiplier': s['interpolation']['factor'], 'fast_mode': True, 'ensemble': True,
+            'scale_factor': 1.0, 'dtype': 'float32', 'torch_compile': False, 'batch_size': 1}}
+    feed = '5' if interp else ('4' if upscale else '1')   # last stage that actually ran
+    g['6'] = {'class_type': 'VHS_VideoCombine', 'inputs': {
+        'images': [feed, 0], 'audio': ['1', 2],
+        'frame_rate': finishing.output_fps(FPS, s), 'loop_count': 0,
+        'filename_prefix': f'director/{run_name}-final', 'format': 'video/h264-mp4',
+        'pix_fmt': 'yuv420p', 'crf': s['encode']['crf'], 'save_metadata': True, 'trim_to_audio': False,
+        'pingpong': False, 'save_output': True}}
+    return g
+
+
+def node_stages(settings=None):
+    """Which job stage each graph node's progress belongs to, for these settings. The load
+    node belongs to the first stage that runs; with every stage off it still feeds encode."""
+    s = finishing.clean_finishing(settings)
+    first = 'upscale' if s['upscale']['enabled'] else ('smooth' if s['interpolation']['enabled'] else 'encode')
+    m = {'1': first}
+    if s['upscale']['enabled']:
+        m.update({'2': 'upscale', '3': 'upscale', '4': 'upscale'})
+    if s['interpolation']['enabled']:
+        m['5'] = 'smooth'
+    m['6'] = 'encode'
+    return m
 
 
 def free_gpu():
@@ -168,6 +205,9 @@ def free_gpu():
 
 def submit(path, ident='cli', **opts):
     """Prepare the intermediate in a private temp dir and queue the enhance graph.
+
+    `settings` (the finishing.py canonical shape) selects the stages; `opts` stay the flat
+    CLI overrides.
 
     Returns (prompt_id, run dir, work dir); the caller must remove_workdir() in a finally once
     ComfyUI no longer needs the intermediate. On failure the dir is already removed.
