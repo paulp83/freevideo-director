@@ -242,5 +242,57 @@ class Cuts(unittest.TestCase):
         self.assertEqual(self.view()['film']['changes'], [])               # the new cut is current
 
 
+    # ------------------------------------------------------------ finishing settings and the cut
+
+    def captured_encode(self, kind='film'):
+        """assemble() with a fake ffmpeg that also captures the encode command."""
+        seen = []
+        class Spy(FakeFfmpeg):
+            def Popen(self, cmd, **kw):
+                seen.append(cmd)
+                return super().Popen(cmd, **kw)
+        saved = projects.subprocess
+        projects.subprocess = Spy()
+        try:
+            out = projects.assemble(projects.load(self.slug), kind)
+        finally:
+            projects.subprocess = saved
+        return out, seen[-1]
+
+    def test_one_policy_sets_the_frame_rate_and_quality_of_the_whole_film(self):
+        import finishing
+        out, cmd = self.captured_encode()
+        self.assertIn('fps=48', ' '.join(cmd))            # legacy: rendered 24, interpolated x2
+        self.assertEqual(cmd[cmd.index('-crf') + 1], '16')
+        # the same take list, the original-frame-rate policy and a bigger file
+        projects.mutate(self.slug, lambda p: p.__setitem__(
+            'finishing', finishing.clean_finishing({'fps_policy': 'original', 'encode': {'crf': 20}})))
+        out, cmd = self.captured_encode()
+        self.assertIn('fps=24', ' '.join(cmd))            # no interpolated frames anywhere
+        self.assertEqual(cmd[cmd.index('-crf') + 1], '20')
+        # every clip passes the same fps filter, whatever rate its finals were made at
+        self.assertEqual(' '.join(cmd).count('fps=24,'), 3)
+
+    def test_finishing_changes_show_as_an_outdated_export(self):
+        self.assemble()
+        self.assertEqual(self.view()['film']['changes'], [])
+        import finishing
+        projects.mutate(self.slug, lambda p: p.__setitem__(
+            'finishing', finishing.clean_finishing({'upscale': {'enabled': False}})))
+        self.assertEqual(self.view()['film']['changes'], ['export'])
+        self.assemble()                                   # a fresh cut is current again
+        self.assertEqual(self.view()['film']['changes'], [])
+
+    def test_legacy_project_plans_are_untouched_by_the_feature(self):
+        import finishing
+        base = projects.current_cut_fingerprint(projects.load(self.slug), 'film')
+        plan = projects.cut_plan(projects.load(self.slug), [], 'film')
+        self.assertEqual((plan['export']['fps'], plan['export']['crf']), (48, '16'))
+        self.assertNotIn('upscale', plan['export'])          # no new keys while the project is legacy
+        self.assertNotIn('interpolation', plan['export'])
+        # writing the DEFAULTS explicitly changes nothing a fingerprint can see
+        projects.mutate(self.slug, lambda p: p.__setitem__('finishing', finishing.defaults()))
+        self.assertEqual(base, projects.current_cut_fingerprint(projects.load(self.slug), 'film'))
+
 if __name__ == '__main__':
     unittest.main()

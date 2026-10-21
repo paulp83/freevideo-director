@@ -319,6 +319,60 @@ class Status(unittest.TestCase):
         ref.write_bytes(b'ZZZZ')
         self.assertEqual(projects._file_sha256(ref), hashlib.sha256(b'ZZZZ').hexdigest())
 
+    # ---------------------------------------------------------------- finishing_changed
+
+    def finalize(self, i, finishing_record):
+        """Mark scene i's first take as finished by an enhance job whose snapshot recorded
+        `finishing_record` (None = a pre-records final with no record anywhere)."""
+        p = projects.load(self.slug)
+        take = p['scenes'][i]['takes'][0]
+        jid = secrets.token_hex(8)
+        if finishing_record is not None:
+            projects.write_job_snapshot(self.slug, {
+                'id': jid, 'kind': 'enhance', 'created': time.time(), 'project': self.slug,
+                'scene': str(p['scenes'][i]['id']), 'take_id': take['id'], 'preset': 'final',
+                'variant': None, 'source': {'take': take['id'], 'run': take['run'],
+                                            'provenance': 'recorded'},
+                'finishing': finishing_record})
+        def apply(proj):
+            t = proj['scenes'][i]['takes'][0]
+            t['final'] = t['run'] + '/take.mp4'
+            t['final_url'] = '/out/take.mp4'
+            if finishing_record is not None:
+                t['final_job'] = jid
+        projects.mutate(self.slug, apply)
+
+    def flag(self, i):
+        p = projects.load(self.slug)
+        return projects.scene_status(p, p['scenes'][i])['flags']['finishing_changed']
+
+    def test_finishing_flag_compares_the_final_against_todays_settings(self):
+        self.assertEqual(self.flag(0)['state'], 'not_applicable')   # no finished version yet
+        # final made by an enhance job that recorded the (legacy) defaults
+        import finishing
+        self.finalize(0, web.job_finishing())
+        self.assertEqual(self.flag(0)['state'], 'same')
+        # the same settings spelled explicitly on the project stay 'same'
+        projects.mutate(self.slug, lambda p: p.__setitem__('finishing', finishing.defaults()))
+        self.assertEqual(self.flag(0)['state'], 'same')
+        # lower the quality: the flag names the exact part that moved
+        projects.mutate(self.slug, lambda p: p.__setitem__(
+            'finishing', finishing.clean_finishing({'encode': {'crf': 20}})))
+        st = self.flag(0)
+        self.assertEqual(st['state'], 'changed')
+        self.assertIn('crf 16 -> 20', st['reason'])
+        self.assertIn('crf 16 -> 20', st['text'])
+        # and upscaling off is named too
+        projects.mutate(self.slug, lambda p: p.__setitem__(
+            'finishing', finishing.clean_finishing({'upscale': {'enabled': False}})))
+        self.assertIn('upscaling 1080p -> off', self.flag(0)['reason'])
+
+    def test_finishing_flag_never_invents_what_a_legacy_final_ran_with(self):
+        self.finalize(1, None)                       # final, but no job record at all
+        st = self.flag(1)
+        self.assertEqual(st['state'], 'unknown_legacy')
+        self.assertIn('cannot', st['text'])
+
 
 if __name__ == '__main__':
     unittest.main()
