@@ -12,6 +12,7 @@ from pathlib import Path
 
 import config
 import director
+import finishing
 import jobs_db
 import library
 import notify
@@ -33,7 +34,8 @@ STAGES = {
     'smooth': 'Smooth to 48 fps',
     'encode': 'Encode',
 }
-# enhance.graph() node ids -> stage
+# The upscale/smooth labels follow the project's finishing settings (finishing.stage_label);
+# the legacy ENHANCE_NODES map only still applies to jobs resumed from pre-settings snapshots.
 ENHANCE_NODES = {'1': 'upscale', '2': 'upscale', '3': 'upscale', '4': 'upscale', '5': 'smooth', '6': 'encode'}
 
 
@@ -510,12 +512,14 @@ def confirm_cancel(job):
     return job['cancel_ok']
 
 
-def new_job(kind, stage_keys, project=None, scene=None):
+def new_job(kind, stage_keys, project=None, scene=None, settings=None):
+    s = settings or finishing.defaults()
     job = {'id': uuid.uuid4().hex[:12], 'kind': kind, 'created': time.time(), 'error': None, 'done': False,
            'state': 'queued', 'deadline': time.time() + JOB_TIMEOUT,
-           'stages': [{'key': k, 'label': STAGES[k], 'state': 'pending', 'started': None, 'ended': None,
+           'stages': [{'key': k, 'label': finishing.stage_label(k, s) if k in ('upscale', 'smooth') else STAGES[k],
+                       'state': 'pending', 'started': None, 'ended': None,
                        'value': 0, 'max': 0} for k in stage_keys],
-           'take': None, 'final': None, 'prompt_ids': [], 'cancel': False,
+           'take': None, 'final': None, 'prompt_ids': [], 'cancel': False, 'finishing': settings,
            'project': project, 'scene': str(scene) if scene is not None else None, 'holds': []}
     with LOCK:
         JOBS[job['id']] = job
@@ -672,8 +676,10 @@ def do_render_adhoc(job, args, finish_after):
 
 
 def enhance_stages(job, run, on_final=None):
-    """SeedVR2 -> RIFE -> encode for `run`; `job` must already hold what it may touch."""
-    activate(job, 'upscale')
+    """The finishing stages `job` was built for -- upscaler and frame smoother only when the
+    project's finishing settings ask for them -- run for `run`; `job` must already hold what
+    it may touch."""
+    activate(job, next(s['key'] for s in job['stages'] if s['key'] != 'render'))
     check_cancel(job)                                  # a cancel after prep never submits
     run_dir = enhance.run_dir_of(run)
     workdir = enhance.new_workdir(run_dir, job['id'])   # private to this job; two enhances never share a name
@@ -683,7 +689,8 @@ def enhance_stages(job, run, on_final=None):
     try:
         source, _ = enhance.intermediate(run_dir, workdir)
         enhance.free_gpu()
-        pid = submit_tracked(job, {'prompt': enhance.graph(source, run_dir.name)})
+        pid = submit_tracked(job, {'prompt': enhance.graph(source, run_dir.name,
+                                                           settings=job.get('finishing'))})
         check_cancel(job)                              # a cancel that landed mid-submit still counts
         if job['state'] == 'preparing':                # enhance-only job; a render chain is already running
             transition(job, 'submitted')
@@ -693,8 +700,9 @@ def enhance_stages(job, run, on_final=None):
 
         def progress():
             p = PROGRESS.get(pid, {})
-            if p.get('node') in ENHANCE_NODES:
-                st = activate(job, ENHANCE_NODES[p['node']])
+            nodes = enhance.node_stages(job.get('finishing'))
+            if p.get('node') in nodes:
+                st = activate(job, nodes[p['node']])
                 st.update(value=p.get('value', 0), max=p.get('max', 0))
 
         final = poll(job, lambda: enhance.result(pid), progress)
@@ -715,11 +723,20 @@ def enhance_stages(job, run, on_final=None):
         on_final(final)
 
 
-def job_finishing():
-    """The finishing settings an enhance runs with: enhance's defaults at film fps. Every record that
-    triggers an enhance snapshots these; the enhance graph itself is ephemeral (temp file paths) and
+def job_finishing(settings=None):
+    """The finishing record an enhance runs with. The flat legacy keys (resolution/multiplier/
+    crf/fps plus the config-level model file names) stay for every pre-existing reader;
+    `settings` is the canonical per-project switch set, `stages` the web stage keys actually
+    run, and `output_fps` the rate the finished file will carry. Every record that triggers an
+    enhance snapshots these; the enhance graph itself is ephemeral (temp file paths) and
     rebuilds from them plus the take."""
-    return dict(enhance.DEFAULTS, fps=enhance.FPS)
+    s = settings or finishing.defaults()
+    return dict(enhance.DEFAULTS, fps=enhance.FPS,
+                resolution=s['upscale']['height'],
+                multiplier=s['interpolation']['factor'] if s['interpolation']['enabled'] else 1,
+                crf=s['encode']['crf'],
+                settings=s, stages=finishing.enabled_stages(s),
+                output_fps=finishing.output_fps(enhance.FPS, s))
 
 
 def write_enhance_snapshot(job, run):
@@ -733,7 +750,7 @@ def write_enhance_snapshot(job, run):
         'scene': job.get('scene') or scene_id,
         'source': {'take': take and take.get('id'), 'run': run,
                    'provenance': projects.take_provenance(take) if take else 'unknown'},
-        'finishing': job_finishing(), 'instructions': projects.instructions_of(p),
+        'finishing': job_finishing(job.get('finishing')), 'instructions': projects.instructions_of(p),
         **({'retry_of': job['retry_of']} if job.get('retry_of') else {})})
 
 
@@ -919,19 +936,32 @@ class ComfyWentAway(Exception):
 def _rebuilt_job(row):
     """The live job dict a durable row rebuilds: identity, prompt ids and flags come from the
     row; the state machine restarts at 'queued' (run_job and every settle path move legally
-    from there) and the wall-clock cap restarts from now."""
+    from there) and the wall-clock cap restarts from now. The finishing record inside the
+    job's own snapshot decides which stages it was scheduled with -- a resumed job shows the
+    stages it actually ran, not whatever the project's settings say today."""
+    settings = None
+    if row['project']:
+        try:
+            snap, _ = projects.read_job(row['project'], row['id'])
+        except projects.ProjectError:
+            snap = None
+        rec = (snap or {}).get('finishing')
+        settings = finishing.settings_of_snapshot(rec) if rec else None
     try:
-        keys = scene_stage_keys(row['kind'])
+        keys = scene_stage_keys(row['kind'], settings)
     except KeyError:
         keys = ['render']
+    s = settings or finishing.defaults()
     return {'id': row['id'], 'kind': row['kind'], 'created': row['created'] or time.time(),
             'started': row['started'], 'ended': None, 'error': None, 'done': False,
             'state': 'queued', 'deadline': time.time() + JOB_TIMEOUT,
-            'stages': [{'key': k, 'label': STAGES[k], 'state': 'pending', 'started': None,
+            'stages': [{'key': k, 'label': finishing.stage_label(k, s) if k in ('upscale', 'smooth') else STAGES[k],
+                        'state': 'pending', 'started': None,
                         'ended': None, 'value': 0, 'max': 0} for k in keys],
             'take': ({'path': str(Path(row['run']) / 'video.mp4'), 'run': row['run'], 'url': None}
                      if row.get('run') else None),
             'final': None, 'prompt_ids': list(row['prompt_ids'] or []), 'cancel': False,
+            'finishing': settings,
             'project': row['project'], 'scene': row['scene'], 'holds': [],
             'correlation': row['correlation'], 'workdir': row['workdir'],
             'take_id': row['take_id'], 'retry_allowed': bool(row['retry_allowed']),
@@ -979,14 +1009,14 @@ def _resume_render(job, slug, scene_id, preset_name, take_id, seed, variant, sou
         take_recorder(slug, scene_id, job['id'], take_id, preset_name,
                       seed, variant, source_take)(take)
         if enhance_pid:
-            on_final = final_recorder(slug, scene_id, lambda: take['run'])
-            activate(job, 'upscale')
+            on_final = final_recorder(slug, scene_id, lambda: take['run'], job['id'])
+            activate(job, next(s['key'] for s in job['stages'] if s['key'] != 'render'))
             check_cancel(job)
 
             def eprogress():
                 p = PROGRESS.get(enhance_pid, {})
-                if p.get('node') in ENHANCE_NODES:
-                    st = activate(job, ENHANCE_NODES[p['node']])
+                if p.get('node') in (nodes := enhance.node_stages(job.get('finishing'))):
+                    st = activate(job, nodes[p['node']])
                     st.update(value=p.get('value', 0), max=p.get('max', 0))
 
             final = poll(job, lambda: enhance.result(enhance_pid), eprogress)
@@ -1010,15 +1040,16 @@ def _resume_enhance(job, run, on_final):
     """Thread body for a standalone enhance a restart found inside ComfyUI: poll its existing
     prompt only; record the final and the result file exactly as a fresh enhance does."""
     pid = job['prompt_ids'][-1]
-    activate(job, 'upscale')
+    activate(job, job['stages'][0]['key'])
     check_cancel(job)
     transition(job, 'submitted')
     transition(job, 'running')
 
     def progress():
         p = PROGRESS.get(pid, {})
-        if p.get('node') in ENHANCE_NODES:
-            st = activate(job, ENHANCE_NODES[p['node']])
+        nodes = enhance.node_stages(job.get('finishing'))
+        if p.get('node') in nodes:
+            st = activate(job, nodes[p['node']])
             st.update(value=p.get('value', 0), max=p.get('max', 0))
 
     final = poll(job, lambda: enhance.result(pid), progress)
@@ -1096,13 +1127,13 @@ def prep_late_record(job, snap):
                                  (snap or {}).get('seed'), (snap or {}).get('variant') or None,
                                  source_take_of(snap) if snap else None)
                    if slug and scene_id else None)
-        on_final = (final_recorder(slug, scene_id, lambda: job['take']['run'])
+        on_final = (final_recorder(slug, scene_id, lambda: job['take']['run'], job['id'])
                     if slug and scene_id else None)
         job['late_record'] = render_late_record(job, on_take, on_final, take_id, finish_after)
         return {'render': True, 'take_id': take_id, 'finish_after': finish_after,
                 'on_take': on_take, 'on_final': on_final}
     run = (job['take'] or {}).get('run') or ((snap or {}).get('source') or {}).get('run')
-    on_final = (final_recorder(job['project'], job['scene'], lambda: run)
+    on_final = (final_recorder(job['project'], job['scene'], lambda: run, job['id'])
                 if job['project'] and job['scene'] and run else None)
     job['late_record'] = enhance_late_record(job, on_final)
     return {'render': False, 'run': run, 'on_final': on_final}
@@ -1200,7 +1231,7 @@ def _reattach(job, row, snap):
         run = (job['take'] or {}).get('run') or ((snap or {}).get('source') or {}).get('run')
         if run and job['take'] is None:
             job['take'] = {'path': str(Path(run) / 'video.mp4'), 'run': run, 'url': None}
-        on_final = (final_recorder(job['project'], job['scene'], lambda: run)
+        on_final = (final_recorder(job['project'], job['scene'], lambda: run, job['id'])
                     if job['project'] and job['scene'] and run else None)
         body, args = _resume_enhance, (run, on_final)
     with LOCK:
@@ -1407,7 +1438,7 @@ def retry_render_job(job, slug, scene_id, snap, take_id, args):
     projects.write_job_snapshot(slug, snapshot)
     on_take = take_recorder(slug, scene_id, job['id'], take_id, preset_name, snap['seed'],
                             snap['variant'], source_take_of(snapshot))
-    on_final = final_recorder(slug, scene_id, lambda: job['take']['run'])
+    on_final = final_recorder(slug, scene_id, lambda: job['take']['run'], job['id'])
     job['late_record'] = render_late_record(job, on_take, on_final, take_id, PRESETS[preset_name]['finish'])
     do_render(job, graph, PRESETS[preset_name]['finish'], on_take, on_final)
     write_job_result(job, take_id)
@@ -1452,8 +1483,9 @@ def retry_job(job):
             raise Busy('the original job completed in ComfyUI and its take was recorded from the '
                        'prompt; nothing was submitted')
         args, run, snap = recorded_inputs(job)
-        new = new_job(job['kind'], scene_stage_keys(job['kind']),
-                      project=job.get('project'), scene=job.get('scene'))
+        st = finishing.settings_of_snapshot((snap or {}).get('finishing'))
+        new = new_job(job['kind'], scene_stage_keys(job['kind'], st),
+                      project=job.get('project'), scene=job.get('scene'), settings=st)
         new['retry_of'] = job['id']
         if job['kind'] != 'enhance':
             new['take_id'] = projects.new_take_id()
@@ -1463,7 +1495,7 @@ def retry_job(job):
         if job['kind'] == 'enhance':
             slug, scene_id = job.get('project'), job.get('scene')
             keys = [scene_key(slug, scene_id)] if slug and scene_id else []
-            on_final = final_recorder(slug, scene_id, lambda: run) if slug and scene_id else None
+            on_final = final_recorder(slug, scene_id, lambda: run, new['id']) if slug and scene_id else None
             threading.Thread(target=run_job, args=(new, enhance_job, run, on_final, keys),
                              daemon=True).start()
         else:
@@ -1578,9 +1610,11 @@ def write_scene_prompt(slug, scene_id, think=True):
     return mode, report['model']
 
 
-def scene_stage_keys(kind):
-    return {'render-draft': ['render'], 'render-final': ['render', 'upscale', 'smooth', 'encode'],
-            'enhance': ['upscale', 'smooth', 'encode']}[kind]
+def scene_stage_keys(kind, settings=None):
+    """Which web stages a job of `kind` runs: the finishing stages only for the switches the
+    project's settings have on (encode is always on -- every finishing chain ends by encoding)."""
+    fin = finishing.enabled_stages(settings or finishing.defaults())
+    return {'render-draft': ['render'], 'render-final': ['render', *fin], 'enhance': [*fin]}[kind]
 
 
 def validate_scene_media(p, i):
@@ -1624,7 +1658,7 @@ def render_snapshot(job, slug, scene_id, take_id, preset_name, variant, args, gr
         'refs': refs, 'first': first, 'loras': args['loras'], 'graph': graph,
         'director': {'model': model, 'skill_revision': director.skill_revision()},
         'instructions': projects.instructions_of(projects.load(slug)),
-        'finishing': job_finishing() if PRESETS[preset_name]['finish'] else None}
+        'finishing': job_finishing(job.get('finishing')) if PRESETS[preset_name]['finish'] else None}
 
 
 def source_take_of(snapshot):
@@ -1672,19 +1706,23 @@ def render_job(job, slug, scene_id, preset_name, variant=None):
     source_take = source_take_of(snapshot)     # a continuation names the take it started from
     on_take = take_recorder(slug, scene_id, job['id'], take_id, preset_name,
                             scene['seed'], variant, source_take)
-    on_final = final_recorder(slug, scene_id, lambda: job['take']['run'])
+    on_final = final_recorder(slug, scene_id, lambda: job['take']['run'], job['id'])
     job['late_record'] = render_late_record(job, on_take, on_final, take_id, preset['finish'])
     do_render(job, graph, preset['finish'], on_take, on_final)
     write_job_result(job, take_id)
 
 
-def final_recorder(slug, scene_id, run_of):
+def final_recorder(slug, scene_id, run_of, job_id=None):
     def on_final(final):
         def apply(proj):
             s = proj['scenes'][projects.scene_index(proj, scene_id)]
             for t in s['takes']:
                 if t['run'] == run_of():
                     t['final'], t['final_url'] = final['path'], final['url']
+                    if job_id:
+                        # which job's finishing settings produced THIS final -- the compare
+                        # in scene_status reads its snapshot; no id keeps legacy semantics
+                        t['final_job'] = job_id
         projects.mutate(slug, apply)
     return on_final
 
@@ -1810,12 +1848,13 @@ def batch_render(slug, preset_name, only_missing):
     def worker(state):
         p = projects.load(slug)
         todo = [s['id'] for s in p['scenes'] if not (only_missing and s['takes'])]
+        st = finishing.for_project(p)
         state['of'] = len(todo)
         for n, sid in enumerate(todo, 1):
             if state.get('cancel'):
                 raise RuntimeError('cancelled')
             kind = 'render-' + preset_name
-            job = new_job(kind, scene_stage_keys(kind), project=slug, scene=sid)
+            job = new_job(kind, scene_stage_keys(kind, st), project=slug, scene=sid, settings=st)
             state.update(step=n, scene=sid, job=job['id'])
             run_job(job, render_job, slug, sid, preset_name)
             if job['error']:
@@ -1847,12 +1886,15 @@ def batch_enhance(slug):
         todo = [(s['id'], projects.chosen(s)) for s in p['scenes']]
         todo = [(sid, t) for sid, t in todo if t and not t.get('final')]
         state['of'] = len(todo)
+        st = finishing.for_project(p)
         for n, (sid, take) in enumerate(todo, 1):
             if state.get('cancel'):
                 raise RuntimeError('cancelled')
-            job = new_job('enhance', scene_stage_keys('enhance'), project=slug, scene=sid)
+            job = new_job('enhance', scene_stage_keys('enhance', st), project=slug, scene=sid,
+                          settings=st)
             state.update(step=n, scene=sid, job=job['id'])
-            run_job(job, enhance_job, take['run'], final_recorder(slug, sid, lambda run=take['run']: run))
+            run_job(job, enhance_job, take['run'],
+                    final_recorder(slug, sid, lambda run=take['run']: run, job['id']))
             if job['error']:
                 raise RuntimeError(f'scene {n}: {job["error"]}')
     return start_batch(slug, 'Enhancing ★ takes', 0, worker)
@@ -1884,6 +1926,8 @@ def project_view(slug):
             t['selected'] = t is c
     for kind, out in (p.get('outputs') or {}).items():
         out.update(projects.output_status(p, kind, out))   # derived per request; never stored (project.py)
+    p['finishing'] = finishing.for_project(p)   # derived per request; never stored: an absent
+    p['source_fps'] = enhance.FPS               # finishing key stays absent until an editor save
     b = BATCH.get(slug)
     p['batch'] = dict(b, seconds=round(time.time() - b['started'])) if b else None
     p['batch_job'] = public(JOBS[b['job']]) if b and b.get('job') in JOBS else None
@@ -2132,15 +2176,28 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, queue_view())
         if self.path == '/api/config':
             return self.reply(200, config.api_view())
-        if self.path == '/api/readiness':
-            return self.reply(200, readiness.report())
+        if self.path == '/api/readiness' or self.path.startswith('/api/readiness?'):
+            # ?project=<slug> scores the finishing check with THAT film's settings: a stage the
+            # project switched off cannot make its chip red. Without it every stage counts.
+            q = urllib.parse.parse_qs(self.path.partition('?')[2])
+            slug = (q.get('project') or [''])[0]
+            try:
+                st = finishing.for_project(projects.load(slug)) if slug else None
+            except projects.ProjectError:
+                return self.reply(404, {'error': 'no such film'})
+            return self.reply(200, readiness.report(settings=st))
         route = self.path.partition('?')[0]
         if route.startswith('/api/readiness/'):
             name = route[len('/api/readiness/'):]
             if name in readiness.CHECKS:
-                query = self.path.partition('?')[2]
-                refresh = (urllib.parse.parse_qs(query).get('refresh') or [''])[0] == '1'
-                return self.reply(200, readiness.check(name, refresh=refresh))
+                q = urllib.parse.parse_qs(self.path.partition('?')[2])
+                refresh = (q.get('refresh') or [''])[0] == '1'
+                slug = (q.get('project') or [''])[0]
+                try:
+                    st = finishing.for_project(projects.load(slug)) if slug else None
+                except projects.ProjectError:
+                    return self.reply(404, {'error': 'no such film'})
+                return self.reply(200, readiness.check(name, refresh=refresh, settings=st))
         if self.path == '/queue':
             return self.reply(200, (HERE / 'queue.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/api/loras':
@@ -2229,7 +2286,7 @@ class Handler(BaseHTTPRequestHandler):
                     readiness.require('finishing')
                 loras = clean_loras(data.get('loras'))
                 job = new_job(data.get('preset', 'draft'),
-                              ['render', 'upscale', 'smooth', 'encode'] if preset['finish'] else ['render'])
+                              scene_stage_keys('render-final') if preset['finish'] else ['render'])
                 args = dict(prompt=data['prompt'], seconds=data.get('seconds', 10),
                             width=int(data.get('width', 1344)), height=int(data.get('height', 768)),
                             seed=int(data.get('seed') or time.time_ns() % 2**31), refs=refs, first=first,
@@ -2396,9 +2453,12 @@ class Handler(BaseHTTPRequestHandler):
             validate_scene_media(p, i)
             readiness.require('video')
             if PRESETS[preset]['finish']:
-                readiness.require('finishing')
+                st = finishing.for_project(p)
+                readiness.require('finishing', settings=st)
             kind = 'render-' + preset
-            job = new_job(kind, scene_stage_keys(kind), project=slug, scene=data['scene'])
+            job = new_job(kind, scene_stage_keys(kind, st if PRESETS[preset]['finish'] else None),
+                          project=slug, scene=data['scene'],
+                          settings=st if PRESETS[preset]['finish'] else None)
             try:
                 reserve(job, [scene_key(slug, data['scene'])])
             except Busy:
@@ -2409,18 +2469,21 @@ class Handler(BaseHTTPRequestHandler):
         if action == 'enhance':                        # one scene's take
             p = projects.load(slug)
             scene = p['scenes'][projects.scene_index(p, data['scene'])]
-            readiness.require('finishing')             # after the request checks, like render
+            st = finishing.for_project(p)
+            readiness.require('finishing', settings=st)   # after the request checks, like render
             run = data.get('run') or (projects.chosen(scene) or {}).get('run')
             if not run:
                 raise projects.ProjectError('this scene has no take yet')
             enhance.run_dir_of(run)                    # fail fast if it is not a FreeVideo take
-            job = new_job('enhance', scene_stage_keys('enhance'), project=slug, scene=data['scene'])
+            job = new_job('enhance', scene_stage_keys('enhance', st), project=slug, scene=data['scene'],
+                          settings=st)
             holder = reserve(job, [take_key(run), scene_key(slug, data['scene'])], reuse=True)
             if holder:                                 # duplicate click: the live job already shows on the scene
                 abandon(job)
                 return self.reply(200, project_view(slug))
             threading.Thread(target=run_job,
-                             args=(job, enhance_job, run, final_recorder(slug, data['scene'], lambda: run),
+                             args=(job, enhance_job, run,
+                                   final_recorder(slug, data['scene'], lambda: run, job['id']),
                                    [scene_key(slug, data['scene'])]),
                              daemon=True).start()
             return self.reply(200, project_view(slug))
@@ -2469,11 +2532,11 @@ class Handler(BaseHTTPRequestHandler):
             batch_render(slug, 'draft', bool(data.get('only_missing', True)))
             return self.reply(200, project_view(slug))
         if action == 'enhance-starred':
-            readiness.require('finishing')
+            readiness.require('finishing', settings=finishing.for_project(projects.load(slug)))
             batch_enhance(slug)
             return self.reply(200, project_view(slug))
         if action == 'assemble':
-            readiness.require('finishing')
+            readiness.require('finishing', settings=finishing.for_project(projects.load(slug)))
             if data.get('kind') not in ('animatic', 'film'):
                 raise projects.ProjectError('kind must be animatic or film')
             batch_assemble(slug, data['kind'])

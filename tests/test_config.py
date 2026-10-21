@@ -46,8 +46,8 @@ class Defaults(unittest.TestCase):
         self.assertEqual(cfg.value('poll_seconds'), 1.5)
         self.assertEqual(cfg.value('reconcile_seconds'), 15)
         self.assertEqual((cfg.value('xfade_seconds'), cfg.value('dip_seconds')), (0.5, 0.4))
-        self.assertEqual((cfg.value('film_export_fps'), cfg.value('preview_export_fps')), (48, 24))
-        self.assertEqual((cfg.value('film_export_crf'), cfg.value('preview_export_crf')), (16, 20))
+        self.assertEqual(cfg.value('preview_export_fps'), 24)
+        self.assertEqual(cfg.value('preview_export_crf'), 20)
         self.assertEqual(cfg.value('comfy_client_id'), 'freevideo-director')
         self.assertEqual({k: (v['value'], v['source']) for k, v in cfg.api_view()['settings'].items()
                           if v['source'] != 'default'}, {})
@@ -244,8 +244,7 @@ class ModulesReadConfig(unittest.TestCase):
         self.assertEqual(web.RECONCILE_SECONDS, config.SETTINGS['reconcile_seconds'].default)
         self.assertEqual((project.XFADE, project.DIP),
                          (config.SETTINGS['xfade_seconds'].default, config.SETTINGS['dip_seconds'].default))
-        self.assertEqual((project.FILM_FPS, project.PREVIEW_FPS, project.FILM_CRF, project.PREVIEW_CRF),
-                         (48, 24, 16, 20))
+        self.assertEqual((project.PREVIEW_FPS, project.PREVIEW_CRF), (24, 20))
 
     def test_export_spec_keeps_numeric_fps_and_string_crf(self):
         import project

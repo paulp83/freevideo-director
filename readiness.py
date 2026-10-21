@@ -554,12 +554,14 @@ def check(name, refresh=False, settings=None):
     return result
 
 
-def report():
+def report(settings=None):
     """All three checks, built in parallel so the page poll waits one build, not three.
-    Each check is reported on its own: one unavailable capability says nothing about the
-    other two, which is the whole point of the three separate checks."""
+    Each check is reported on one's own: one unavailable capability says nothing about the
+    other two, which is the whole point of the three separate checks. `settings` scores the
+    finishing check for one project (see check()); prompt and video never use it."""
     with ThreadPoolExecutor(max_workers=len(CHECKS)) as pool:
-        futs = {n: pool.submit(check, n) for n in CHECKS}
+        futs = {n: pool.submit(check, n, False, settings if n == 'finishing' else None)
+                for n in CHECKS}
         checks = {n: f.result() for n, f in futs.items()}
     return {'ok': any(c['ok'] for c in checks.values()), 'checks': checks}
 

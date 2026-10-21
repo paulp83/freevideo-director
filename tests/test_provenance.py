@@ -190,7 +190,13 @@ class Provenance(unittest.TestCase):
         snap = self.snapshot(job['id'])
         self.assertEqual(snap['preset'], 'final')
         self.assertEqual(snap['variant'], [2, 3])
-        self.assertEqual(snap['finishing'], dict(enhance.DEFAULTS, fps=enhance.FPS))
+        self.assertEqual(snap['finishing'], dict(enhance.DEFAULTS, fps=enhance.FPS,
+                                                 resolution=1080, multiplier=2, crf=16,
+                                                 settings={'upscale': {'enabled': True, 'height': 1080},
+                                                           'interpolation': {'enabled': True, 'factor': 2},
+                                                           'encode': {'crf': 16, 'preset': None},
+                                                           'fps_policy': 'interpolated'},
+                                                 stages=['upscale', 'smooth', 'encode'], output_fps=48))
         result = projects.read_job(self.slug, job['id'])[1]
         self.assertIn('/take.mp4', result['final'])
 
@@ -285,7 +291,13 @@ class Provenance(unittest.TestCase):
         self.assertEqual(snap['kind'], 'enhance')
         self.assertEqual(snap['id'], job['id'])
         self.assertEqual(snap['source'], {'take': take_id, 'run': run, 'provenance': 'recorded'})
-        self.assertEqual(snap['finishing'], dict(enhance.DEFAULTS, fps=enhance.FPS))
+        self.assertEqual(snap['finishing'], dict(enhance.DEFAULTS, fps=enhance.FPS,
+                                                 resolution=1080, multiplier=2, crf=16,
+                                                 settings={'upscale': {'enabled': True, 'height': 1080},
+                                                           'interpolation': {'enabled': True, 'factor': 2},
+                                                           'encode': {'crf': 16, 'preset': None},
+                                                           'fps_policy': 'interpolated'},
+                                                 stages=['upscale', 'smooth', 'encode'], output_fps=48))
         self.assertIn('/take.mp4', result['final'])
 
     def test_enhance_of_a_legacy_take_says_legacy(self):

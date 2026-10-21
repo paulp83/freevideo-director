@@ -130,7 +130,7 @@ class Status(unittest.TestCase):
         for pos, s in enumerate(p['scenes']):
             st = projects.scene_status(p, s)
             want = {'prompt_changed': 'same', 'refs_changed': 'same', 'settings_changed': 'same',
-                    'instructions_changed': 'same',
+                    'instructions_changed': 'same', 'finishing_changed': 'not_applicable',
                     'continuity_outdated': 'same' if (s.get('connect') == 'continue' and pos) else 'not_applicable'}
             want.update(expect.get(pos, {}))
             got = {}
@@ -296,7 +296,8 @@ class Status(unittest.TestCase):
             self.assertEqual(st['provenance'], 'recorded')
             self.assertEqual({k: v['state'] for k, v in st['flags'].items()},
                              {'prompt_changed': 'same', 'refs_changed': 'same', 'settings_changed': 'same',
-                              'continuity_outdated': 'same', 'instructions_changed': 'same'})
+                              'continuity_outdated': 'same', 'instructions_changed': 'same',
+                              'finishing_changed': 'not_applicable'})
             self.assertEqual([e['title'] for e in st['downstream_of']], ['Three'])
             self.assertEqual(by_title['One']['status']['take']['ref'], self.takes[0][0][0])
             self.assertEqual(by_title['One']['status']['outdated'], [])
