@@ -15,6 +15,7 @@ from pathlib import Path
 
 import config
 import enhance
+import finishing
 import library
 
 HERE = Path(__file__).resolve().parent
@@ -35,10 +36,11 @@ FFPROBE = config.value('ffprobe')
 EXPORT_FILTERS = frozenset('''acrossfade afade aformat anullsrc apad aresample asplit atrim
                             concat drawtext fade format fps loudnorm scale setsar settb
                             sidechaincompress volume xfade'''.split())
-FILM_FPS = config.value('film_export_fps')      # the encoder flags assemble() runs with;
-PREVIEW_FPS = config.value('preview_export_fps')  # cut_plan() reports them in the export spec
-FILM_CRF = config.value('film_export_crf')
-PREVIEW_CRF = config.value('preview_export_crf')
+# The animatic keeps a draft export policy of its own; the film cut's fps and crf come from
+# the project's finishing settings (finishing.py) -- one fps policy, not a second constant.
+PREVIEW_FPS = config.value('preview_export_fps')      # the encoder flags assemble() runs
+PREVIEW_CRF = config.value('preview_export_crf')      # with for the animatic; cut_plan()
+                                                      # reports them in the export spec
 HISTORY_MAX = 20
 EDIT_WINDOW = 300
 NOTES_MAX = 1000
@@ -107,7 +109,8 @@ def _mutate(slug, fn):
 # they only bump `rev`. Projects written before revisions have no `rev` key: rev_of() reads 0.
 
 BOOKKEEPING = ('rev', 'key_revs', 'updated')
-EDITOR_FIELDS = ('title', 'bible', 'music_brief', 'notes', 'title_card', 'end_card', 'loras', 'scenes')
+EDITOR_FIELDS = ('title', 'bible', 'music_brief', 'notes', 'title_card', 'end_card', 'loras',
+                 'finishing', 'scenes')
 SCENE_FIELDS = ('title', 'action', 'prompt', 'seconds', 'connect', 'transition')
 _MISSING = object()
 
@@ -400,6 +403,11 @@ def update_from_editor(project, data):
             project[key] = _clean_card(data[key])
     if 'loras' in data:
         project['loras'] = clean_loras(data['loras'])
+    if 'finishing' in data:
+        try:
+            project['finishing'] = finishing.clean_finishing(data['finishing'])
+        except ValueError as e:
+            raise ProjectError(str(e))
     return project
 
 
@@ -788,7 +796,7 @@ def take_for_run(project, run):
 # this one would eventually affect; they are NOT outdated while their own immediate source stands.
 
 STATUS_FLAGS = ('prompt_changed', 'refs_changed', 'settings_changed',
-                'continuity_outdated', 'instructions_changed')
+                'continuity_outdated', 'instructions_changed', 'finishing_changed')
 HASH_CACHE = {}                                          # path -> (mtime_ns, size, sha256); memory only
 
 
@@ -849,6 +857,39 @@ def _downstream_scenes(project, i):
                     'text': f'"{s.get("title") or s["id"]}" continues from "{via.get("title") or via["id"]}": '
                             'regenerating this scene would give it a new starting frame.'})
     return out
+
+def _finishing_flag(project, take, snapshot):
+    """One status flag: do the finishing settings now differ from what produced this take's
+    finished version? The enhance job that made the final is the reference when the take
+    names one (take['final_job']); a final-preset render recorded the finishing in its own
+    snapshot. A finished version with no record anywhere answers unknown_legacy -- what an
+    old run did is not invented here. Model filenames (upscaler, RIFE checkpoint) are
+    config-level and deliberately not part of the comparison."""
+    if not take.get('final'):
+        return _flag('not_applicable', 'take has no finished version',
+                     'The selected take has no finished version, so there is no finishing to compare.')
+    record = None
+    if take.get('final_job'):
+        record = (read_job(project['slug'], take['final_job'])[0] or {}).get('finishing')
+    elif snapshot is not None and snapshot.get('finishing'):
+        record = snapshot['finishing']        # final render: render and finishing were one job
+    used = finishing.settings_of_snapshot(record)
+    if used is None:
+        return _flag('unknown_legacy', 'no finishing record',
+                     'The finished version of this take was made before job records named the '
+                     'finishing settings (or its enhance job is gone): what it ran with cannot '
+                     'be known without inventing it.')
+    cur = finishing.for_project(project)
+    parts = []
+    if used['upscale'] != cur['upscale']:
+        parts.append('upscaling ' + ('off' if not used['upscale']['enabled'] else f"{used['upscale']['height']}p")
+                     + ' -> ' + ('off' if not cur['upscale']['enabled'] else f"{cur['upscale']['height']}p"))
+    if used['interpolation'] != cur['interpolation']:
+        parts.append('interpolation ' + ('off' if not used['interpolation']['enabled'] else f"x{used['interpolation']['factor']}")
+                     + ' -> ' + ('off' if not cur['interpolation']['enabled'] else f"x{cur['interpolation']['factor']}"))
+    if used['encode']['crf'] != cur['encode']['crf']:
+        parts.append(f"crf {used['encode']['crf']} -> {cur['encode']['crf']}")
+    return _flag_compare(parts, 'The finishing settings')
 
 
 def scene_status(project, scene):
@@ -956,6 +997,8 @@ def scene_status(project, scene):
                 parts.append(f"source take {src.get('take')} -> {take_ref(cur)}")
             f['continuity_outdated'] = _flag_compare(parts, 'The upstream take this continuation started from')
 
+    f['finishing_changed'] = _finishing_flag(project, take, snapshot)
+
     for name in STATUS_FLAGS:
         flags[name] = f[name]
         if f[name]['state'] == 'changed':
@@ -1001,15 +1044,21 @@ def cut_plan(project, used_takes, kind='film'):
         music = {'file': name, 'hash': hashlib.sha256(path(project['slug'], name).read_bytes()).hexdigest(),
                  'brief_hash': hashlib.sha256((project.get('music_brief') or '').encode()).hexdigest(),
                  'volume': MUSIC_VOLUME, 'loudnorm': LOUDNORM}
-    return {'takes': takes,
+    st = finishing.for_project(project)          # one fps policy: the film's fps and crf come
+    fps = finishing.output_fps(finishing.render_fps(), st) \
+        if kind == 'film' else PREVIEW_FPS       # from the finishing settings, not a second
+    crf = str(st['encode']['crf']) if kind == 'film' else str(PREVIEW_CRF)   # draft constant
+    export = {'width': int(w), 'height': int(h), 'fps': fps,
+              'video_codec': 'libx264', 'preset': 'medium', 'crf': crf,
+              'pix_fmt': 'yuv420p', 'audio_codec': 'aac', 'audio_bitrate': '192k',
+              'audio_rate': 48000, 'faststart': True, 'crossfade': XFADE, 'dip': DIP}
+    export.update(finishing.plan_extras(st))     # stage switches join the plan as soon as the
+    return {'takes': takes,                      # project leaves the legacy pipeline
             'transitions': [s.get('transition', 'cut') for s in project['scenes']],
             'cards': {'title': _card_plan(project.get('title_card')), 'end': _card_plan(project.get('end_card'))},
             'music': music,
             # the encoder flags assemble() puts on its command line; change both together
-            'export': {'width': int(w), 'height': int(h), 'fps': FILM_FPS if kind == 'film' else PREVIEW_FPS,
-                       'video_codec': 'libx264', 'preset': 'medium', 'crf': str(FILM_CRF) if kind == 'film' else str(PREVIEW_CRF),
-                       'pix_fmt': 'yuv420p', 'audio_codec': 'aac', 'audio_bitrate': '192k',
-                       'audio_rate': 48000, 'faststart': True, 'crossfade': XFADE, 'dip': DIP}}
+            'export': export}
 
 
 def _plan_fingerprint(plan):
@@ -1091,8 +1140,11 @@ def assemble(project, kind, cancel=None):
     """Cut each scene's resolved take into one video, recording per scene which take -- id and
     whether the pick was explicit or automatic -- actually went into the cut, so an export never
     silently describes something else afterwards.
-    kind: 'animatic' (takes, 24 fps) or 'film' (finals, 48 fps). cancel(): turn true and the
-    running encode is killed and the cut abandoned with ProjectError('cancelled')."""
+    kind: 'animatic' (draft takes, the preview fps) or 'film' (the finished finals at the
+    fps the project's finishing policy says -- one fps decision, finishing.output_fps()).
+    cancel(): turn true and the running encode is killed and the cut abandoned with
+    ProjectError('cancelled'). Every clip -- whatever rate it was made at -- passes through
+    the same fps filter, so mixed-rate takes cut into one film without a second policy."""
     clips, missing, not_final, used_takes = [], [], [], []
     for i, scene in enumerate(project['scenes'], 1):
         take = chosen(scene)
@@ -1111,7 +1163,8 @@ def assemble(project, kind, cancel=None):
         raise ProjectError('no scenes')
     w, h = FILM_SIZES[project['aspect']] if kind == 'film' else project['size']
     plan = cut_plan(project, used_takes, kind)      # inputs frozen before ffmpeg runs
-    fps = FILM_FPS if kind == 'film' else PREVIEW_FPS
+    fps = finishing.output_fps(finishing.render_fps(), finishing.for_project(project)) \
+        if kind == 'film' else PREVIEW_FPS          # the one fps policy decides the film rate
     n_scenes, cards = len(clips), None
     trans = [s.get('transition', 'cut') for s in project['scenes']]
     if project.get('title_card') or project.get('end_card'):
@@ -1168,7 +1221,8 @@ def assemble(project, kind, cancel=None):
         parts.append(f'[{acur}]loudnorm={LOUDNORM}[aout]')
     out = path(project['slug'], f'{kind}-{time.strftime("%Y%m%d-%H%M%S")}.mp4')
     cmd += ['-filter_complex', ';'.join(parts), '-map', f'[{vcur}]', '-map', '[aout]',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', str(FILM_CRF) if kind == 'film' else str(PREVIEW_CRF), '-pix_fmt', 'yuv420p',
+            '-c:v', 'libx264', '-preset', 'medium',
+            '-crf', str(finishing.for_project(project)['encode']['crf']) if kind == 'film' else str(PREVIEW_CRF),
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', str(out)]
     if cancel and cancel():
         if cards:
