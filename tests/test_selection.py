@@ -242,6 +242,35 @@ class Selection(unittest.TestCase):
         self.assertEqual(stored, out['used_takes'])            # the export still names what it cut
         self.assertEqual(projects.chosen(projects.load(self.slug)['scenes'][1])['run'], new['run'])
 
+    def test_a_take_that_lands_mid_assemble_is_not_in_the_cut(self):
+        a = self.add_take(0, tid='take-aaaa')
+        b = self.add_take(1, tid='take-bbbb')
+        late = {'id': 'take-late', 'job': 'job-late', 'provenance': 'recorded',
+                'run': '/comfy/output/director/run-late', 'path': '/comfy/output/director/run-late/video.mp4',
+                'url': '/files/x', 'preset': 'draft', 'seed': 9, 'created': 0.0,
+                'final': None, 'final_url': None, 'variant': None}
+        class MidCut(FakeFfmpeg):
+            def __init__(self, slug):
+                self.slug, self.cmds, self.fired = slug, [], False
+            def run(self, cmd, **kw):
+                self.cmds.append(cmd)
+                if not self.fired and 'format=duration' in cmd:
+                    self.fired = True                          # a render finishes while ffmpeg is mid-cut
+                    projects.mutate(self.slug, lambda p: p['scenes'][1]['takes'].append(late))
+                return super().run(cmd, **kw)
+        fake = MidCut(self.slug)
+        saved = projects.subprocess
+        projects.subprocess = fake
+        try:
+            out = projects.assemble(projects.load(self.slug), 'animatic')
+        finally:
+            projects.subprocess = saved
+        joined = ' '.join(' '.join(c) for c in fake.cmds)
+        self.assertNotIn('run-late', joined, 'every ffmpeg input names a take frozen at the start')
+        self.assertIn(a['run'], joined)
+        self.assertIn(b['run'], joined)
+        self.assertEqual([u['take'] for u in out['used_takes']], ['take-aaaa', 'take-bbbb'])
+
     # --------------------------------------------------- renders (stub ComfyUI) and endpoint
 
     def test_a_finished_render_never_moves_an_explicit_pick(self):
