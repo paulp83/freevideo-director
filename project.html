@@ -1258,8 +1258,9 @@ function viewerTarget(p) {
   const t = (previewRef && takes.find(t => (t.id || t.run) === previewRef)) || takes.find(t => t.run === s.chosen) || null;
   if (!t || !(t.final_url || t.url)) return {src: null, info: `Scene ${(sceneIndex(s) || 0) + 1} · ${s.title || 'Scene'} · no take yet`};
   const pos = takes.indexOf(t) + 1;
+  const fb = finBits(p.finishing || finCur);   // an enhanced take reads with the film's finishing settings
   return {src: t.final_url || t.url, poster: t.thumb_url || refPoster, info: `Scene ${sceneIndex(s) + 1} · ${s.title || 'Scene'} · take ${pos}/${takes.length} · ` +
-    (t.final ? `enhanced (${finBits(p).size} · ${finBits(p).fps} fps · CRF-${finBits(p).crf})`
+    (t.final ? `enhanced (${fb.size} · ${fb.fps} fps · CRF-${fb.crf})`
              : `${t.preset} (${p.aspect === '16:9' ? '1344×768' : '768×1344'} · ${p.source_fps || 24} fps)`) +
     ` · seed ${t.seed}`};
 }
@@ -1693,8 +1694,10 @@ function updateJob(s) {
   }
   const wantUn = !!(job && job.state === 'unknown' && !job.resolved);
   const un = jb.querySelector(':scope > #unkJob');
+  const keep = un && un.contains(document.activeElement) ? (document.activeElement.id || '') : '';
   const usig = wantUn ? JSON.stringify([job.id, (job.prompt_ids || []).join(','), !!job.retry_allowed, unkMsg.get(job.id) || '']) : '';
-  if (!wantUn) { if (un) un.remove(); return; }
+  if (!wantUn) { if (un) un.remove();                              // dismissing the job takes its focused
+    if (keep) setTimeout(() => $('bPrimary').focus(), 0); return; }  // button down with it: land on the primary
   if (un && un.dataset.sig === usig) return;
   if (un) un.remove();
   const ids = job.prompt_ids || [];
@@ -1708,6 +1711,8 @@ function updateJob(s) {
         onclick: () => { retryJobId = job.id; $('retryAskWhat').textContent = retryText(job); $('retryAsk').showModal(); }}, 'Retry…')] : []),
       el('button', {class: 'btn ghost', id: 'unkDismiss', onclick: () => { dismissJobId = job.id; $('dismissAsk').showModal(); }}, 'Dismiss…'),
       el('span', {id: 'unkMsg'}, unkMsg.get(job.id) || ''))));
+  if (keep) setTimeout(() => { const nf = document.getElementById(keep);   // a rebuilt notice hands focus back
+    if (nf) nf.focus(); else $('bPrimary').focus(); }, 0);                  // to the same button, if it came back
 }
 async function reconcileUnknown(job) {
   const m0 = $('unkMsg'); if (m0) m0.textContent = 'Asking ComfyUI…';
@@ -2295,7 +2300,7 @@ function queueRow(r) {
       selId = r.scene; previewRef = tk ? (tk.id || tk.run) : r.take; viewMode = 'scene'; cmpPair = null;
       highlightNav(); drawTimeline(proj); drawInspector(proj); drawStrip(proj); drawViewer(proj);
     }}, 'Details'));
-  return el('div', {class: 'qrow'}, ...kids);
+  return el('div', {class: 'qrow', 'data-job': String(r.id)}, ...kids);
 }
 async function qReconcile(id) {
   qMsg.set(id, 'Asking ComfyUI…');
@@ -2322,6 +2327,9 @@ function qsig(q) {
 }
 function renderQueue(q, force) {
   if (!force && $('queueBody').dataset.sig === qsig(q)) { tickQueueTimes(); return; }
+  const a = document.activeElement;                        // cancelling or dismissing a job rebuilds its
+  const fk = a && a.closest && a.closest('#queueBody .qrow')  // row while a button in it holds focus: remember
+    ? {node: a, job: a.closest('.qrow').dataset.job, word: a.textContent} : null;  // the action by job + word
   $('queueBody').dataset.sig = qsig(q);
   const mine = q.jobs.filter(r => r.project === slug), others = q.jobs.filter(r => r.project !== slug);
   $('queueMine').replaceChildren(...mine.map(queueRow));
@@ -2332,6 +2340,11 @@ function renderQueue(q, force) {
     $('queueOthers').replaceChildren(...others.map(queueRow));
   } else { wrap.hidden = true; $('queueOthers').replaceChildren(); }
   tickQueueTimes();
+  if (fk && !fk.node.isConnected) {                        // re-find the same button in the rebuilt row…
+    const row = document.querySelector('#queueBody [data-job="' + CSS.escape(fk.job) + '"]');
+    const b = row && [...row.querySelectorAll('button')].find(x => x.textContent === fk.word);
+    (b || $('closeQueue')).focus();                        // …or land on Close if the action left with the job
+  }
 }
 function tickQueueTimes() {
   const now = Date.now() / 1000;
