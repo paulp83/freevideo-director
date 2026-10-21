@@ -60,6 +60,8 @@ file) abort startup immediately, naming the setting and where the bad value came
 | `xfade_seconds` | `0.5` | `XFADE_SECONDS` | — | `project.py:XFADE` (transition cuts) |
 | `dip_seconds` | `0.4` | `DIP_SECONDS` | — | `project.py:DIP` (dip-to-black cuts) |
 | `presets` | `draft` (two-pass, no finishing), `final` (single-pass, finishing) | — | — (config file only) | `web.py:PRESETS` |
+| `readiness_cache` | `10` s | `READINESS_CACHE` | — | `readiness.py:check` (how long a readiness verdict is reused; must be > 0) |
+| `readiness_timeout` | `2` s | `READINESS_TIMEOUT` | — | `readiness.py:_timeout` (per-probe network/folder timeout) |
 
 Which entry point advertises which flag: `web.py` accepts `--host/--port/--allow-host` plus every
 service flag (`--comfy-url`, `--comfy-root`, `--projects-root`, `--library-root`, `--out-dir`,
