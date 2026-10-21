@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import enhance
+import jobs_db
 import project as projects
 import stats
 import web
@@ -117,10 +118,11 @@ class Jobs(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp(prefix='director-jobs-'))
         StubComfy.mode, StubComfy.submits = 'complete', 0
         StubComfy.reset()
-        self.saved = (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+        self.saved = (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
                       web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS)
         projects.ROOT = self.root
         stats.FILE = self.root / 'stats.json'
+        jobs_db.FILE = self.root / 'jobs.db'
         enhance.COMFY = web.COMFY = self.stub_url
         enhance.COMFY_ROOT = self.root / 'comfy'
         web.COMFY_OUTPUT = self.root / 'comfy' / 'output'
@@ -137,7 +139,7 @@ class Jobs(unittest.TestCase):
         projects.mutate(self.slug, give_prompts)
 
     def tearDown(self):
-        (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+        (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
          web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS) = self.saved
         shutil.rmtree(self.root, ignore_errors=True)
 
@@ -578,6 +580,7 @@ class Jobs(unittest.TestCase):
         for f in ('created', 'started', 'ended'):
             self.assertIsInstance(row[f], float)
         job['ended'] = time.time() - web.RECENT_DONE_SECONDS - 5
+        web.db_note(job)                                    # the durable row ages along with it
         self.assertNotIn(job['id'], [r['id'] for r in web.queue_view()['jobs']])   # old verdicts leave
 
     def test_cancel_route_cancels_a_preparing_job_that_never_reached_comfyui(self):

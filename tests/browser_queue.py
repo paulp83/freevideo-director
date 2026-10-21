@@ -246,7 +246,8 @@ def main():
     man = make_fixture.build(tmp)
     slug, ids = man['slug'], man['scene_ids']
     launcher = LAUNCHER % (str(HERE), str(HERE / 'tests' / 'fixtures'), str(projects.ROOT), json.dumps([slug, ids]), WEB_PORT)
-    web = subprocess.Popen([sys.executable, '-c', launcher], env=dict(os.environ, COMFY_URL='http://127.0.0.1:1'),
+    web = subprocess.Popen([sys.executable, '-c', launcher],
+                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1', JOBS_DB=str(tmp / 'jobs.db')),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d = None
     try:

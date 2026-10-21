@@ -124,7 +124,9 @@ def main():
     launcher = ('import sys; sys.path.insert(0, %r); import project; from pathlib import Path; project.ROOT = Path(%r); '
                 'sys.argv = ["web.py", "--port", "%d"]; import runpy; runpy.run_path(%r, run_name="__main__")'
                 % (str(HERE), str(projects.ROOT), WEB_PORT, str(HERE / 'web.py')))
-    web = subprocess.Popen([sys.executable, '-c', launcher], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    web = subprocess.Popen([sys.executable, '-c', launcher],
+                           env=dict(os.environ, JOBS_DB=str(tmp / 'jobs.db')),
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d = None
     try:
         for _ in range(50):

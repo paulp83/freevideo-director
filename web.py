@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import director
+import jobs_db
 import library
 import notify
 import stats
@@ -323,12 +324,45 @@ def live_jobs(slug=None):
                 if not j['done'] and (slug is None or j.get('project') == slug)]
 
 
+def job_backend():
+    """host:port of the ComfyUI this process submits to -- what the durable row names."""
+    return urllib.parse.urlsplit(COMFY).netloc
+
+
+def db_kwargs(job):
+    """What the durable row needs beyond the live job dict: the backend, and references (paths
+    only, never copies) to the project's immutable request/result files for this job."""
+    kw = {'backend': job_backend()}
+    if job.get('project'):
+        try:
+            kw['snapshot_path'] = str(projects.job_path(job['project'], job['id']))
+            kw['result_path'] = str(projects.result_path(job['project'], job['id']))
+        except projects.ProjectError:
+            pass
+    return kw
+
+
+def db_note(job):
+    """Mirror the live job into the durable store (jobs_db): state, timestamps, prompt ids,
+    holds, error, resolved verdict -- the whole row, so the store can never drift from the
+    in-memory state machine. A store failure is logged and the job runs on; the ONE place
+    that refuses to go on is submit_tracked's pre-submit record_submit (submit step)."""
+    try:
+        jobs_db.save(job, **db_kwargs(job))
+    except Exception as e:                       # the job store must never kill a job or the server
+        print(f'jobs: could not record job {job["id"]}: {e}')
+
+
 def abandon(job):
     """Drop a never-started job (its endpoint refuses the work); releases nothing it held."""
     with LOCK:
         if JOBS.get(job['id']) is job and not job['done']:
             del JOBS[job['id']]
     job['done'] = True
+    try:
+        jobs_db.forget(job['id'])    # never accepted anywhere: nothing for a restart to reconcile
+    except Exception as e:
+        print(f'jobs: could not drop abandoned job {job["id"]}: {e}')
 
 
 def transition(job, to):
@@ -343,6 +377,7 @@ def transition(job, to):
         if to in TERMINAL:
             job['ended'] = time.time()
         job['done'] = to in TERMINAL
+        db_note(job)                 # every state move lands in the store, under the lock
 
 
 def check_cancel(job):
@@ -407,6 +442,7 @@ def new_job(kind, stage_keys, project=None, scene=None):
            'project': project, 'scene': str(scene) if scene is not None else None, 'holds': []}
     with LOCK:
         JOBS[job['id']] = job
+    db_note(job)                     # the row exists from the moment a job is accepted
     return job
 
 
@@ -505,6 +541,7 @@ def run_job(job, fn, *args, **kwargs):
                 job['error'] = job['error'] or 'job ended without a terminal state'
         if job['state'] != 'unknown':                    # unknown: holds survive until it is resolved
             release(job)
+        db_note(job)                 # the row catches up with the holds this job ends holding
 
 
 def poll(job, fetch, on_progress=None):
@@ -565,6 +602,7 @@ def enhance_stages(job, run, on_final=None):
     run_dir = enhance.run_dir_of(run)
     workdir = enhance.new_workdir(run_dir, job['id'])   # private to this job; two enhances never share a name
     job['workdir'] = str(workdir)
+    db_note(job)                     # the kept temp dir belongs in the durable row before anything can go unknown
     keep = False                       # an unknown job keeps the dir: its prompt may still read it
     try:
         source, _ = enhance.intermediate(run_dir, workdir)
@@ -595,6 +633,7 @@ def enhance_stages(job, run, on_final=None):
         if not keep:
             enhance.remove_workdir(workdir)   # the lossless raw mkv is only needed while ComfyUI reads it
             job['workdir'] = None
+            db_note(job)             # the temp dir is gone: the durable row must say so too
         # kept dirs are deleted by release_resolved once reconcile or a dismissal proves the stop
     job['final'] = final
     if on_final:
@@ -699,6 +738,7 @@ def release_resolved(job, verdict, by='reconcile'):
         job['workdir'] = None
     job['resolved'] = {'by': by, 'verdict': verdict, 'at': time.time()}
     release(job)
+    db_note(job)                     # the resolved verdict and freed holds are durable
 
 
 def reconcile(job):
@@ -922,6 +962,7 @@ def render_job(job, slug, scene_id, preset_name, variant=None):
                 two_pass=preset['two_pass'], loras=p.get('loras'))
     graph = build_graph(**args)                # uploads the pictures; submits only once recorded
     take_id = projects.new_take_id()
+    job['take_id'] = take_id             # so the durable row can name the take it will create
     snapshot = render_snapshot(job, slug, scene_id, take_id, preset_name, variant,
                                args, graph, model, continuation(p, i))
     projects.write_job_snapshot(slug, snapshot)
@@ -1197,7 +1238,10 @@ RECENT_DONE_SECONDS = 30 * 60   # finished jobs stay on the queue board this lon
 def queue_view():
     """The queue board: live jobs (with learned estimates), recently finished jobs, and batches.
 
-    Nothing claims persistence: these live in memory only, a restart forgets them. Each job row
+    Live jobs are memory-only; finished verdicts additionally come back from the durable
+    store (jobs_db) after a restart, flagged `persisted`, for exactly as long as they would
+    have stayed on the board anyway. Recovery of work still running when the director died
+    is not built yet. Each job row
     carries the raw epochs (created/started/ended) plus two SEPARATE durations: queued_for
     (accepted -> ComfyUI first verifiably had the work) and running_for (that moment -> now/end).
     A job that never reached ComfyUI has running_for null and is still marked cancelled/failed."""
@@ -1228,7 +1272,7 @@ def queue_view():
                'eta': max(0, estimate - round(end - job['created'])) if estimate is not None and not job['done'] else None,
                'stage': next((s['label'] for s in job['stages'] if s['state'] == 'active'), None),
                'error': job['error'], 'prompt_ids': list(job['prompt_ids']),
-               'resolved': job.get('resolved'), 'live': not job['done'],
+               'resolved': job.get('resolved'), 'live': not job['done'], 'correlation': job.get('correlation'),
                'take': (job.get('take') or {}).get('run'),
                'created': job.get('created'), 'started': started, 'ended': job.get('ended'),
                'queued_for': round((started or end) - job['created']),
@@ -1236,6 +1280,30 @@ def queue_view():
         (live if row['live'] else done).append(row)
     live.sort(key=lambda r: r['created'] or 0)             # oldest live job first
     done.sort(key=lambda r: -(r['ended'] or 0))           # newest verdict first
+    # finished verdicts outlive a restart through the durable store; live jobs do not.
+    # Additive row fields only: persisted, correlation.
+    seen = {r['id'] for r in live} | {r['id'] for r in done}
+    try:
+        for row in jobs_db.list_jobs(states=TERMINAL, since=now - RECENT_DONE_SECONDS, limit=200):
+            if row['id'] in seen:
+                continue                                     # the memory view already shows it
+            slug, scene_id = row['project'], row['scene']
+            name, title = film(slug, scene_id) if slug else (None, None)
+            end = row['ended'] or now
+            started = row['started']
+            estimate = stats.estimate(row['kind'])
+            estimate = round(estimate) if estimate is not None else None
+            done.append({'id': row['id'], 'kind': row['kind'], 'state': row['state'], 'project': slug,
+                         'project_name': name, 'scene': scene_id, 'scene_title': title,
+                         'elapsed': round(end - (row['created'] or end)),
+                         'estimate': estimate, 'eta': None, 'stage': None, 'error': row['error'],
+                         'prompt_ids': row['prompt_ids'], 'resolved': row['resolved'], 'live': False,
+                         'take': row['run'], 'created': row['created'], 'started': started, 'ended': row['ended'],
+                         'queued_for': round((started or end) - (row['created'] or end)),
+                         'running_for': round(end - started) if started else None,
+                         'correlation': row['correlation'], 'persisted': True})
+    except Exception as e:
+        print(f'jobs: durable queue history unavailable: {e}')  # a broken store never breaks the board
     batches = []
     for slug, b in list(BATCH.items()):
         if not b['done']:
@@ -1644,6 +1712,8 @@ if __name__ == '__main__':
     a = p.parse_args()
     Handler.extra_hosts = set(a.allow_host)
     projects.recover_interrupted()
+    jobs_db.init()                       # the durable job bookkeeping, pruned to its retention
+    jobs_db.prune()
     sweep_enhance_tmp()
     threading.Thread(target=reconcile_loop, daemon=True).start()
     threading.Thread(target=ws_listen, daemon=True).start()

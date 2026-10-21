@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import enhance
+import jobs_db
 import project as projects
 import stats
 import web
@@ -64,11 +65,12 @@ class ImmutableInputs(unittest.TestCase):
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix='director-imm-'))
-        self.saved = (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+        self.saved = (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
                       web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS,
                       web.submit_prompt, web.upload)
         projects.ROOT = self.root
         stats.FILE = self.root / 'stats.json'
+        jobs_db.FILE = self.root / 'jobs.db'
         enhance.COMFY = web.COMFY = self.stub_url
         enhance.COMFY_ROOT = self.root / 'comfy'
         web.COMFY_OUTPUT = self.root / 'comfy' / 'output'
@@ -85,14 +87,14 @@ class ImmutableInputs(unittest.TestCase):
         projects.mutate(self.slug, lambda p: p['scenes'][0].update(prompt=PROMPT, seed=1234567))
 
     def tearDown(self):
-        (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+        (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
          web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS,
          web.submit_prompt, web.upload) = self.saved
         shutil.rmtree(self.root, ignore_errors=True)
 
     def test_every_input_freezes_before_the_submit(self):
         uploads, captured = [], {}
-        real_submit, real_upload = self.saved[8], self.saved[9]
+        real_submit, real_upload = self.saved[9], self.saved[10]
 
         def spy_upload(name, raw):
             uploads.append((name, bytes(raw)))

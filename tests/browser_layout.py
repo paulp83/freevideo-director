@@ -155,7 +155,8 @@ def main():
                 'sys.argv = ["web.py", "--port", "%d"]; import runpy; runpy.run_path(%r, run_name="__main__")'
                 % (str(HERE), str(projects.ROOT), WEB_PORT, str(HERE / 'web.py')))
     # COMFY_URL points at a closed port so the renderer chip is deterministically "unavailable"
-    web = subprocess.Popen([sys.executable, '-c', launcher], env=dict(os.environ, COMFY_URL='http://127.0.0.1:1'),
+    web = subprocess.Popen([sys.executable, '-c', launcher],
+                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1', JOBS_DB=str(tmp / 'jobs.db')),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d = None
     try:

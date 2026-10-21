@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import enhance
+import jobs_db
 import project as projects
 import stats
 import web
@@ -81,10 +82,11 @@ class Provenance(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix='director-prov-'))
         StubComfy.mode, StubComfy.submits = 'complete', 0
-        self.saved = (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+        self.saved = (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
                       web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS)
         projects.ROOT = self.root
         stats.FILE = self.root / 'stats.json'
+        jobs_db.FILE = self.root / 'jobs.db'
         enhance.COMFY = web.COMFY = self.stub_url
         enhance.COMFY_ROOT = self.root / 'comfy'
         web.COMFY_OUTPUT = self.root / 'comfy' / 'output'
@@ -103,7 +105,7 @@ class Provenance(unittest.TestCase):
         projects.mutate(self.slug, give_prompts)
 
     def tearDown(self):
-        (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
+        (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
          web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS) = self.saved
         shutil.rmtree(self.root, ignore_errors=True)
 

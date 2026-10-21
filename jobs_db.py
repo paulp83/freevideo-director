@@ -87,17 +87,23 @@ def init(path=None):
             FILE = Path(path)
         if _INITED == str(FILE):
             return
-        FILE.parent.mkdir(parents=True, exist_ok=True)
-        conn = _connect()
+        try:
+            FILE.parent.mkdir(parents=True, exist_ok=True)
+            conn = _connect()
+        except (sqlite3.Error, OSError) as e:
+            raise JobDbError(f'cannot open the job store {FILE}: {e}')
         try:
             conn.execute('PRAGMA journal_mode=WAL')
             _migrate(conn)
+        except sqlite3.Error as e:
+            raise JobDbError(f'cannot set up the job store {FILE}: {e}')
         finally:
             conn.close()
         _INITED = str(FILE)
 
 
-def _row(job, state=None, backend=None, take_id=None, snapshot_path=None, result_path=None):
+def _row(job, state=None, backend=None, take_id=None, snapshot_path=None, result_path=None,
+         prompt_ids=None, correlation=None):
     """A row dict for an in-memory web.py job dict; the job dict stays the live view."""
     resolved = job.get('resolved') or {}
     take = job.get('take') or {}
@@ -105,8 +111,10 @@ def _row(job, state=None, backend=None, take_id=None, snapshot_path=None, result
         'id': job['id'], 'kind': job['kind'], 'project': job.get('project'), 'scene': job.get('scene'),
         'state': state or job['state'],
         'created': job.get('created'), 'started': job.get('started'), 'ended': job.get('ended'),
-        'backend': backend, 'prompt_ids': json.dumps(list(job.get('prompt_ids') or [])),
-        'correlation': job.get('correlation'),
+        'backend': backend,
+        'prompt_ids': json.dumps(list(prompt_ids if prompt_ids is not None
+                                     else (job.get('prompt_ids') or []))),
+        'correlation': correlation if correlation is not None else job.get('correlation'),
         'snapshot_path': snapshot_path, 'result_path': result_path,
         'take_id': take_id or job.get('take_id'), 'run': take.get('run'), 'error': job.get('error'),
         'resolved_by': resolved.get('by'), 'resolved_verdict': resolved.get('verdict'),
@@ -128,12 +136,14 @@ def _put(conn, r):
                  f'ON CONFLICT(id) DO UPDATE SET {updates}', [r[c] for c in COLUMNS])
 
 
-def save(job, state=None, backend=None, take_id=None, snapshot_path=None, result_path=None):
+def save(job, state=None, backend=None, take_id=None, snapshot_path=None, result_path=None,
+         prompt_ids=None, correlation=None):
     """Upsert the whole row from the live job dict. Raises JobDbError on failure; the live job
     path in web.py logs those and continues -- only submit_tracked refuses to go on."""
     init()
     r = _row(job, state=state, backend=backend, take_id=take_id,
-             snapshot_path=snapshot_path, result_path=result_path)
+             snapshot_path=snapshot_path, result_path=result_path,
+             prompt_ids=prompt_ids, correlation=correlation)
     with LOCK:
         conn = _connect()
         try:
@@ -146,10 +156,14 @@ def save(job, state=None, backend=None, take_id=None, snapshot_path=None, result
 
 
 def record_submit(job, prompt_id, backend=None, snapshot_path=None, result_path=None):
-    """The pre-submit write: durably append `prompt_id` and mark the row 'submitting' BEFORE the
+    """The pre-submit write: durably record `prompt_id` and mark the row 'submitting' BEFORE the
     POST /prompt leaves. This one failure must stop the submit (JobDbError propagates): a render
     we cannot track by id is not allowed to happen."""
-    save(job, state=SUBMITTING, backend=backend, snapshot_path=snapshot_path, result_path=result_path)
+    ids = list(job.get('prompt_ids') or [])
+    if prompt_id not in ids:
+        ids.append(prompt_id)
+    save(job, state=SUBMITTING, backend=backend, snapshot_path=snapshot_path,
+         result_path=result_path, prompt_ids=ids, correlation='client-supplied')
 
 
 def forget(job_id):
@@ -204,7 +218,7 @@ def list_jobs(project=None, states=None, limit=None, since=None):
         where.append('state IN (%s)' % ', '.join('?' for _ in states))
         args.extend(states)
     if since is not None:
-        where.append('ended >= ?')
+        where.append('COALESCE(ended, created) >= ?')
         args.append(since)
     sql = 'SELECT * FROM jobs'
     if where:

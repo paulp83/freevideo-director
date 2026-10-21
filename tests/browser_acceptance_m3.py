@@ -286,7 +286,7 @@ def main():
     (gate_dir / 'ffmpeg').chmod(0o755)
     GATE.write_text('open')
     webp = subprocess.Popen([sys.executable, '-c', launcher],
-                            env=dict(os.environ, COMFY_URL=stub_url,
+                            env=dict(os.environ, COMFY_URL=stub_url, JOBS_DB=str(tmp / 'jobs.db'),
                                      PATH=str(gate_dir) + os.pathsep + os.environ['PATH'],
                                      M3B3_FFMPEG_GATE=str(GATE)),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

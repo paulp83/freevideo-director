@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import enhance
+import jobs_db
 import stats
 import web
 
@@ -84,7 +85,8 @@ class EnhanceTmp(unittest.TestCase):
         StubComfy.release.clear()
         FakePopen.procs, FakePopen.rc = [], 0
         self.saved = (enhance.COMFY, enhance.COMFY_ROOT, enhance.subprocess, enhance.time,
-                      web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS, stats.FILE)
+                      web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS, stats.FILE,
+                      jobs_db.FILE)
         enhance.COMFY = web.COMFY = self.stub_url
         enhance.COMFY_ROOT = self.root / 'comfy'
         web.COMFY_OUTPUT = self.root / 'comfy' / 'output'
@@ -92,12 +94,14 @@ class EnhanceTmp(unittest.TestCase):
         enhance.time = types.SimpleNamespace(time=time.time, sleep=lambda s: None)   # free_gpu's 3s nap
         web.JOB_TIMEOUT, web.POLL_SECONDS = 120.0, 0.02
         stats.FILE = self.root / 'stats.json'
+        jobs_db.FILE = self.root / 'jobs.db'
         for table in (web.JOBS, web.RESERVES, web.SCENE_JOB, web.BATCH, web.PROGRESS):
             table.clear()
 
     def tearDown(self):
         (enhance.COMFY, enhance.COMFY_ROOT, enhance.subprocess, enhance.time,
-         web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS, stats.FILE) = self.saved
+         web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS, stats.FILE,
+         jobs_db.FILE) = self.saved
         StubComfy.release.set()
         shutil.rmtree(self.root, ignore_errors=True)
 
