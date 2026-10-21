@@ -261,6 +261,63 @@ class TestGating(ReadinessCase):
         self.assertIn('not reachable', c['reason'])
         self.assertNotIn('not installed', c['reason'])
 
+class TestStageScoring(ReadinessCase):
+    """Per-project scoring: a dependency of a stage the project's finishing settings switched
+    off becomes a named non-issue instead of a blocker; the probe still sees the whole graph,
+    so what was excused stays visible."""
+
+    def setUp(self):
+        super().setUp()
+        import finishing
+        self.no_upscale = finishing.clean_finishing({'upscale': {'enabled': False}})
+        self.no_interp = finishing.clean_finishing({'fps_policy': 'original'})
+        self.off_all = finishing.clean_finishing({'upscale': {'enabled': False},
+                                                  'fps_policy': 'original'})
+
+    def test_upscaling_off_excuses_the_seedvr2_nodes_and_its_model_file(self):
+        # stub: SeedVR2 node classes missing AND (as always for this stub) no model files listed
+        self.comfy(combined_object_info(finishing_object_info(drop=('SEEDVR2',)), render_object_info()))
+        with self.assertRaises(readiness.NotReady) as ctx:
+            readiness.require('finishing')             # projects that upscale still need it
+        self.assertIn('SeedVR2', str(ctx.exception))
+        off = readiness.check('finishing', settings=self.no_upscale)
+        self.assertNotIn('SeedVR2', off['reason'] or '')
+        self.assertIn('rife49.pth', off['reason'] or '')   # the RIFE stage still counts
+        notes = [i for i in off['items'] if 'SeedVR2' in i['name'] or 'seedvr2' in i['name']]
+        self.assertTrue(notes, [i['name'] for i in off['items']])
+        self.assertTrue(all(i['ok'] and 'not needed' in i['short'] for i in notes),
+                        [i['short'] for i in notes])
+        self.assertTrue(any('Upscaling' in (i['detail'] or '') for i in notes))   # names the setting
+
+    def test_interpolation_off_excuses_rife_and_its_checkpoint(self):
+        self.comfy(combined_object_info(finishing_object_info(drop=('RIFE',)), render_object_info()))
+        with self.assertRaises(readiness.NotReady) as ctx:
+            readiness.require('finishing')
+        self.assertIn('RIFE', str(ctx.exception))
+        off = readiness.check('finishing', settings=self.no_interp)
+        self.assertNotIn('rife49', off['reason'] or '')
+        self.assertIn('seedvr2_ema', off['reason'] or '')
+        notes = [i for i in off['items'] if 'rife' in i['name'].lower() or 'RIFE' in i['name']]
+        self.assertTrue(notes and all(i['ok'] and 'not needed' in i['short'] for i in notes))
+
+    def test_encode_only_project_needs_neither_upscaler_nor_interpolator(self):
+        self.comfy(combined_object_info(finishing_object_info(drop=('SEEDVR2', 'RIFE')),
+                                        render_object_info()))
+        c = readiness.check('finishing', settings=self.off_all)
+        self.assertEqual(c['level'], 'ready', c['summary'])
+        readiness.require('finishing', settings=self.off_all)     # must not raise
+        # the global view is untouched: without settings every stage still counts
+        self.assertEqual(readiness.check('finishing')['level'], 'unavailable')
+
+    def test_cache_scores_each_settings_variant_apart(self):
+        self.comfy(combined_object_info(finishing_object_info(drop=('SEEDVR2', 'RIFE')),
+                                        render_object_info()))
+        os.environ['READINESS_CACHE'] = '60'
+        config.reload()
+        self.assertEqual(readiness.check('finishing')['level'], 'unavailable')
+        self.assertEqual(readiness.check('finishing', settings=self.off_all)['level'], 'ready')
+        self.assertEqual(readiness.check('finishing')['level'], 'unavailable')
+
 
 class TestCacheAndTimeout(ReadinessCase):
     def test_answers_are_cached_until_refreshed(self):

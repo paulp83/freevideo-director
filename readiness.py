@@ -367,6 +367,17 @@ def _finishing_files_item(info, confirmed=True, settings=None):
         stage = ('upscale' if 'SEEDVR2' in cls.upper()
                  else 'interpolation' if 'RIFE' in cls.upper() else 'encode')
         label = _STAGE_OFF.get(stage, (None,))[0]
+        if not _stage_on(settings, stage):
+            # the stage that would load this model is switched off in this project's
+            # settings: the dependency is gone, installed or not, node present or not
+            items.append(_item(f'model file {fname}', True, short=f'{fname} not needed',
+                               detail=f'{fname} (used by {cls}) only matters to {label}, and '
+                                      '{label} is switched off in the finishing settings of '
+                                      'this project',
+                               how_to_fix=f'install the model, or keep {label} switched off in '
+                                          'Project settings → Finishing',
+                               affects=stage))
+            continue
         options = _options(info, cls) if info is not None else None
         if options is None:
             items.append(_item(f'model file {fname}', False, short=f'{fname} unconfirmed',
@@ -375,14 +386,6 @@ def _finishing_files_item(info, confirmed=True, settings=None):
                                hard=False, affects='upscale, interpolation'))
         elif fname in options:
             items.append(_item(f'model file {fname}', True, detail=f'offered by {cls}'))
-        elif not _stage_on(settings, stage):
-            items.append(_item(f'model file {fname}', True, short=f'{fname} not needed',
-                               detail=f'{fname} (used by {cls}) is not installed, but {label} '
-                                      'is switched off in the finishing settings of this '
-                                      'project, so this project does not need it',
-                               how_to_fix=f'install the model, or keep {label} switched off in '
-                                          'Project settings \u2192 Finishing',
-                               affects=stage))
         else:
             items.append(_item(f'model file {fname}', False, short=f'{fname} not installed',
                                detail=f'{fname} (used by {cls}) is not among the models that '
