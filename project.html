@@ -551,6 +551,35 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <p class="hint">Black cards with centred white text, faded in and out, hard-cut to the film. Empty text = no card.</p>
     </section>
     <section>
+      <h2>Finishing</h2>
+      <p class="hint">What happens to a take after it is rendered. This is what Enhance, Generate final and Export film do.</p>
+      <div class="row">
+        <label class="inline">Upscaling <select id="finUpscale" style="width:auto" aria-label="Upscaling">
+          <option value="0">Off — keep the render size</option>
+          <option value="720">HD — 720 px</option><option value="1080">Full HD — 1080 px</option>
+          <option value="2160">4K — 2160 px (needs GPU headroom)</option></select></label>
+      </div>
+      <p class="hint" id="finUpscaleWhy"></p>
+      <div class="row">
+        <label class="inline">Frame interpolation <select id="finInterp" style="width:auto" aria-label="Frame interpolation">
+          <option value="0">Off — frames as rendered</option>
+          <option value="2">×2</option><option value="4">×4</option></select></label>
+      </div>
+      <p class="hint" id="finInterpWhy"></p>
+      <div class="row">
+        <label class="inline">Encoding quality <select id="finPreset" style="width:auto" aria-label="Encoding quality">
+          <option value="high">High (CRF 16)</option><option value="standard">Standard (CRF 20)</option>
+          <option value="small">Smaller file (CRF 24)</option><option value="custom">Custom CRF</option></select></label>
+        <label class="inline">CRF <input type="number" id="finCrf" min="12" max="28" step="1" style="width:64px" aria-label="Encoding CRF, 12 to 28"></label>
+      </div>
+      <p class="hint">Lower CRF: better picture, bigger file (12–28).</p>
+      <div class="row">
+        <span class="badge" id="finSummary"></span>
+        <button class="btn ghost" id="finReset" title="Back to Full HD upscaling, ×2 interpolation and CRF 16">Reset to defaults</button>
+      </div>
+      <p class="hint" id="finWarn" hidden></p>
+    </section>
+    <section>
       <h2>LoRAs</h2>
       <div id="loras"></div>
       <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
@@ -966,6 +995,11 @@ function draw(force) {
   if (!('loras' in st.pendingTop) && JSON.stringify(loraList) !== JSON.stringify(p.loras || [])) {
     loraList = structuredClone(p.loras || []); if (loraNames) loraRows(() => markDirty(null, 'loras', structuredClone(loraList)));
   }
+  if (!('finishing' in st.pendingTop) &&
+      (!finCur || JSON.stringify(finCur) !== JSON.stringify(p.finishing))) {
+    finCur = structuredClone(p.finishing); finRender();
+  }
+  finTitles(); finChanged();
   setIfIdle($('pTitleCardText'), p.title_card ? p.title_card.text : '', 'title_card');
   setIfIdle($('pTitleCardSecs'), p.title_card ? p.title_card.seconds : 3, 'title_card');
   setIfIdle($('pEndCardText'), p.end_card ? p.end_card.text : '', 'end_card');
@@ -1223,7 +1257,8 @@ function viewerTarget(p) {
   if (!t || !(t.final_url || t.url)) return {src: null, info: `Scene ${(sceneIndex(s) || 0) + 1} · ${s.title || 'Scene'} · no take yet`};
   const pos = takes.indexOf(t) + 1;
   return {src: t.final_url || t.url, poster: t.thumb_url || refPoster, info: `Scene ${sceneIndex(s) + 1} · ${s.title || 'Scene'} · take ${pos}/${takes.length} · ` +
-    (t.final ? 'enhanced (1920×1080 · 48 fps · CRF-16)' : `${t.preset} (${p.aspect === '16:9' ? '1344×768' : '768×1344'} · 24 fps)`) +
+    (t.final ? `enhanced (${finBits(p).size} · ${finBits(p).fps} fps · CRF-${finBits(p).crf})`
+             : `${t.preset} (${p.aspect === '16:9' ? '1344×768' : '768×1344'} · ${p.source_fps || 24} fps)`) +
     ` · seed ${t.seed}`};
 }
 function drawViewer() {
@@ -1476,7 +1511,7 @@ function markDirty(sceneId, key, value) {
 
 const FLAG_LABEL = {prompt_changed: 'prompt changed', refs_changed: 'references changed',
                     settings_changed: 'settings changed', continuity_outdated: 'continuity outdated',
-                    instructions_changed: 'instructions changed'};
+                    instructions_changed: 'instructions changed', finishing_changed: 'finishing changed'};
 /* every disabled action gets one visible reason in words; the order here is the single
    truth used by all inspector buttons, so a disabled control never sits next to silence */
 function sceneBlockReason(s) {
@@ -1767,6 +1802,92 @@ async function loadLoras(onChange, probeOnly) {
   };
   loraRows(onChange);
 }
+/* ---------- finishing: one switch set drives Enhance, Final, the film cut and every label ---------- */
+let finCur = null;
+const FIN_PRESET = {16: 'high', 20: 'standard', 24: 'small'};
+const FIN_CRFS = {high: 16, standard: 20, small: 24};
+function finBits(s) {                       // what one finished take looks like under settings s
+  const wide = proj.aspect !== '9:16', fps = proj.source_fps || 24;
+  const h = s.upscale.height;
+  const size = s.upscale.enabled
+    ? (wide ? `${Math.round(h * 16 / 9)}×${h}` : `${h}×${Math.round(h * 16 / 9)}`)
+    : (wide ? '1344×768' : '768×1344');
+  const outFps = s.fps_policy === 'interpolated' ? fps * s.interpolation.factor : fps;
+  return {size, fps: outFps, crf: s.encode.crf};
+}
+function finStages(s) {                     // the enabled stages, as words for button titles
+  const b = finBits(s), bits = [];
+  if (s.upscale.enabled) bits.push(`SeedVR2 upscale to ${b.size}`);
+  if (s.interpolation.enabled) bits.push(`RIFE ×${s.interpolation.factor} to ${b.fps} fps`);
+  bits.push(`CRF-${b.crf} encode`);
+  return bits.join(', ');
+}
+function finRender() {
+  const s = finCur;
+  $('finUpscale').value = s.upscale.enabled ? String(s.upscale.height) : '0';
+  $('finInterp').value = s.interpolation.enabled ? String(s.interpolation.factor) : '0';
+  $('finCrf').value = s.encode.crf;
+  $('finPreset').value = s.encode.preset || 'custom';
+  finHint();
+}
+function finHint() {
+  const s = finCur, b = finBits(s), fps = proj && proj.source_fps || 24;
+  $('finSummary').textContent = `Output: ${b.size} at ${b.fps} fps, CRF ${b.crf}`;
+  $('finInterpWhy').textContent = s.interpolation.enabled
+    ? `RIFE inserts frames between the rendered ones: ${fps} fps becomes ${b.fps} fps. ` +
+      'Frame rate of the file: interpolated.'
+    : `Frames stay exactly as rendered: the finished file keeps the ${fps} fps of the take, ` +
+      'and the film is cut at that rate. Frame rate of the file: as rendered.';
+  $('finUpscaleWhy').textContent = s.upscale.enabled
+    ? 'SeedVR2 enlarges every frame before the file is encoded. 4K needs real GPU headroom.'
+    : 'No upscaler: finished takes keep the render size. A project without this stage no longer ' +
+      'needs the SeedVR2 node pack.';
+}
+function finChanged() {                     // finals made under different settings than today
+  const n = (proj.scenes || []).filter(s => ((((s.status || {}).flags || {}).finishing_changed) ||
+                                             {}).state === 'changed').length;
+  const el = $('finWarn');
+  if (!n) { el.hidden = true; el.textContent = ''; return; }
+  el.hidden = false;
+  el.textContent = `${n} scene${n > 1 ? 's were' : ' was'} enhanced with different finishing ` +
+    'settings. Enhance them again, then Export the film again.';
+}
+function finMark() {                        // control state -> canonical object -> autosave
+  const s = structuredClone(finCur);
+  const up = $('finUpscale').value, fac = $('finInterp').value;
+  s.upscale.enabled = up !== '0'; if (up !== '0') s.upscale.height = +up;
+  s.interpolation.enabled = fac !== '0'; if (fac !== '0') s.interpolation.factor = +fac;
+  s.fps_policy = fac !== '0' ? 'interpolated' : 'original';   // the one fps decision
+  let crf = +$('finCrf').value;
+  if (!Number.isFinite(crf)) crf = finCur.encode.crf;
+  crf = Math.min(28, Math.max(12, Math.round(crf)));
+  s.encode.crf = crf;
+  s.encode.preset = FIN_PRESET[crf] ?? null;
+  finCur = s; finHint();
+  markDirty(null, 'finishing', structuredClone(s));
+}
+for (const id of ['finUpscale', 'finInterp'])
+  $(id).addEventListener('change', () => finMark());
+$('finCrf').addEventListener('change', () => {
+  $('finPreset').value = FIN_PRESET[+$('finCrf').value] || 'custom';
+  finMark();
+});
+$('finPreset').addEventListener('change', () => {
+  if ($('finPreset').value !== 'custom') { $('finCrf').value = FIN_CRFS[$('finPreset').value]; finMark(); }
+});
+$('finReset').onclick = () => {             // the pre-settings pipeline (matches finishing.defaults)
+  finCur = {upscale: {enabled: true, height: 1080}, interpolation: {enabled: true, factor: 2},
+            encode: {crf: 16, preset: 'high'}, fps_policy: 'interpolated'};
+  finRender();
+  markDirty(null, 'finishing', structuredClone(finCur));
+};
+function finTitles() {                      // every action names what it will actually do
+  const s = finCur, b = finBits(s), stages = finStages(s);
+  $('bExportFilm').title = `Film: finished takes joined at ${b.size}, ${b.fps} fps, CRF-${b.crf}; ` +
+    'music ducked under dialogue and loudness-normalised';
+  $('bEnhanceSel').title = `Finishing only on the in-use take: ${stages}`;
+  $('bFinal').title = `One render straight to finished: render, ${stages}`;
+}
 /* ---------- readiness: three separate checks, one place (readiness.py backs all three) ---------- */
 let RD = null, rdOpen = null;
 const RD_LABEL = {prompt: 'Prompts', video: 'Video', finishing: 'Finishing'};
@@ -1792,7 +1913,8 @@ function rdReason(kind) {
   return 'Finishing unavailable: ' + hard.join('; ') + ' (affects Enhance, Final, Export)';
 }
 async function loadReadiness() {
-  try { RD = await api('/api/readiness'); } catch (e) { /* keep the last picture; the chip says what we knew */ }
+  const url = slug ? `/api/readiness?project=${encodeURIComponent(slug)}` : '/api/readiness';
+  try { RD = await api(url); } catch (e) { /* keep the last picture; the chip says what we knew */ }
   drawReadiness();
 }
 function drawReadiness() {
