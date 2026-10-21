@@ -7,6 +7,7 @@ ComfyUI is a local stub: it answers /prompt, /history, /free and can be told to 
 the connection or reject the graph. FreeVideo itself is never involved.
 """
 import json, shutil, sys, tempfile, threading, time, unittest
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -19,7 +20,7 @@ import web
 
 
 class StubComfy(BaseHTTPRequestHandler):
-    mode = 'complete'        # complete | hang | drop | reject | gate (POST /prompt stalls)
+    mode = 'complete'      # complete | hang | drop | reject | gate (POST /prompt stalls) | gone | interrupted | failed
     submits = 0
     pending, running_ids = [], []        # the stub's /queue model
     deletes, interrupts = [], 0
@@ -84,8 +85,12 @@ class StubComfy(BaseHTTPRequestHandler):
             return self._json(200, self._queue())
         if self.path.startswith('/history/'):
             pid = self.path.rsplit('/', 1)[-1]
-            if StubComfy.mode in ('hang', 'gate'):
-                return self._json(200, {})     # never finishes
+            if StubComfy.mode in ('hang', 'gate', 'gone'):
+                return self._json(200, {})     # never finishes, or leaves no record at all
+            if StubComfy.mode == 'interrupted':
+                return self._json(200, {pid: {'status': {'completed': False, 'interrupted': True}}})
+            if StubComfy.mode == 'failed':
+                return self._json(200, {pid: {'status_str': 'error', 'status': {'completed': False}}})
             outputs = {'9': {'gifs': [{'filename': 'take.mp4', 'subfolder': 'director', 'type': 'output'}]}}
             return self._json(200, {pid: {'status': {'completed': True}, 'outputs': outputs}})
         self._json(200, {})
@@ -302,7 +307,7 @@ class Jobs(unittest.TestCase):
         t.join(30)
         self.assertEqual(first['state'], 'unknown')
         self.assertEqual(StubComfy.submits, 1)
-        self.assertEqual(web.RESERVES, {})
+        self.assertEqual(web.RESERVES, {web.scene_key(self.slug, self.ids[0]): first['id']})   # unknown: still held
 
     def test_save_must_keep_reserved_scenes(self):
         held = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[1])
@@ -380,7 +385,7 @@ class Jobs(unittest.TestCase):
         self.assertEqual(job['state'], 'unknown')
         self.assertEqual(StubComfy.submits, 1)                 # exactly one POST /prompt, no retry
         self.assertIn('may still be executing', job['error'])
-        self.assertEqual(web.RESERVES, {})
+        self.assertEqual(web.RESERVES, {web.scene_key(self.slug, self.ids[0]): job['id']})   # the submit may have landed: keep holding
 
     def test_timeout_keeps_the_prompt_id_and_says_unknown(self):
         StubComfy.mode = 'hang'
@@ -390,7 +395,103 @@ class Jobs(unittest.TestCase):
         self.assertEqual(job['state'], 'unknown')
         self.assertEqual(len(job['prompt_ids']), 1)
         self.assertIn('may still be executing', job['error'])
-        self.assertEqual(web.RESERVES, {})
+        self.assertEqual(web.RESERVES, {web.scene_key(self.slug, self.ids[0]): job['id']})   # unknown: the scene stays held
+
+    # ---------------------------------------------------------------- unknown jobs keep the scene
+
+    def test_unknown_job_keeps_the_scene_reserved(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        key = web.scene_key(self.slug, self.ids[0])
+        self.assertEqual(job['state'], 'unknown')
+        self.assertEqual(web.RESERVES.get(key), job['id'])      # the take may still land in this scene
+        self.assertEqual(job['holds'], [key])
+        self.assertEqual(web.reserved_scenes(self.slug), {self.ids[0]})
+        second = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        with self.assertRaises(web.Busy) as caught:
+            web.reserve(second, [key])
+        self.assertEqual(caught.exception.args[0],
+                         f'busy: job {job["id"]} state unknown - ComfyUI prompt stub-1 may still be executing')
+        dup = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        with self.assertRaises(web.Busy):                       # reuse is off the table: the holder is dead to us
+            web.reserve(dup, [key], reuse=True)
+
+    def test_reconcile_proves_the_unknown_job_finished_and_records_the_take_once(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(web.RESERVES.get(web.scene_key(self.slug, self.ids[0])), job['id'])
+        StubComfy.mode = 'complete'                            # the prompt did finish after all
+        StubComfy.running_ids = []
+        self.assertEqual(web.reconcile(job), 'finished')
+        self.assertEqual(job['resolved']['verdict'], 'finished')
+        self.assertEqual(web.RESERVES, {})                     # the scene is free again
+        self.assertEqual(len(projects.load(self.slug)['scenes'][0]['takes']), 1)
+        self.assertEqual(web.reconcile(job), 'finished')       # asking twice changes nothing
+        self.assertEqual(len(projects.load(self.slug)['scenes'][0]['takes']), 1)
+        fresh = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(fresh, web.render_job, self.slug, self.ids[0], 'draft')   # new work is accepted again
+        self.assertEqual(fresh['state'], 'finished')
+
+    def test_reconcile_while_still_running_keeps_everything(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(web.reconcile(job), 'running')        # the prompt is still executing
+        self.assertIsNone(job.get('resolved'))
+        self.assertEqual(web.RESERVES.get(web.scene_key(self.slug, self.ids[0])), job['id'])
+        self.assertEqual(web.reserved_scenes(self.slug), {self.ids[0]})
+
+    def test_reconcile_releases_a_prompt_that_stopped_or_failed(self):
+        web.JOB_TIMEOUT = 0.4
+        for n, (mode, verdict) in enumerate((('interrupted', 'interrupted'),
+                                             ('failed', 'failed'), ('gone', 'lost'))):
+            with self.subTest(mode=mode):
+                sid = self.ids[n % len(self.ids)]
+                StubComfy.mode = 'hang'
+                job = web.new_job('render-draft', ['render'], project=self.slug, scene=sid)
+                web.run_job(job, web.render_job, self.slug, sid, 'draft')
+                StubComfy.running_ids = []                     # the prompt finally left the queue
+                StubComfy.mode = mode                          # the history says what happened to it
+                self.assertEqual(web.reconcile(job), verdict)
+                self.assertEqual(job['resolved']['verdict'], verdict)
+                self.assertIsNone(web.RESERVES.get(web.scene_key(self.slug, sid)))
+                self.assertEqual(web.reconcile(job), verdict)  # idempotent: nothing further changes
+
+    def test_queue_view_shows_an_unknown_job_with_its_prompts(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        row = next(r for r in web.queue_view()['jobs'] if r['id'] == job['id'])
+        self.assertEqual(row['state'], 'unknown')
+        self.assertEqual(row['prompt_ids'], ['stub-1'])
+        self.assertIn('may still be executing', row['error'])
+        self.assertIsNone(row['resolved'])
+
+    def test_dismissing_an_unknown_job_frees_the_scene(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        srv = ThreadingHTTPServer(('127.0.0.1', 0), web.Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            req = urllib.request.Request(
+                f'http://127.0.0.1:{srv.server_address[1]}/api/job/{job["id"]}/resolve',
+                data=b'{}', method='POST', headers={'Content-Type': 'application/json'})
+            r = json.loads(urllib.request.urlopen(req, timeout=10).read())
+        finally:
+            srv.shutdown()
+            srv.server_close()
+        self.assertEqual(r['proved'], 'running')               # nothing provable: our prompt is still queued
+        self.assertEqual(job['resolved']['by'], 'user')
+        self.assertIn('duplicate take', r['warning'])
+        self.assertEqual(job['state'], 'unknown')              # the state itself is never rewritten
 
     # ---------------------------------------------------------------- enhance
 

@@ -270,13 +270,26 @@ def live_owner(job_id):
     return job if job and not job['done'] else None
 
 
+def unresolved_owner(job_id):
+    """An unknown job keeps holding its keys: until ComfyUI shows the prompt stopped, a take
+    could still land on that scene or take."""
+    job = JOBS.get(job_id)
+    return job if job and job['state'] == 'unknown' and job.get('holds') else None
+
+
 def reserve(job, keys, reuse=False):
     """Claim `keys` for `job` (all-or-nothing). Refuse while another live job holds one:
-    return that job when `reuse`, else raise Busy. Replaces the unlocked SCENE_JOB write."""
+    return that job when `reuse`, else raise Busy. A job in state unknown always refuses:
+    its prompt may still write, and there is no live job to reuse. Replaces the unlocked
+    SCENE_JOB write."""
     with RESERVE_LOCK:
         for key in keys:
-            owner = live_owner(RESERVES.get(key))
+            holder = RESERVES.get(key)
+            owner = live_owner(holder) or unresolved_owner(holder)
             if owner and owner['id'] != job['id']:
+                if owner['state'] == 'unknown':
+                    ids = ', '.join(owner['prompt_ids']) or 'a ComfyUI prompt'
+                    raise Busy(f'busy: job {owner["id"]} state unknown - ComfyUI prompt {ids} may still be executing')
                 if reuse:
                     return owner
                 what = f'scene {key[2]}' if key[0] == 'scene' else 'this take'
@@ -300,7 +313,8 @@ def release(job):
 def reserved_scenes(slug):
     with RESERVE_LOCK:
         return {key[2] for key in RESERVES
-                if key[0] == 'scene' and key[1] == slug and live_owner(RESERVES[key])}
+                if key[0] == 'scene' and key[1] == slug
+                and (live_owner(RESERVES[key]) or unresolved_owner(RESERVES[key]))}
 
 
 def live_jobs(slug=None):
@@ -457,7 +471,8 @@ def unknown(job, error):
 
 def run_job(job, fn, *args, **kwargs):
     """The only way a job thread starts: whatever `fn` does, the job reaches a terminal
-    state and its reservations are released."""
+    state and its reservations are released -- except for a job left unknown, which keeps
+    its holds until reconcile or a user dismissal proves the ComfyUI prompt stopped."""
     try:
         transition(job, 'preparing')
         check_cancel(job)
@@ -485,7 +500,8 @@ def run_job(job, fn, *args, **kwargs):
             with LOCK:
                 job['state'], job['done'] = 'failed', True
                 job['error'] = job['error'] or 'job ended without a terminal state'
-        release(job)
+        if job['state'] != 'unknown':                    # unknown: holds survive until it is resolved
+            release(job)
 
 
 def poll(job, fetch, on_progress=None):
@@ -615,14 +631,115 @@ def enhance_job(job, run, on_final=None, keys=()):
     reserve(job, [take_key(run), *keys])
     if job.get('project'):
         write_enhance_snapshot(job, run)
+    def late(verdict):                                   # an unknown enhance proved to have finished
+        if verdict != 'finished' or not job['prompt_ids']:
+            return
+        final = enhance.result(job['prompt_ids'][-1])
+        job['final'] = final
+        if on_final:
+            on_final(final)
+        if job.get('project'):
+            try:
+                write_job_result(job)                    # written once; a clash means it already was
+            except projects.ProjectError:
+                pass
+    job['late_record'] = late
     enhance_stages(job, run, on_final)
     if job.get('project'):
         write_job_result(job)
 
 
+# ---------------------------------------------------------------- resolving unknown jobs
+
+RECONCILE_SECONDS = 15                                   # background ask-again interval
+
+
+def comfy_history_outcome(pid):
+    """What ComfyUI's history says about one prompt: 'completed', 'interrupted' or 'failed',
+    'lost' when it left no trace, or None when ComfyUI could not be reached to ask."""
+    try:
+        h = comfy(f'/history/{pid}')
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    entry = h.get(pid)
+    if entry is None:
+        return 'lost'
+    status = entry.get('status') or {}
+    if entry.get('status_str') == 'error' or status.get('failed'):
+        return 'failed'
+    if status.get('completed'):
+        return 'completed'
+    return 'interrupted'                                 # recorded but never completed: it stopped
+
+
+def release_resolved(job, verdict, by='reconcile'):
+    """The unknown job's prompt provably stopped (or the user called it): let the worker record a
+    late result, tidy any kept temp dir, remember what we learned, and free the reservations."""
+    late = job.get('late_record')
+    if late:
+        try:
+            late(verdict)
+        except Exception as e:
+            job['late_record_error'] = str(e)            # a failed late record must not strand holds
+    wd = job.get('workdir')
+    if wd:
+        enhance.remove_workdir(Path(wd))
+        job['workdir'] = None
+    job['resolved'] = {'by': by, 'verdict': verdict, 'at': time.time()}
+    release(job)
+
+
+def reconcile(job):
+    """Ask ComfyUI what became of an unknown job's prompts. 'running' while one is still queued;
+    None while nobody can tell; a proven verdict releases the holds and records the late result.
+    Idempotent: once resolved the stored verdict is simply returned."""
+    if job.get('resolved'):
+        return job['resolved']['verdict']
+    if not job['prompt_ids']:
+        return None                                      # the submit was never answered: nothing to ask
+    q = comfy_queue()
+    if q is None:
+        return None                                      # ComfyUI unreachable: keep holding
+    if q[0] & set(job['prompt_ids']) or q[1] & set(job['prompt_ids']):
+        return 'running'
+    outcomes = [comfy_history_outcome(pid) for pid in job['prompt_ids']]
+    if any(o is None for o in outcomes):
+        return None
+    if all(o == 'completed' for o in outcomes):
+        verdict = 'finished'
+    elif any(o == 'interrupted' for o in outcomes):
+        verdict = 'interrupted'
+    elif any(o == 'failed' for o in outcomes):
+        verdict = 'failed'
+    else:
+        verdict = 'lost'                                 # neither queued nor in history: never ran
+    release_resolved(job, verdict)
+    return verdict
+
+
+def unresolved_jobs():
+    with LOCK:
+        return [j for j in JOBS.values()
+                if j['state'] == 'unknown' and j.get('holds') and not j.get('resolved')]
+
+
+def reconcile_loop():
+    """Ask ComfyUI now and then what happened to unresolved unknown jobs: on proof the late
+    result gets recorded and the scene or take is freed for new work."""
+    while True:
+        time.sleep(RECONCILE_SECONDS)
+        for job in unresolved_jobs():
+            try:
+                reconcile(job)
+            except Exception:
+                pass                                     # still holding; the next round asks again
+
+
 def public(job):
     now = time.time()
     out = {k: job[k] for k in ('id', 'kind', 'error', 'done', 'state', 'take', 'final')}
+    out['prompt_ids'] = list(job['prompt_ids'])
+    out['resolved'] = job.get('resolved')
     out['stages'] = [{**s, 'seconds': round((s['ended'] or now) - s['started']) if s['started'] else None}
                      for s in job['stages']]
     out['elapsed'] = round(now - job['created'])
@@ -786,13 +903,31 @@ def render_job(job, slug, scene_id, preset_name, variant=None):
     def on_take(take):
         def apply(proj):
             s = proj['scenes'][projects.scene_index(proj, scene_id)]
+            if any(t.get('id') == take_id for t in s['takes']):
+                return                                   # already recorded (a resolved unknown job)
             s['takes'].append({'id': take_id, 'job': job['id'], 'provenance': 'recorded',
                                'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
                                'seed': scene['seed'], 'created': time.time(), 'final': None, 'final_url': None,
                                'variant': list(variant) if variant else None,
                                'source_take': source_take})
         projects.mutate(slug, apply)
-    do_render(job, graph, preset['finish'], on_take, final_recorder(slug, scene_id, lambda: job['take']['run']))
+    on_final = final_recorder(slug, scene_id, lambda: job['take']['run'])
+    def late(verdict):                                   # an unknown job proved to have finished: record it
+        if verdict != 'finished':
+            return
+        take = render_result(job['prompt_ids'][0])
+        job['take'] = take
+        on_take(take)
+        if preset['finish'] and len(job['prompt_ids']) > 1:
+            final = enhance.result(job['prompt_ids'][-1])
+            job['final'] = final
+            on_final(final)
+        try:
+            write_job_result(job, take_id)               # written once; a clash means it already was
+        except projects.ProjectError:
+            pass
+    job['late_record'] = late
+    do_render(job, graph, preset['finish'], on_take, on_final)
     write_job_result(job, take_id)
 
 
@@ -999,8 +1134,8 @@ def queue_view():
         return p.get('name') or slug, scene['title'] if scene else None
     jobs = []
     for jid, job in list(JOBS.items()):
-        if job['done']:
-            continue
+        if job['done'] and not unresolved_owner(job['id']):
+            continue                                     # an unresolved unknown job stays on the board
         slug, scene_id = job.get('project'), job.get('scene')
         name, title = film(slug, scene_id) if slug else (None, None)
         elapsed = round(now - job['created'])
@@ -1010,7 +1145,8 @@ def queue_view():
         jobs.append({'id': jid, 'kind': job['kind'], 'state': job['state'], 'project': slug,
                      'project_name': name, 'scene': scene_id, 'scene_title': title, 'elapsed': elapsed,
                      'estimate': estimate, 'eta': max(0, estimate - elapsed) if estimate is not None else None,
-                     'stage': stage})
+                     'stage': stage, 'error': job['error'], 'prompt_ids': list(job['prompt_ids']),
+                     'resolved': job.get('resolved')})
     batches = []
     for slug, b in list(BATCH.items()):
         if not b['done']:
@@ -1211,6 +1347,22 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200, public(holder))
                 threading.Thread(target=run_job, args=(job, enhance_job, run), daemon=True).start()
                 return self.reply(200, public(job))
+            m = re.match(r'^/api/job/([^/]+)/resolve$', self.path)
+            if m:
+                job = JOBS.get(m.group(1))
+                if not job:
+                    return self.reply(404, {'error': 'unknown job'})
+                if not job['done']:
+                    return self.reply(409, {'error': 'the job is still running; cancel it instead'})
+                if job['state'] != 'unknown':
+                    return self.reply(400, {'error': 'only a job whose ComfyUI state is unknown can be resolved'})
+                proved = reconcile(job)
+                if not job.get('resolved'):              # nothing provable: the user calls it anyway
+                    release_resolved(job, 'dismissed', by='user')
+                return self.reply(200, {
+                    'job': public(job), 'proved': proved,
+                    'warning': 'the ComfyUI prompt may still be running: starting new work for this '
+                               'scene/take could generate a duplicate take'})
             self.reply(404, {'error': 'not found'})
         except (director.DirectorError, projects.ProjectError, library.LibraryError) as e:
             self.reply(400, {'error': str(e)})
@@ -1361,6 +1513,7 @@ if __name__ == '__main__':
     a = p.parse_args()
     Handler.extra_hosts = set(a.allow_host)
     projects.recover_interrupted()
+    threading.Thread(target=reconcile_loop, daemon=True).start()
     threading.Thread(target=ws_listen, daemon=True).start()
     print(f'FreeVideo director UI: http://{a.host}:{a.port}')
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
