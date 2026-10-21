@@ -45,17 +45,15 @@ file) abort startup immediately, naming the setting and where the bad value came
 | `job_timeout` | `14400` s (4 h) | `JOB_TIMEOUT` | `--job-timeout` | `web.py:JOB_TIMEOUT` (poll deadline) |
 | `poll_seconds` | `1.5` | `POLL_SECONDS` | `--poll-seconds` | `web.py:POLL_SECONDS` |
 | `reconcile_seconds` | `15` | `RECONCILE_SECONDS` | `--reconcile-seconds` | `web.py:RECONCILE_SECONDS` (`reconcile_loop`) |
-| `enhance_fps` | `24` | `ENHANCE_FPS` | — | `enhance.py:FPS` (raw-frame rate, graph `frame_rate`); `web.py:enhance_snapshot` |
-| `enhance_resolution` | `1080` | `ENHANCE_RESOLUTION` | `--resolution` | `enhance.py:DEFAULTS/graph` (SeedVR2 short side) |
-| `enhance_multiplier` | `2` | `ENHANCE_FPS_MULTIPLIER` | `--fps-multiplier` | `enhance.py:DEFAULTS/graph` (RIFE; `1` = off) |
-| `enhance_crf` | `16` | `ENHANCE_CRF` | `--crf` | `enhance.py:DEFAULTS/graph` (VHS H.264) |
+| `enhance_fps` | `24` | `ENHANCE_FPS` | — | `enhance.py:FPS` (raw-frame rate, graph `frame_rate`); `finishing.py:render_fps` — the rate the film policy multiplies from |
+| `enhance_resolution` | `1080` | `ENHANCE_RESOLUTION` | `--resolution` | `finishing.py:defaults` (SeedVR2 short side for projects that say nothing) |
+| `enhance_multiplier` | `2` | `ENHANCE_FPS_MULTIPLIER` | `--fps-multiplier` | `finishing.py:defaults` (RIFE factor for projects that say nothing) |
+| `enhance_crf` | `16` | `ENHANCE_CRF` | `--crf` | `finishing.py:defaults` (encode quality for projects that say nothing) |
 | `enhance_batch_size` | `21` | `ENHANCE_BATCH_SIZE` | `--batch-size` | `enhance.py:DEFAULTS/graph` (SeedVR2 frames per batch; keep `4n+1`) |
 | `enhance_upscaler` | `seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors` | `ENHANCE_UPSCALER` | — | `enhance.py:graph` (SeedVR2 DiT checkpoint) |
 | `enhance_temporal_overlap` | `3` | `ENHANCE_TEMPORAL_OVERLAP` | — | `enhance.py:graph` |
 | `enhance_rife` | `rife49.pth` | `ENHANCE_RIFE` | — | `enhance.py:graph` (RIFE checkpoint) |
-| `film_export_fps` | `48` | `FILM_EXPORT_FPS` | — | `project.py:cut_plan/assemble` (`kind='film'`) |
 | `preview_export_fps` | `24` | `PREVIEW_EXPORT_FPS` | — | `project.py:cut_plan/assemble` (`kind='animatic'`) |
-| `film_export_crf` | `16` | `FILM_EXPORT_CRF` | — | `project.py:cut_plan/assemble` (`kind='film'`) |
 | `preview_export_crf` | `20` | `PREVIEW_EXPORT_CRF` | — | `project.py:cut_plan/assemble` (`kind='animatic'`) |
 | `xfade_seconds` | `0.5` | `XFADE_SECONDS` | — | `project.py:XFADE` (transition cuts) |
 | `dip_seconds` | `0.4` | `DIP_SECONDS` | — | `project.py:DIP` (dip-to-black cuts) |
@@ -66,8 +64,49 @@ file) abort startup immediately, naming the setting and where the bad value came
 Which entry point advertises which flag: `web.py` accepts `--host/--port/--allow-host` plus every
 service flag (`--comfy-url`, `--comfy-root`, `--projects-root`, `--library-root`, `--out-dir`,
 `--stats`, `--jobs-db`, `--director-url`, `--director-model`, `--notify-url`); `enhance.py`
-accepts `--comfy-url/--comfy-root` and its four finishing flags; `director.py` keeps its own
-`--url/--model` (a per-call override that beats everything) and `--out`.
+accepts `--comfy-url/--comfy-root` and its four finishing flags (per-run overrides of the same
+switches); `director.py` keeps its own `--url/--model` (a per-call override that beats
+everything) and `--out`.
+
+## Finishing pipeline (per-project `finishing` settings)
+
+Everything that happens to a take *after* it is rendered is one settings object, held per
+project (`project.json` key `finishing`) and edited under **Project settings → Finishing**:
+
+| Key | Values | Switch it off / change it and… |
+| --- | --- | --- |
+| `upscale` | `{enabled, height}` — height one of `720` `1080` `2160` | the SeedVR2 nodes leave the enhance graph; readiness stops demanding the upscaler and its checkpoints for that project |
+| `interpolation` | `{enabled, factor}` — factor one of `2` `4` | the RIFE node leaves the graph; the film is cut at the rendered rate |
+| `encode` | `{crf}` `12`–`28`; `preset` is derived (`high` 16, `standard` 20, `small` 24) | only the encoder quality of the finished file moves |
+| `fps_policy` | `interpolated` \| `original` | the one frame-rate decision; `original` also turns interpolation off |
+
+The flow: takes render at `enhance_fps` (24) → Enhance runs exactly the enabled stages
+(SeedVR2 → RIFE → H.264 encode) → each take gets a *finished* version at that size, rate and
+CRF → **Export film** cuts those finals at the *same* fps and CRF. One function,
+`finishing.output_fps()`, answers every frame-rate question — the graph's `frame_rate`, the
+snapshot record, the cut plan's `export.fps` and the ffmpeg `fps=` filter — so enhance and the
+film can no longer disagree. Before this, four places carried the rate twice
+(`enhance_fps` × `enhance_multiplier` in `enhance.py`, `film_export_fps` in `project.py`, and
+literal `48 fps` labels in `project.html`); all of them now derive from the policy.
+
+- **Absent key = legacy.** A project without `finishing` gets `finishing.defaults()` built from
+  `enhance_resolution`/`enhance_multiplier`/`enhance_crf` — the old pipeline exactly. Nothing
+  rewrites `project.json` on read; the first save in Project settings writes the key.
+- **Old fingerprints keep validating.** For a legacy project the enhance graph and the cut
+  plan are byte-identical to what they were before this feature, so stored cut fingerprints
+  still answer "same". The plan only gains `upscale`/`interpolation` keys once the project
+  leaves the defaults — and that changes the fingerprint, marking the film
+  `cut outdated: … export` until it is cut again.
+- **Which made which final.** Each take's finished version records the enhance (or final-render)
+  job that produced it; the scene flag `finishing_changed` compares that job's recorded
+  settings with today's and names the part that moved (`upscaling 1080p -> off`, `crf 16 -> 20`).
+  Finals from before job records carried settings answer `unknown_legacy` — nothing is invented.
+
+**Migration.** `film_export_fps` and `film_export_crf` are gone from this table: they no longer
+exist as settings. A `config.json` still carrying them (or those env vars) now produces an
+unknown-key warning and the values are ignored — the film rate and CRF come from the project's
+finishing settings, whose defaults equal the old 48 fps / CRF 16. The animatic keeps its own
+fixed pair (`preview_export_fps`/`preview_export_crf`), unchanged.
 
 ## Inspecting the running configuration
 
