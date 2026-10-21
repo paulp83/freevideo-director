@@ -11,13 +11,26 @@ freevideo-director vLLM container on GPU 1, :8078). Stdlib only.
 
 A browser UI over the same function lives in web.py.
 """
-import argparse, base64, json, os, re, subprocess, sys, tempfile, time, urllib.request
+import argparse, base64, hashlib, json, os, re, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
 import h3check
 
 HERE = Path(__file__).resolve().parent
 SKILL = HERE / 'skill'
+
+
+def skill_revision():
+    """A stable short hash over the pinned skill files: changes exactly when the skill changes,
+    so a generation record can name the skill it was written under without a git dependency."""
+    h = hashlib.sha256()
+    for f in sorted(SKILL.rglob('*')):
+        if f.is_file():
+            h.update(f.relative_to(SKILL).as_posix().encode('utf-8'))
+            h.update(f.read_bytes())
+    return h.hexdigest()[:16]
+
+
 # Director backends on GPU 1, in order of preference (see README / eval/). Whichever answers is used.
 # DIRECTOR_URL (+ DIRECTOR_MODEL) pins one explicitly.
 BACKENDS = [('http://127.0.0.1:8144/v1/chat/completions', 'qwen3.8-27b'),       # sgl single, best scripts

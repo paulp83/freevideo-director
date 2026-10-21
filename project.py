@@ -4,11 +4,13 @@ A project lives in director/projects/<slug>/ :
   project.json      title, logline, bible, scenes (prompt, seed, takes, star), outputs, rev + key_revs
   refs/             reference pictures (used as <Picture N> for cut scenes)
   frames/           last frames handed to "continue" scenes (lossless, from the take's rgb.npy)
+  jobs/             one immutable request snapshot <job id>.json per render/enhance job, plus <job id>.result.json
+  refs-store/       content-addressed copies (<sha256><ext>) of every input picture a job used
   music.*           optional music bed for the film
   animatic-*.mp4, film-*.mp4   assembled cuts
 Takes stay in ComfyUI's output folder; the project only points at them. Stdlib + ffmpeg.
 """
-import copy, json, os, re, secrets, shutil, subprocess, tempfile, threading, time
+import copy, hashlib, json, os, re, secrets, shutil, subprocess, tempfile, threading, time
 from pathlib import Path
 
 import enhance
@@ -451,10 +453,13 @@ def _inside(path, root):
 
 
 def prune_plan(project, trash_root=None):
-    """What prune_apply would move: unstarred takes of scenes that have a valid star. Changes nothing."""
+    """What prune_apply would move: unstarred takes of scenes that have a valid star. Changes nothing.
+    Contents of the project's jobs/ and refs-store/ are never moveable: a generation record and the
+    input copies its hashes point at outlive every take they describe."""
+    candidates, skipped, seen = [], [], set()
+    records = [path(project['slug'], d).resolve() for d in (JOBS_DIR, REFS_STORE)]
     out = enhance.COMFY_ROOT / 'output'
     trash = Path(trash_root or out / TRASH_NAME).resolve()
-    candidates, skipped, seen = [], [], set()
     for scene in project['scenes']:
         star, takes = scene.get('star'), scene.get('takes') or []
         if not star or not any(t['run'] == star for t in takes):
@@ -463,6 +468,9 @@ def prune_plan(project, trash_root=None):
         for t in takes:
             run = Path(t['run']).resolve()
             if run == star_path or run in seen:
+                continue
+            if any(run == root or root in run.parents for root in records):
+                skipped.append({'scene': scene['id'], 'run': t['run'], 'reason': 'kept: generation record'})
                 continue
             seen.add(run)
             if not _inside(run, out) or run == trash or trash in run.parents:
@@ -570,6 +578,89 @@ def ensure_i2va(prompt):
     if prompt.lstrip().startswith('For the target video'):
         return prompt
     return I2VA_LINE + '\n\n' + prompt
+
+
+# ---------------------------------------------------------------- generation records
+#
+# Before a render or enhance job submits to ComfyUI, web.py writes an immutable request snapshot to
+# projects/<slug>/jobs/<job_id>.json: the exact prompt, mode, settings, reference hashes, start frame,
+# LoRAs and workflow graph handed over. That file is created once and never edited afterwards; results
+# (take id, run, paths, prompt ids, timings) go to a sibling <job_id>.result.json, written once when
+# the job ends -- the sibling file is what lets the snapshot stay untouched. refs-store/ holds one
+# content-addressed copy of every input picture, so the sha256 in a snapshot can be turned back into
+# the bytes it hashes. Takes made before this existed carry no `id`/`job`/`provenance`: take_provenance()
+# reports them 'legacy' and nothing is ever back-filled.
+
+JOBS_DIR = 'jobs'
+REFS_STORE = 'refs-store'
+
+
+def new_take_id():
+    """Application-owned take id, stable across renames/moves; distinct from ComfyUI run names."""
+    return secrets.token_hex(8)
+
+
+def job_path(slug, job_id):
+    if not re.fullmatch(r'[0-9a-f]{8,32}', job_id or ''):
+        raise ProjectError('bad job id')
+    return path(slug, JOBS_DIR, f'{job_id}.json')
+
+
+def result_path(slug, job_id):
+    return job_path(slug, job_id).with_name(f'{job_id}.result.json')
+
+
+def _write_once(f, payload):
+    """Create a record file atomically (tmp + replace); a generation record is never rewritten."""
+    if f.exists():
+        raise ProjectError(f'{f.name} already exists: generation records are immutable')
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_name(f'{f.name}.tmp')
+    tmp.write_text(json.dumps(payload, indent=1))
+    tmp.replace(f)
+    return f
+
+
+def write_job_snapshot(slug, snapshot):
+    return _write_once(job_path(slug, snapshot['id']), snapshot)
+
+
+def write_job_result(slug, job_id, result):
+    return _write_once(result_path(slug, job_id), result)
+
+
+def read_job(slug, job_id):
+    """(snapshot, result) for a job id; either None when its file is missing."""
+    f = job_path(slug, job_id)
+    snapshot = json.loads(f.read_text()) if f.is_file() else None
+    r = result_path(slug, job_id)
+    return snapshot, (json.loads(r.read_text()) if r.is_file() else None)
+
+
+def store_ref(slug, name, raw):
+    """Copy one input picture into the content-addressed refs-store (only when missing);
+    return the snapshot entry: name in the job, hash, size, and the store path that can recreate it."""
+    sha = hashlib.sha256(raw).hexdigest()
+    ext = (Path(name).suffix or '.bin').lower()
+    dest = path(slug, REFS_STORE, f'{sha}{ext}')
+    if not dest.is_file():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(raw)
+    return {'name': name, 'sha256': sha, 'bytes': len(raw), 'store': f'{REFS_STORE}/{dest.name}'}
+
+
+def take_provenance(take):
+    """'recorded' for a take a job snapshot backs; 'legacy' for everything older, never invented."""
+    return 'recorded' if take.get('provenance') == 'recorded' and take.get('id') else 'legacy'
+
+
+def take_for_run(project, run):
+    """(scene id, take) whose run matches `run`, or (None, None); enhances address takes by run."""
+    for scene in project.get('scenes', []):
+        for take in scene.get('takes') or []:
+            if take.get('run') == run:
+                return scene['id'], take
+    return None, None
 
 
 # ---------------------------------------------------------------- assembly

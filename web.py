@@ -99,8 +99,11 @@ def clean_loras(items):
     return out
 
 
-def queue(prompt, seconds, width, height, seed, refs, first, last, two_pass=True, loras=None):
-    """Build the FreeVideo graph for the mode and queue it; return the ComfyUI prompt id."""
+def build_graph(prompt, seconds, width, height, seed, refs, first, last, two_pass=True, loras=None):
+    """Build the exact FreeVideo workflow for `prompt` (refs are <Picture N> files; first/last are
+    frames), upload the pictures, and return the dict WITHOUT submitting it: the caller records the
+    graph in the job's snapshot first, then submits it as-is. `loras` is a [{name, strength, enabled}]
+    list; disabled rows ride along in the node so the graph matches the project."""
     gen = {'text': prompt, 'width': width, 'height': height, 'seconds': float(seconds), 'seed': seed,
            'two_pass': two_pass, 'base_steps': 8, 'refine_steps': 2, 'force_regenerate': False}
     wf, n = {}, 0
@@ -127,7 +130,7 @@ def queue(prompt, seconds, width, height, seed, refs, first, last, two_pass=True
     if any(item['enabled'] for item in active):
         gen['loras'] = [node('FreeVideoLoRAStack', {'adapters': json.dumps(active)}), 0]
     node('FreeVideoGenerate', gen)
-    return submit_prompt({'prompt': wf})
+    return wf
 
 
 def render_result(prompt_id):
@@ -455,11 +458,12 @@ def poll(job, fetch, on_progress=None):
         time.sleep(POLL_SECONDS)
 
 
-def do_render(job, args, finish_after, on_take=None, on_final=None):
-    """Render one take; when `finish_after`, chain the enhance stages into the same job."""
+def do_render(job, graph, finish_after, on_take=None, on_final=None):
+    """Render one take from its prebuilt graph; when `finish_after`, chain the enhance stages into the
+    same job. `graph` is the exact workflow the job's snapshot recorded before submission."""
     st = activate(job, 'render')
     check_cancel(job)                                  # a cancel after prep never submits
-    pid = queue(**args)
+    pid = submit_prompt({'prompt': graph})
     job['prompt_ids'].append(pid)
     transition(job, 'submitted')
     transition(job, 'running')
@@ -474,6 +478,11 @@ def do_render(job, args, finish_after, on_take=None, on_final=None):
         on_take(take)
     if finish_after:
         enhance_stages(job, take['run'], on_final)
+
+
+def do_render_adhoc(job, args, finish_after):
+    """Ad-hoc render from the prompt page: no project, hence no generation record; build, then run."""
+    do_render(job, build_graph(**args), finish_after)
 
 
 def enhance_stages(job, run, on_final=None):
@@ -507,10 +516,50 @@ def enhance_stages(job, run, on_final=None):
         on_final(final)
 
 
+def job_finishing():
+    """The finishing settings an enhance runs with: enhance's defaults at film fps. Every record that
+    triggers an enhance snapshots these; the enhance graph itself is ephemeral (temp file paths) and
+    rebuilds from them plus the take."""
+    return dict(enhance.DEFAULTS, fps=enhance.FPS)
+
+
+def write_enhance_snapshot(job, run):
+    """Record an enhance request for a project take BEFORE submitting it: the finishing settings plus
+    what was known about the source take. Ad-hoc enhances have no project and are not recorded."""
+    slug = job['project']
+    scene_id, take = projects.take_for_run(projects.load(slug), run)
+    projects.write_job_snapshot(slug, {
+        'id': job['id'], 'kind': 'enhance', 'created': job['created'], 'project': slug,
+        'scene': job.get('scene') or scene_id,
+        'source': {'take': take and take.get('id'), 'run': run,
+                   'provenance': projects.take_provenance(take) if take else 'unknown'},
+        'finishing': job_finishing()})
+
+
+def write_job_result(job, take_id=None):
+    """The single result write beside a job's snapshot: what the job produced and when. The snapshot
+    is never edited; this sibling file is written exactly once, after the job finishes."""
+    projects.write_job_result(job['project'], job['id'], {
+        'job': job['id'], 'take_id': take_id,
+        'run': job['take'] and job['take'].get('run'),
+        'path': job['take'] and job['take'].get('path'),
+        'url': job['take'] and job['take'].get('url'),
+        'final': job['final'] and job['final'].get('path'),
+        'final_url': job['final'] and job['final'].get('url'),
+        'prompt_ids': list(job['prompt_ids']),
+        'started': job['created'], 'finished': time.time(),
+        'stages': [{'key': s['key'], 'started': s['started'], 'ended': s['ended']} for s in job['stages']]})
+
+
 def enhance_job(job, run, on_final=None, keys=()):
-    """Thread body for a standalone enhance: hold the take (plus the endpoint's scene key), then finish it."""
+    """Thread body for a standalone enhance: hold the take (plus the endpoint's scene key), record the
+    finishing request against the project's take, then finish it. An ad-hoc enhance records nothing."""
     reserve(job, [take_key(run), *keys])
+    if job.get('project'):
+        write_enhance_snapshot(job, run)
     enhance_stages(job, run, on_final)
+    if job.get('project'):
+        write_job_result(job)
 
 
 def public(job):
@@ -565,7 +614,8 @@ def check_of(report):
 
 
 def write_scene_prompt(slug, scene_id, think=True):
-    """Director writes scene's H3 prompt from the bible + action (+ refs or the previous last frame)."""
+    """Director writes scene's H3 prompt from the bible + action (+ refs or the previous last frame);
+    returns (mode, model) so a render job can name the director behind its snapshot."""
     p = projects.load(slug)
     i = projects.scene_index(p, scene_id)
     scene = p['scenes'][i]
@@ -582,7 +632,7 @@ def write_scene_prompt(slug, scene_id, think=True):
         s['prompt_check'] = check_of(report)
         projects.push_history(s, text, mode, 'director')
     projects.mutate(slug, apply)
-    return mode
+    return mode, report['model']
 
 
 def scene_stage_keys(kind):
@@ -602,15 +652,50 @@ def validate_scene_media(p, i):
             enhance.run_dir_of(prev['run'])   # raises FileNotFoundError; the handler answers 4xx
 
 
+def continuation(p, i):
+    """The take a continue-scene starts from, as chosen when its media was resolved. A legacy source
+    take has no app id; none is invented."""
+    if p['scenes'][i].get('connect') != 'continue' or not i:
+        return None
+    prev = projects.chosen(p['scenes'][i - 1])
+    return prev and {'scene': p['scenes'][i - 1]['id'], 'take': prev.get('id'), 'run': prev['run']}
+
+
+def render_snapshot(job, slug, scene_id, take_id, preset_name, variant, args, graph, model, source):
+    """The immutable record of what is about to be submitted: exact prompt, mode, settings and graph,
+    plus a content-addressed copy of every input picture, so a take can be reconstructed field by
+    field even after ComfyUI's output folder has been pruned. seed 0 is recorded as 0."""
+    refs = [dict(projects.store_ref(slug, name, raw), index=n) for n, (name, raw) in enumerate(args['refs'])]
+    first = None
+    if args['first']:
+        name, raw = args['first']
+        first = dict(projects.store_ref(slug, name, raw), source=source)
+    return {
+        'id': job['id'], 'kind': job['kind'], 'created': job['created'], 'project': slug,
+        'scene': str(scene_id), 'take_id': take_id, 'preset': preset_name,
+        'variant': list(variant) if variant else None,
+        'mode': director.select_mode(refs=args['refs'], first=args['first'], last=args['last']),
+        'prompt': args['prompt'],
+        'seed': args['seed'], 'width': args['width'], 'height': args['height'],
+        'seconds': args['seconds'], 'two_pass': args['two_pass'],
+        'refs': refs, 'first': first, 'loras': args['loras'], 'graph': graph,
+        'director': {'model': model, 'skill_revision': director.skill_revision()},
+        'finishing': job_finishing() if PRESETS[preset_name]['finish'] else None}
+
+
 def render_job(job, slug, scene_id, preset_name, variant=None):
-    """Thread body: render one scene (Draft or Final) and record the take (and final) in the project."""
+    """Thread body: render one scene (Draft or Final) and record the take (and final) in the project.
+
+    The request snapshot (jobs/<job id>.json) is written once the graph is built and BEFORE it is
+    submitted; the sibling result file lands when the job ends. See project.py, generation records."""
     reserve(job, [scene_key(slug, scene_id)])
     preset = PRESETS[preset_name]
     p = projects.load(slug)
     i = projects.scene_index(p, scene_id)
     scene = p['scenes'][i]
+    model = None
     if not scene['prompt'].strip():
-        write_scene_prompt(slug, scene_id)
+        _, model = write_scene_prompt(slug, scene_id)
         check_cancel(job)                      # never submit work the user already cancelled
         p = projects.load(slug)
         scene = p['scenes'][i]
@@ -621,14 +706,20 @@ def render_job(job, slug, scene_id, preset_name, variant=None):
     args = dict(prompt=prompt, seconds=scene['seconds'], width=w, height=h, seed=scene['seed'],
                 refs=_files(refs), first=_files([first])[0] if first else None, last=None,
                 two_pass=preset['two_pass'], loras=p.get('loras'))
+    graph = build_graph(**args)                # uploads the pictures; submits only once recorded
+    take_id = projects.new_take_id()
+    projects.write_job_snapshot(slug, render_snapshot(job, slug, scene_id, take_id, preset_name, variant,
+                                                      args, graph, model, continuation(p, i)))
     def on_take(take):
         def apply(proj):
             s = proj['scenes'][projects.scene_index(proj, scene_id)]
-            s['takes'].append({'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
+            s['takes'].append({'id': take_id, 'job': job['id'], 'provenance': 'recorded',
+                               'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
                                'seed': scene['seed'], 'created': time.time(), 'final': None, 'final_url': None,
                                'variant': list(variant) if variant else None})
         projects.mutate(slug, apply)
-    do_render(job, args, preset['finish'], on_take, final_recorder(slug, scene_id, lambda: job['take']['run']))
+    do_render(job, graph, preset['finish'], on_take, final_recorder(slug, scene_id, lambda: job['take']['run']))
+    write_job_result(job, take_id)
 
 
 def final_recorder(slug, scene_id, run_of):
@@ -804,10 +895,29 @@ def project_view(slug):
         s['job'] = public(JOBS[jid]) if jid in JOBS else None
         c = projects.chosen(s)
         s['chosen'] = c['run'] if c else None
+        for t in s.get('takes') or []:          # derived: legacy takes never grow stored keys
+            t['provenance'] = projects.take_provenance(t)
     b = BATCH.get(slug)
     p['batch'] = dict(b, seconds=round(time.time() - b['started'])) if b else None
     p['batch_job'] = public(JOBS[b['job']]) if b and b.get('job') in JOBS else None
     return p
+
+
+def take_view(slug, take_ref):
+    """GET /api/p/<slug>/take?id=...: for a recorded take its immutable snapshot plus result; for a
+    pre-records take just the take and 'legacy'. Legacy takes have no application id, so they are
+    addressed by their run directory."""
+    p = projects.load(slug)
+    for s in p['scenes']:
+        for t in s.get('takes') or []:
+            if take_ref not in (t.get('id'), t.get('run')):
+                continue
+            if projects.take_provenance(t) == 'legacy':
+                return {'provenance': 'legacy', 'scene': s['id'], 'take': t}
+            snapshot, result = projects.read_job(slug, t['job']) if t.get('job') else (None, None)
+            return {'provenance': 'recorded', 'scene': s['id'], 'take': t,
+                    'snapshot': snapshot, 'result': result}
+    raise projects.ProjectError('no such take')
 
 def library_view(c):
     """Library reply row: the stored fields plus the URL for the character's picture."""
@@ -942,7 +1052,14 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/projects':
                 return self.reply(200, projects.listing())
             if self.path.startswith('/api/p/'):
-                return self.reply(200, project_view(self.path.split('/')[3]))
+                route, _, query = self.path.partition('?')
+                parts = route.split('/')
+                if len(parts) == 4:
+                    return self.reply(200, project_view(parts[3]))
+                if len(parts) == 5 and parts[4] == 'take':
+                    tid = (urllib.parse.parse_qs(query).get('id') or [''])[0]
+                    return self.reply(200, take_view(parts[3], tid))
+                return self.reply(404, {'error': 'not found'})
             if self.path.startswith('/files/'):
                 parts = urllib.parse.unquote(self.path[len('/files/'):]).split('/')
                 if len(parts) < 2 or any(not p or p in ('.', '..') for p in parts):
@@ -992,7 +1109,7 @@ class Handler(BaseHTTPRequestHandler):
                             width=int(data.get('width', 1344)), height=int(data.get('height', 768)),
                             seed=int(data.get('seed') or time.time_ns() % 2**31), refs=refs, first=first,
                             last=last, two_pass=preset['two_pass'], loras=loras)
-                threading.Thread(target=run_job, args=(job, do_render, args, preset['finish']), daemon=True).start()
+                threading.Thread(target=run_job, args=(job, do_render_adhoc, args, preset['finish']), daemon=True).start()
                 return self.reply(200, public(job))
             if self.path == '/api/library':
                 img = data.get('image')
