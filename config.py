@@ -72,10 +72,10 @@ SETTINGS = {
                                         'ENHANCE_UPSCALER', None, 'str', False),
     'enhance_temporal_overlap': Setting(3, 'ENHANCE_TEMPORAL_OVERLAP', None, 'int', False),
     'enhance_rife':             Setting('rife49.pth', 'ENHANCE_RIFE', None, 'str', False),
-    # film assembly defaults (project.py)
-    'film_export_fps':    Setting(48, 'FILM_EXPORT_FPS', None, 'int', False),
+    # film assembly defaults (project.py). The film export fps and crf are NOT settings any
+    # more: they come from each project's finishing settings (see finishing.py); only the
+    # animatic/preview cut keeps a draft policy of its own here.
     'preview_export_fps': Setting(24, 'PREVIEW_EXPORT_FPS', None, 'int', False),
-    'film_export_crf':    Setting(16, 'FILM_EXPORT_CRF', None, 'int', False),
     'preview_export_crf': Setting(20, 'PREVIEW_EXPORT_CRF', None, 'int', False),
     'xfade_seconds':      Setting(0.5, 'XFADE_SECONDS', None, 'float', False),
     'dip_seconds':        Setting(0.4, 'DIP_SECONDS', None, 'float', False),
