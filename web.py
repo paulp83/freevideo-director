@@ -561,6 +561,8 @@ def enhance_stages(job, run, on_final=None):
     check_cancel(job)                                  # a cancel after prep never submits
     run_dir = enhance.run_dir_of(run)
     workdir = enhance.new_workdir(run_dir, job['id'])   # private to this job; two enhances never share a name
+    job['workdir'] = str(workdir)
+    keep = False                       # an unknown job keeps the dir: its prompt may still read it
     try:
         source, _ = enhance.intermediate(run_dir, workdir)
         enhance.free_gpu()
@@ -581,10 +583,16 @@ def enhance_stages(job, run, on_final=None):
 
         final = poll(job, lambda: enhance.result(pid), progress)
     except Cancelled:
-        confirm_cancel(job)                            # remember whether ComfyUI stopped for the caller
+        keep = not confirm_cancel(job)                 # unconfirmed: ComfyUI may still be working
+        raise
+    except (AmbiguousSubmit, JobTimeout):
+        keep = True                                    # the job turns unknown upstream
         raise
     finally:
-        enhance.remove_workdir(workdir)   # the lossless raw mkv is only needed while ComfyUI reads it
+        if not keep:
+            enhance.remove_workdir(workdir)   # the lossless raw mkv is only needed while ComfyUI reads it
+            job['workdir'] = None
+        # kept dirs are deleted by release_resolved once reconcile or a dismissal proves the stop
     job['final'] = final
     if on_final:
         on_final(final)
@@ -733,6 +741,17 @@ def reconcile_loop():
                 reconcile(job)
             except Exception:
                 pass                                     # still holding; the next round asks again
+        try:
+            sweep_enhance_tmp()
+        except Exception:
+            pass                                       # the next round sweeps again
+
+
+def sweep_enhance_tmp():
+    """Crash leftovers must not pile up in ComfyUI's input folder: drop enhance temp dirs that
+    no live or unresolved job owns any more. Runs at startup and between reconcile rounds."""
+    keep = {Path(job['workdir']).name for job in JOBS.values() if job.get('workdir')}
+    return enhance.sweep_workdirs(keep)
 
 
 def public(job):
@@ -1513,6 +1532,7 @@ if __name__ == '__main__':
     a = p.parse_args()
     Handler.extra_hosts = set(a.allow_host)
     projects.recover_interrupted()
+    sweep_enhance_tmp()
     threading.Thread(target=reconcile_loop, daemon=True).start()
     threading.Thread(target=ws_listen, daemon=True).start()
     print(f'FreeVideo director UI: http://{a.host}:{a.port}')

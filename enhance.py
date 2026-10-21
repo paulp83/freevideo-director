@@ -102,6 +102,29 @@ def remove_workdir(workdir):
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+def sweep_workdirs(keep=(), max_age=86400):
+    """Drop leftover enhance temp dirs from crashed or killed runs: older than `max_age`
+    (a day by default) and not named in `keep` -- the dirs of jobs still live or still
+    unknown. A dir holding a fresh file survives, whatever the dir entry itself says."""
+    parent = workdir_parent()
+    if not parent.is_dir():
+        return []
+    cutoff = time.time() - max_age
+    removed = []
+    for d in sorted(parent.iterdir()):
+        if not d.is_dir() or d.name in keep:
+            continue
+        try:
+            if d.stat().st_mtime > cutoff or any(f.stat().st_mtime > cutoff for f in d.rglob('*')):
+                continue
+        except OSError:
+            continue                                  # vanished under us
+        shutil.rmtree(d, ignore_errors=True)
+        if not d.exists():
+            removed.append(d.name)
+    return removed
+
+
 def graph(source, run_name, **opts):
     o = {**DEFAULTS, **opts}
     return {

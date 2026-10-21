@@ -1,11 +1,12 @@
 """Enhance temp isolation: each enhance run works in its own per-job temp dir, and that dir is
-gone after success, failure and cancel; with the raw frames gone the MP4 fallback is still chosen.
+gone after success, failure and confirmed cancel; an unknown job keeps its dir until reconcile
+or a dismissal proves the ComfyUI prompt stopped, and crash leftovers get swept after a day.
 
     python3 -m unittest discover tests      (from the repo root)
 
 ffmpeg is a fake Popen and ComfyUI a local stub server; nothing touches a GPU.
 """
-import io, json, shutil, sys, tempfile, threading, time, types, unittest
+import io, json, os, shutil, sys, tempfile, threading, time, types, unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -180,6 +181,64 @@ class EnhanceTmp(unittest.TestCase):
         with self.assertRaises(Exception):
             enhance.submit(str(self.take_dir('run-cli')))
         self.assertEqual(self.workdirs(), [])
+
+    # ---------------------------------------------------------------- unknown jobs keep the dir
+
+    def test_unknown_enhance_keeps_its_dir_until_reconciled(self):
+        StubComfy.mode = 'gate'
+        web.JOB_TIMEOUT = 0.3                          # the wall-clock guard trips: state unknown
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'])
+        web.run_job(job, web.enhance_job, str(self.take_dir('run-u')))
+        self.assertEqual(job['state'], 'unknown')
+        dirs = self.workdirs()
+        self.assertEqual(len(dirs), 1, 'an unknown enhance must keep its temp dir')
+        self.assertEqual(Path(job['workdir']).name, dirs[0])
+        self.assertTrue(job['holds'])
+        StubComfy.release.set()                        # now ComfyUI admits the prompt completed
+        self.assertEqual(web.reconcile(job), 'finished')
+        self.assertEqual(web.reconcile(job), 'finished')               # idempotent
+        self.assertIsNotNone(job['final'], 'the finished enhance must record its late final')
+        self.assertEqual(self.workdirs(), [], 'a resolved unknown job must not keep its dir')
+        self.assertIsNone(job['workdir'])
+        self.assertEqual(web.RESERVES, {})
+
+    def test_unconfirmed_cancel_keeps_the_dir(self):
+        StubComfy.mode = 'gate'
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'])
+        t = self.run_enhance(job, self.take_dir('run-uc'))
+        self.assertTrue(self.wait_for(lambda: job['prompt_ids']))
+        web.COMFY = enhance.COMFY = 'http://127.0.0.1:1'   # ComfyUI goes dark mid-flight
+        job['cancel'] = True
+        t.join(10)
+        self.assertEqual(job['state'], 'unknown')      # nobody can prove the prompt stopped
+        self.assertEqual(len(self.workdirs()), 1)
+        self.assertTrue(job['holds'])
+
+    def test_dismissal_deletes_the_kept_dir(self):
+        StubComfy.mode = 'gate'
+        web.JOB_TIMEOUT = 0.3
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'])
+        web.run_job(job, web.enhance_job, str(self.take_dir('run-d')))
+        self.assertEqual(self.workdirs(), [Path(job['workdir']).name])
+        web.release_resolved(job, 'dismissed', by='user')
+        self.assertEqual(self.workdirs(), [])
+        self.assertEqual(job['resolved']['by'], 'user')
+
+    def test_sweep_clears_crash_leftovers_but_not_owned_or_fresh_dirs(self):
+        stale = enhance.new_workdir(self.take_dir('run-old'), 'stale')
+        (stale / 'raw.mkv').write_bytes(b'x')          # a leftover intermediate
+        fresh = enhance.new_workdir(self.take_dir('run-new'), 'fresh')
+        owned = enhance.new_workdir(self.take_dir('run-owned'), 'job-9')
+        old = time.time() - 3 * 86400
+        for d in (stale, owned):
+            for f in [d, *d.rglob('*')]:
+                os.utime(f, (old, old))
+        job = web.new_job('enhance', ['upscale'])
+        job['workdir'] = str(owned)                    # an unresolved job still owns this dir
+        web.JOBS[job['id']] = job
+        self.assertEqual(web.sweep_enhance_tmp(), [stale.name])
+        self.assertTrue(fresh.is_dir() and owned.is_dir())
+        self.assertFalse(stale.exists())
 
     # ---------------------------------------------------------------- intermediate placement
 
