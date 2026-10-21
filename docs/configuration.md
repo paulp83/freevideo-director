@@ -85,9 +85,14 @@ The flow: takes render at `enhance_fps` (24) → Enhance runs exactly the enable
 CRF → **Export film** cuts those finals at the *same* fps and CRF. One function,
 `finishing.output_fps()`, answers every frame-rate question — the graph's `frame_rate`, the
 snapshot record, the cut plan's `export.fps` and the ffmpeg `fps=` filter — so enhance and the
-film can no longer disagree. Before this, four places carried the rate twice
-(`enhance_fps` × `enhance_multiplier` in `enhance.py`, `film_export_fps` in `project.py`, and
-literal `48 fps` labels in `project.html`); all of them now derive from the policy.
+film can no longer disagree. *Every* place a frame rate used to be decided: `enhance.py`
+(`FPS` × `DEFAULTS['multiplier']` → graph node `frame_rate` and the VHS combine), `project.py`
+(`FILM_FPS` 48 → the per-clip `fps=` filter, the title/end card rate, and the cut plan's
+`export.fps`), the animatic's `preview_export_fps` (kept — a draft policy of its own), and
+literal `48 fps` / `CRF 16` labels in `project.html`. All of them now call
+`finishing.output_fps()` / `finishing.for_project()`; the only literal 48/24/16 left in code
+are the config defaults and pinned test constants. Card and transition timings stay in
+seconds (`xfade_seconds`, `dip_seconds`), never frames.
 
 - **Absent key = legacy.** A project without `finishing` gets `finishing.defaults()` built from
   `enhance_resolution`/`enhance_multiplier`/`enhance_crf` — the old pipeline exactly. Nothing
