@@ -459,6 +459,12 @@ $('libAdd').onclick = async () => {
 
 /* ---------- open + poll ---------- */
 async function open(s) {
+  if (slug && slug !== s && st && asHasPending(st)) {   // edits still waiting for their save belong to the film being left
+    try { await flushEdits(); }
+    catch (e) {
+      if (!confirm(e.message + '\n\nSwitch anyway and lose those edits?')) { $('picker').value = slug; return; }
+    }
+  }
   slug = s; history.replaceState(null, '', '/project?p=' + s);
   st = autosaveState(s); viewToken++;   // the old draft is dropped; in-flight responses fail asStale
   $('newBox').hidden = true; $('projBox').hidden = false; $('picker').value = s;
