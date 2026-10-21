@@ -8,3 +8,7 @@ projects/*/frames/
 projects/*/*.tmp
 library/
 stats.json
+# durable job bookkeeping (jobs_db.py); user data, like stats.json
+jobs.db
+jobs.db-wal
+jobs.db-shm
