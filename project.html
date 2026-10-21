@@ -227,14 +227,15 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   /* header: picker on its own line, then one row of controls; text chips share that row.
      only the stage caret stays a compact pill part; the menu button it opens is full-size */
   .stage .caret { min-height: 24px; min-width: 44px; }
-  #hdr { padding: 6px 10px 4px; gap: 5px; }
-  #hdr .btn { padding: 2px 6px; }
+  #hdr { padding: 6px 10px 4px; gap: 3px; }
+  #hdr .btn { padding: 2px 2px; }
+  #hdr #queueCount { min-width: 8px; padding: 0 2px; font-size: 11px; }
   #hdr a { display: inline-flex; align-items: center; min-height: 44px; }
   #hdr #nameTitle, #hdr #saveStatus { display: none; }
   #hdr #picker { order: 0; flex: 1 1 100%; }
   #hdr #newBtn { order: 1; } #hdr #openSettings { order: 2; } #hdr .btn-queue { order: 3; }
   #hdr .btn-shot { order: 5; }
-  #hdr #backend { order: 4; display: inline-flex; align-items: center; min-height: 44px; max-width: 13ch; min-width: 0; flex: 0 1 auto; }
+  #hdr #backend { order: 4; display: inline-flex; align-items: center; min-height: 44px; max-width: 10ch; min-width: 0; flex: 0 1 auto; }
   #hdr select { min-height: 44px; }
   #hdr .wide, #hdr .bmsg, #hdr .spacer { display: none; }
   #stages { flex-wrap: wrap; padding: 0 10px 4px; }
@@ -244,6 +245,43 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   .grid2 { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) { #cmpWrap { grid-template-columns: 1fr; grid-auto-rows: minmax(0, 1fr); } }
+
+/* keyboard focus: one ring on every control, thick enough (3:1) on light and dark panels;
+   the viewer pane is black in both schemes, so the ring turns white inside it */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#viewerBox :focus-visible { outline-color: #fff; }
+
+/* the comparison pane sits on #000 whatever the theme: the muted badge / ink ghost-button
+   colours of the light theme fail there, so the pane carries its own fixed light set */
+.cmpMeta { color: #d6d4ce; }
+.cmpMeta .badge { color: #d6d4ce; border-color: #7a776f; }
+.cmpMeta .badge.final { color: #4ade80; border-color: #4ade80; }
+.cmpMeta .badge.accent { color: #a78bfa; border-color: #a78bfa; }
+.cmpMeta .btn.ghost { background: transparent; color: #eceae4; border-color: #8a877f; }
+/* a 45 % opacity ghost on black would read as state: disabled gets its own flat colours */
+.cmpMeta .btn:disabled { opacity: 1; color: #a5a29a; border-color: #6f6c65; }
+
+/* queue drawer: this film's jobs first; two separate times per job, worded states only */
+#queueDrawer { width: min(680px, 94vw); max-height: 86vh; }
+#queueHead { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+             border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+#queueFlash { font-size: 14px; color: var(--muted); }
+#queueFlash.err { color: var(--err); }
+#queueBody { padding: 12px 16px 18px; overflow-y: auto; }
+.qrow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center;
+        border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; margin-bottom: 8px; font-size: 14px; }
+.qkind { font-weight: 700; }
+.qstate { color: var(--ink); }
+.qtime { color: var(--muted); }
+.qerr { color: var(--err); overflow-wrap: anywhere; }
+.qnote { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+#queueDrawer details { margin-top: 6px; }
+#queueDrawer summary { color: var(--muted); cursor: pointer; }
+#queueCount { color: var(--accent); font-weight: 700; margin-left: 5px; }
+#queueCount:empty { margin: 0; }
+
+/* one-line live region for keyboard scene navigation (words, not colour) */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -256,7 +294,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <span class="spacer"></span>
     <span id="backend" class="status" role="status"></span>
     <button class="btn ghost" id="openSettings" hidden title="Project settings">Settings</button>
-    <a class="btn-queue" href="/queue">Queue</a>
+    <button class="btn ghost btn-queue" id="openQueue" title="Live jobs: this film first, then everything else running">Queue<span id="queueCount"></span></button>
     <a class="btn-shot" href="/">Single shot →</a>
   </div>
   <div id="stages" hidden></div>
@@ -316,7 +354,8 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
 <!-- project workspace -->
 <main id="projWrap" hidden>
-  <nav id="navigator" aria-label="Scenes"></nav>
+  <nav id="navigator" role="listbox" aria-label="Scenes"></nav>
+  <span id="navSay" class="sr" aria-live="polite"></span>
   <div id="center">
     <div id="viewerBox">
       <span id="viewerEmpty" class="status" style="color:#bbb">No cut or take selected. Pick a scene on the left.</span>
@@ -489,6 +528,33 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <div class="row" style="margin-top:10px">
       <button class="btn" id="dismissGo">Dismiss without proof</button>
       <button class="btn ghost" id="dismissNo">Keep it unknown</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- queue drawer: a native dialog (Esc closes, focus returns to the button built in), fed
+     from /api/queue. This film's jobs first; other films' jobs collapse behind a summary. -->
+<dialog id="queueDrawer" aria-labelledby="queueHeadTitle">
+  <div id="queueHead">
+    <b id="queueHeadTitle" style="flex:1">Queue</b>
+    <span id="queueFlash" role="status"></span>
+    <button class="btn ghost" id="closeQueue">Close</button>
+  </div>
+  <div id="queueBody">
+    <div id="queueMine"></div>
+    <details id="queueOthersWrap" hidden><summary id="queueOthersSum"></summary><div id="queueOthers"></div></details>
+    <p class="qnote">Jobs live in memory; restarting the director forgets them (ComfyUI may still finish them)</p>
+  </div>
+</dialog>
+
+<!-- cancelling a live job goes through a native dialog too, never window.confirm -->
+<dialog id="cancelAsk">
+  <div style="padding:14px 16px">
+    <b>Cancel this job?</b>
+    <p class="hint" style="margin-top:8px" id="cancelAskWhat"></p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="cancelGo">Cancel job</button>
+      <button class="btn ghost" id="cancelNo">Keep running</button>
     </div>
   </div>
 </dialog>
@@ -913,6 +979,11 @@ function openStageMenu(anchor, s, i, drafted, n) {
 function drawStages(p) {
   const steps = stageSteps(p), next = steps.findIndex(s => !s.done);
   const drafted = p.scenes.filter(s => s.takes.length).length, n = p.scenes.length;
+  // the 3 s poll must not rebuild unchanged chips: a focused caret keeps its place and an open
+  // menu stays anchored to its caret; only a real state change (or a film switch) rebuilds
+  const sig = JSON.stringify([p.slug, steps.map(s => [s.c, s.done]), next, busy()]);
+  if (drawStages.sig === sig) { drawNext(p); return; }
+  drawStages.sig = sig;
   closeStageMenu();
   const box = $('stages'); box.replaceChildren();
   const chips = el('div', {id: 'stageChips'});
@@ -930,7 +1001,7 @@ function drawStages(p) {
       el('span', {class: 'count'}, '▸ next'),
       el('button', {class: 'caret', 'aria-expanded': 'false', 'aria-label': 'Next step action',
         onclick: (ev) => { ev.stopPropagation(); openStageMenu(ev.currentTarget, steps[next], next, drafted, n); }}, '▾')));
-  box.append(chips, el('button', {class: 'btn', id: 'nextAction'}));
+  box.append(chips, el('button', {class: 'btn', id: 'nextAction'}));   // drawNext updates it in place
   drawNext(p);
 }
 function drawNext(p) {
@@ -985,7 +1056,7 @@ function drawNavigator(p, force) {
     // one short badge word in the row (rows stay one line tall); the full validity+execution
     // wording rides on the row's title/aria-label and stays spelled out in the inspector
     const full = `${val}${ex ? ' · ' + ex : ''}`;
-    const item = el('button', {class: 'navitem', 'data-scene': s.id, title: full,
+    const item = el('button', {class: 'navitem', 'data-scene': s.id, title: full, role: 'option',
       'aria-label': `${i + 1}. ${s.title || 'Scene'} - ${full}`, onclick: () => selectScene(s.id)},
       thumb ? el('img', {class: 'navimg', src: thumb, alt: ''}) : el('span', {class: 'navimg'}),
       el('span', {class: 'navtxt'},
@@ -998,20 +1069,56 @@ function drawNavigator(p, force) {
   highlightNav();
 }
 function highlightNav() {
-  document.querySelectorAll('#navigator .navitem').forEach(b => b.setAttribute('aria-current', String(b.dataset.scene === selId)));
+  // listbox semantics: the selection is a word (aria-selected) and focus is roving (tabindex):
+  // Tab enters the scene list once, then arrows move through the scenes (never colour alone)
+  document.querySelectorAll('#navigator .navitem').forEach(b => {
+    const on = b.dataset.scene === selId;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  if (selId === null) { const f = document.querySelector('#navigator .navitem'); if (f) f.tabIndex = 0; }
 }
+/* keyboard scene navigation: arrows / Home / End move the selection (and the viewer with it);
+   the live region speaks the row so the change is heard as well as seen */
+$('navigator').addEventListener('keydown', ev => {
+  const items = [...document.querySelectorAll('#navigator .navitem')];
+  const cur = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.navitem') : null;
+  if (!items.length || !cur) return;
+  const i = items.indexOf(cur);
+  let j;
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowRight') j = Math.min(items.length - 1, i + 1);
+  else if (ev.key === 'ArrowUp' || ev.key === 'ArrowLeft') j = Math.max(0, i - 1);
+  else if (ev.key === 'Home') j = 0;
+  else if (ev.key === 'End') j = items.length - 1;
+  else return;                                       // Enter/Space stay the plain button click
+  ev.preventDefault();
+  if (j === i) return;
+  items[j].focus();
+  selectScene(items[j].dataset.scene);               // selection follows focus
+  $('navSay').textContent = items[j].getAttribute('aria-label');
+});
 
 /* ---------- timeline ---------- */
 function drawTimeline(p) {
-  const tl = $('timeline'); tl.replaceChildren();
-  p.scenes.forEach((s, i) => {
-    const val = validityText(s), ex = execText(s);
-    tl.append(el('button', {class: 'tl ' + sceneState(s) + (s.id === selId ? ' sel' : ''), style: `flex:${s.seconds}`,
-      title: `${s.title || 'Scene'} — ${val}${ex ? ' · ' + ex : ''}`,
-      'aria-label': `${i + 1}. ${s.title || 'Scene'}: ${val}${ex ? ' · ' + ex : ''}`, onclick: () => selectScene(s.id)},
-      el('span', {class: 'tlk'}, `${s.connect === 'continue' ? '↪ ' : ''}${i + 1} · ${s.seconds}s`),
-      el('span', {class: 'tls'}, tlMark(s))));
-  });
+  const tl = $('timeline');
+  // the chips carry the full validity+execution wording; rebuild only when one of those
+  // (or the film) changes — a poll or a plain selection change just moves the .sel outline,
+  // so a focused chip and the horizontal scroll position survive the 3 s refresh
+  const sig = [p.slug, p.scenes.map(s => [s.id, s.seconds, s.connect, sceneState(s), tlMark(s),
+                                           validityText(s), execText(s) || ''].join('\u0000')
+                ).join('')].join('\u0001');
+  if (tl.dataset.sig !== sig) {
+    tl.dataset.sig = sig; tl.replaceChildren();
+    p.scenes.forEach((s, i) => {
+      const val = validityText(s), ex = execText(s);
+      tl.append(el('button', {class: 'tl ' + sceneState(s) + (s.id === selId ? ' sel' : ''), style: `flex:${s.seconds}`,
+        'data-scene': s.id,
+        title: `${s.title || 'Scene'} — ${val}${ex ? ' · ' + ex : ''}`,
+        'aria-label': `${i + 1}. ${s.title || 'Scene'}: ${val}${ex ? ' · ' + ex : ''}`, onclick: () => selectScene(s.id)},
+        el('span', {class: 'tlk'}, `${s.connect === 'continue' ? '↪ ' : ''}${i + 1} · ${s.seconds}s`),
+        el('span', {class: 'tls'}, tlMark(s))));
+    });
+  } else for (const b of tl.children) b.classList.toggle('sel', b.dataset.scene === selId);
   const drafted = p.scenes.filter(s => s.takes.length).length;
   $('bPreviewFilm').disabled = busy() || drafted < p.scenes.length;
   $('bExportFilm').disabled = busy() || drafted < p.scenes.length;
@@ -1066,11 +1173,20 @@ function drawViewer() {
   if (!tgt) { v.removeAttribute('src'); v.load(); }
   else {
     if (!v.src.endsWith(tgt.src)) v.src = tgt.src;
-    v.poster = tgt.poster;
+    if ((tgt.poster || '') !== (v.getAttribute('poster') || '')) {
+      if (tgt.poster) v.poster = tgt.poster; else v.removeAttribute('poster');
+    }
   }
+  // the Scene/Animatic/Film buttons survive an unchanged poll: focus and any click in
+  // flight stay where the user left them
+  const isig = [(tgt ? tgt.info : 'nothing to play yet'), viewMode, proj.outputs.animatic ? 'a' : '',
+                proj.outputs.film ? 'f' : ''].join('\u0000');
+  const info = $('viewerInfo');
+  if (info.dataset.sig === isig) return;
+  info.dataset.sig = isig;
   const seg = (m, label) => el('button', {'data-view': m, class: m === viewMode ? 'on' : '',
     onclick: () => { if (m === 'scene' || proj.outputs[m]) { if (m === 'scene') cmpPair = null; viewMode = m; drawViewer(); } }}, label);
-  $('viewerInfo').replaceChildren(el('span', {}, tgt ? tgt.info : 'nothing to play yet'),
+  info.replaceChildren(el('span', {}, tgt ? tgt.info : 'nothing to play yet'),
     el('span', {class: 'seg', id: 'viewerMode'}, seg('scene', 'Scene'), seg('animatic', 'Animatic'), seg('film', 'Film')));
 }
 
@@ -1098,10 +1214,14 @@ function drawCompare() {
   const pos = t => c.s.takes.indexOf(t) + 1;
   const seg = (m, label) => el('button', {'data-view': m,
     onclick: () => { if (m === 'scene' || proj.outputs[m]) { cmpPair = null; viewMode = m; drawViewer(); } }}, label);
-  $('viewerInfo').replaceChildren(
-    el('span', {}, `Comparing take ${pos(c.a)}/${c.s.takes.length} (seed ${c.a.seed}) vs take ${pos(c.b)}/${c.s.takes.length} (seed ${c.b.seed})`),
-    el('span', {class: 'seg', id: 'viewerMode'}, seg('scene', 'Scene'), seg('animatic', 'Animatic'), seg('film', 'Film'),
-      el('button', {'data-view': 'compare', class: 'on', title: 'Back to the single viewer'}, 'Compare')));
+  const isig = `compare\u0000${c.s.id}\u0000${pos(c.a)}\u0000${pos(c.b)}\u0000${c.s.takes.length}\u0000${c.a.seed}\u0000${c.b.seed}`;
+  if ($('viewerInfo').dataset.sig !== isig) {
+    $('viewerInfo').dataset.sig = isig;
+    $('viewerInfo').replaceChildren(
+      el('span', {}, `Comparing take ${pos(c.a)}/${c.s.takes.length} (seed ${c.a.seed}) vs take ${pos(c.b)}/${c.s.takes.length} (seed ${c.b.seed})`),
+      el('span', {class: 'seg', id: 'viewerMode'}, seg('scene', 'Scene'), seg('animatic', 'Animatic'), seg('film', 'Film'),
+        el('button', {'data-view': 'compare', class: 'on', title: 'Back to the single viewer'}, 'Compare')));
+  }
 }
 function buildCmpPanes(c) {
   const wrap = $('cmpWrap'); wrap.replaceChildren();
@@ -1123,6 +1243,10 @@ function refreshCmpMeta(c) {
   for (const [side, t] of [['A', c.a], ['B', c.b]]) {
     const box = document.querySelector(`#cmpWrap [data-meta="${side}"]`); if (!box) continue;
     const pos = c.s.takes.indexOf(t) + 1, ref = t.id || t.run, inuse = t.run === c.s.chosen;
+    // a poll must not swap the pane's buttons out from under a focused (or mid-click) user
+    const sig = [c.s.id, pos, t.seed, t.final ? 'f' : t.preset, inuse ? '1' : '0', c.s.selection || '', c.s.chosen || ''].join('\u0000');
+    if (box.dataset.sig === sig) continue;
+    box.dataset.sig = sig;
     box.replaceChildren(
       el('b', {}, `${side}: take ${pos}/${c.s.takes.length}`),
       el('span', {class: 'badge'}, 'seed ' + t.seed),
@@ -1224,8 +1348,9 @@ function drawStrip(p) {
   const s = selScene(); const box = $('takeStrip');
   if (!s) { box.replaceChildren(); return; }
   const sig = [s.id, s.selection, s.chosen, s.takes.map(t => (t.id || t.run) + (t.final ? 'F' : '') + (t.thumb_url ? 'T' : '')).join('|')].join('');
-  if (box.dataset.sig === sig) return;
-  box.dataset.sig = sig; box.replaceChildren();
+  for (const c of box.children) c.classList.toggle('preview', c.dataset.t === (previewRef || ''));
+  if (box.dataset.sig === sig) return;                 // the ring follows previewTake without
+  box.dataset.sig = sig; box.replaceChildren();        // rebuilding: focus must not move
   [...s.takes].slice().reverse().forEach(t => box.append(buildTakeCard(t, s)));
 }
 function buildTakeCard(t, s) {
@@ -1233,8 +1358,13 @@ function buildTakeCard(t, s) {
   // loads into the main viewer when the card is clicked
   const ref = t.id || t.run, chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
   const card = el('div', {class: 'take' + (chosen ? ' chosen' : '') + (previewRef === ref ? ' preview' : ''), 'data-t': ref,
-    title: 'Play this take in the viewer',
-    onclick: (ev) => { if (ev.target.closest('button')) return; previewTake(s, t); }});
+    title: 'Play this take in the viewer', tabindex: '0', role: 'button',
+    'aria-label': `Play take ${s.takes.indexOf(t) + 1} of ${s.takes.length} in the viewer`,
+    onclick: (ev) => { if (ev.target.closest('button')) return; previewTake(s, t); },
+    onkeydown: (ev) => {                   // keyboard users reach the card by Tab; Enter/Space play it
+      if ((ev.key === 'Enter' || ev.key === ' ') && !(ev.target.closest && ev.target.closest('button'))) {
+        ev.preventDefault(); previewTake(s, t);
+      }}});
   const pos = s.takes.indexOf(t) + 1;
   const box = el('div', {class: 'posterBox'});
   const src = t.thumb_url || (t.final_url || t.url ? `/api/p/${proj.slug}/poster?id=${encodeURIComponent(ref)}` : null);
@@ -1374,11 +1504,20 @@ function updateStatus(s, i) {
   const job = s.job, running = job && !job.done;
   const t = (s.takes || []).find(t => t.run === s.chosen);
   const ex = execText(s);
-  // filter(Boolean): a null child would reach replaceChildren as the string "null"
-  $('scStatus').replaceChildren(...[el('span', {id: 'scValidity'}, validityText(s)),
-    t ? el('span', {id: 'scInuse'}, ` · in use: ${t.final ? 'enhanced take' : 'draft take'} seed ${t.seed}` +
-        (s.selection === 'explicit' ? ' (pinned)' : ' (latest, auto)')) : null,
-    ex ? el('span', {id: 'scExec', 'data-exec': ex}, ' · ' + ex) : null].filter(Boolean));
+  // same guard as the flags: an identical poll re-renders nothing, so this line never flickers
+  const st = $('scStatus');
+  const stx = JSON.stringify([validityText(s),
+    t ? ` · in use: ${t.final ? 'enhanced take' : 'draft take'} seed ${t.seed}` +
+        (s.selection === 'explicit' ? ' (pinned)' : ' (latest, auto)') : '',
+    ex || '']);
+  if (st.dataset.sig !== stx) {
+    st.dataset.sig = stx;
+    // filter(Boolean): a null child would reach replaceChildren as the string "null"
+    st.replaceChildren(...[el('span', {id: 'scValidity'}, validityText(s)),
+      t ? el('span', {id: 'scInuse'}, ` · in use: ${t.final ? 'enhanced take' : 'draft take'} seed ${t.seed}` +
+          (s.selection === 'explicit' ? ' (pinned)' : ' (latest, auto)')) : null,
+      ex ? el('span', {id: 'scExec', 'data-exec': ex}, ' · ' + ex) : null].filter(Boolean));
+  }
   const box = $('scFlags');
   const dtext = prev && prev.status ? (prev.status.downstream_of.find(d => d.id === s.id) || {}).text : null;
   const contBox = $('contBox'), out = (s.status && s.status.outdated) || [];
@@ -1419,25 +1558,45 @@ function updateStatus(s, i) {
 }
 let unkMsg = new Map();          // one reconcile/dismiss message per job id, survives re-renders
 function updateJob(s) {
-  const jb = $('scJob'); jb.replaceChildren();
+  const jb = $('scJob');
   const job = s.job;
+  // the 3 s poll must never swap the Reconcile / Dismiss buttons out from under a focused (or
+  // mid-click) user: elements stay for the same job, chip text updates in place, and the unknown
+  // block is rebuilt only when its own content changes
+  const jid = job ? String(job.id) : '';
+  if (jb.dataset.job !== jid) { jb.dataset.job = jid; jb.replaceChildren(); }
   if (job && ((job && !job.done) || job.error)) {
-    const chips = el('div', {class: 'stagechips'});
-    job.stages.forEach(stg => chips.append(el('span', {class: 'chip ' + stg.state},
-      `${stg.label}${stg.state === 'active' && stg.max ? ` ${stg.value}/${stg.max}` : ''}${stg.seconds != null ? ` · ${fmt(stg.seconds)}` : ''}`)));
-    jb.append(chips);
+    let chips = jb.querySelector(':scope > .stagechips');
+    if (!chips) { chips = el('div', {class: 'stagechips'}); jb.append(chips); }
+    while (chips.children.length > job.stages.length) chips.lastChild.remove();
+    job.stages.forEach((stg, k) => {
+      const word = {pending: 'queued', active: 'running', done: 'done', error: 'failed'}[stg.state] || stg.state;
+      const txt = `${stg.label} · ${word}${stg.state === 'active' && stg.max ? ` ${stg.value}/${stg.max}` : ''}${stg.seconds != null ? ` · ${fmt(stg.seconds)}` : ''}`;
+      const cls = 'chip ' + stg.state;
+      let c = chips.children[k];
+      if (!c) c = el('span', {class: cls}), chips.append(c);
+      if (c.className !== cls) c.className = cls;
+      if (c.textContent !== txt) c.textContent = txt;
+    });
+  } else {
+    const cc = jb.querySelector(':scope > .stagechips');
+    if (cc) cc.remove();
   }
-  if (job && job.state === 'unknown' && !job.resolved) {
-    const ids = job.prompt_ids || [];
-    jb.append(el('div', {class: 'notice', id: 'unkJob'},
-      el('b', {}, `Unknown job ${job.id} — ComfyUI may still be executing.`),
-      el('span', {}, ids.length ? `ComfyUI prompt ids: ${ids.join(', ')}` : 'ComfyUI prompt ids: none recorded (the submit was never answered).'),
-      el('span', {}, 'The scene stays reserved until ComfyUI proves the prompt stopped or you dismiss it — new work now could generate a duplicate take.'),
-      el('div', {class: 'row'},
-        el('button', {class: 'btn', id: 'unkReconcile', onclick: () => reconcileUnknown(job)}, 'Reconcile'),
-        el('button', {class: 'btn ghost', id: 'unkDismiss', onclick: () => { dismissJobId = job.id; $('dismissAsk').showModal(); }}, 'Dismiss…'),
-        el('span', {id: 'unkMsg'}, unkMsg.get(job.id) || ''))));
-  }
+  const wantUn = !!(job && job.state === 'unknown' && !job.resolved);
+  const un = jb.querySelector(':scope > #unkJob');
+  const usig = wantUn ? JSON.stringify([job.id, (job.prompt_ids || []).join(','), unkMsg.get(job.id) || '']) : '';
+  if (!wantUn) { if (un) un.remove(); return; }
+  if (un && un.dataset.sig === usig) return;
+  if (un) un.remove();
+  const ids = job.prompt_ids || [];
+  jb.append(el('div', {class: 'notice', id: 'unkJob', 'data-sig': usig},
+    el('b', {}, `Unknown job ${job.id} — ComfyUI may still be executing.`),
+    el('span', {}, ids.length ? `ComfyUI prompt ids: ${ids.join(', ')}` : 'ComfyUI prompt ids: none recorded (the submit was never answered).'),
+    el('span', {}, 'The scene stays reserved until ComfyUI proves the prompt stopped or you dismiss it — new work now could generate a duplicate take.'),
+    el('div', {class: 'row'},
+      el('button', {class: 'btn', id: 'unkReconcile', onclick: () => reconcileUnknown(job)}, 'Reconcile'),
+      el('button', {class: 'btn ghost', id: 'unkDismiss', onclick: () => { dismissJobId = job.id; $('dismissAsk').showModal(); }}, 'Dismiss…'),
+      el('span', {id: 'unkMsg'}, unkMsg.get(job.id) || ''))));
 }
 async function reconcileUnknown(job) {
   const m0 = $('unkMsg'); if (m0) m0.textContent = 'Asking ComfyUI…';
@@ -1777,7 +1936,8 @@ $('cmpAudio').onclick = () => {
 };
 $('bCompare').onclick = () => selScene() && (viewMode === 'compare' ? closeCompare() : openCompare());
 document.addEventListener('keydown', ev => {
-  if (ev.key === 'Escape' && viewMode === 'compare' && !$('settings').open && !$('dismissAsk').open) closeCompare();
+  if (ev.key === 'Escape' && viewMode === 'compare' && !$('settings').open && !$('dismissAsk').open &&
+      !$('queueDrawer').open && !$('cancelAsk').open) closeCompare();
 });
 
 /* unknown-job dismissal behind the native dialog; only "without proof" ever lands here */
@@ -1791,6 +1951,139 @@ $('dismissGo').onclick = async () => {
   await refresh(false);
 };
 $('dismissNo').onclick = () => $('dismissAsk').close();
+
+/* ---------- queue drawer: the same real jobs /queue shows, this film's first ----------
+   Two separate times per job, worded for the user: how long the job waited before ComfyUI
+   picked it up ("queued for"), and how long it has been executing ("running for"). They are
+   ticked client-side from the epoch each row carries, so a poll never rewrites the rows and
+   a focused or mid-click button is never swapped out. State is carried by words. */
+let cancelJobId = null, lastQueue = null;
+const qMsg = new Map();
+const qword = s => ({queued: 'queued', preparing: 'preparing', submitted: 'running', running: 'running',
+                     finished: 'finished', failed: 'failed', cancelled: 'cancelled',
+                     unknown: 'state unknown'})[s] || s;
+function qflash(msg, err) {
+  const f = $('queueFlash');
+  f.textContent = msg || '';
+  f.classList.toggle('err', !!err);
+}
+function queueRow(r) {
+  const kids = [el('b', {class: 'qkind'}, r.kind),
+                el('span', {}, r.project_name || r.project || 'single shot')];
+  if (r.scene_title) kids.push(el('span', {}, `scene "${r.scene_title}"`));
+  kids.push(el('span', {class: 'qstate'}, qword(r.state) + (r.stage ? ' · ' + r.stage : '')));
+  kids.push(el('span', {class: 'qtime', 'data-times': JSON.stringify([r.created, r.started, r.ended])}));
+  if (r.error) kids.push(el('span', {class: 'qerr'}, r.error));
+  if (r.state === 'unknown' && !r.resolved) {
+    kids.push(el('span', {}, 'ComfyUI may still be executing' +
+      (r.prompt_ids && r.prompt_ids.length ? ` (prompt ids ${r.prompt_ids.join(', ')})` : '')));
+    kids.push(el('button', {class: 'btn ghost', onclick: () => qReconcile(r.id)}, 'Reconcile'));
+    kids.push(el('button', {class: 'btn ghost',
+      onclick: () => { dismissJobId = r.id; $('dismissAsk').showModal(); }}, 'Dismiss…'));
+    const m = qMsg.get(r.id);
+    if (m) kids.push(el('span', {}, m));
+  } else if (r.live && !r.resolved) {
+    kids.push(el('button', {class: 'btn ghost', onclick: () => {
+      cancelJobId = r.id;
+      $('cancelAskWhat').textContent = `${r.kind}${r.scene_title ? ` scene "${r.scene_title}"` : ''} — ` +
+        `${qword(r.state)}${r.stage ? ' · ' + r.stage : ''}. Cancelling asks ComfyUI to stop; the job ` +
+        `only counts as cancelled once the stop is proven.`;
+      $('cancelAsk').showModal();
+    }}, 'Cancel…'));
+  }
+  if (r.take && r.project === slug)
+    kids.push(el('button', {class: 'btn ghost', title: 'Show this take in the viewer', onclick: () => {
+      const sc = proj.scenes.find(x => x.id === r.scene);
+      const tk = sc && (sc.takes || []).find(t => t.run === r.take || t.id === r.take);
+      $('queueDrawer').close();
+      selId = r.scene; previewRef = tk ? (tk.id || tk.run) : r.take; viewMode = 'scene'; cmpPair = null;
+      highlightNav(); drawTimeline(proj); drawInspector(proj); drawStrip(proj); drawViewer(proj);
+    }}, 'Details'));
+  return el('div', {class: 'qrow'}, ...kids);
+}
+async function qReconcile(id) {
+  qMsg.set(id, 'Asking ComfyUI…');
+  if (lastQueue) renderQueue(lastQueue, true);
+  let msg;
+  try {
+    const r = await api(`/api/job/${id}/reconcile`, {});
+    const v = r.proved;
+    if (v === 'running') msg = 'ComfyUI still has the prompt — nothing to free yet; the scene stays reserved.';
+    else if (v) msg = `ComfyUI says the prompt ${v} — the scene is free again.`;
+    else msg = 'ComfyUI cannot tell (unreachable, or the submit was never answered): the job stays unknown and the scene stays reserved.';
+  } catch (e) { msg = 'Reconcile failed: ' + e.message; }
+  qMsg.set(id, msg);
+  await refreshQueue(true);
+}
+function qsig(q) {
+  // deliberately no elapsed/eta/queued_for/running_for: those change every second, and the row
+  // must keep its identity through the poll — the times are ticked in place instead
+  return JSON.stringify([slug,
+    q.jobs.map(r => [r.id, r.kind, r.state, r.project, r.project_name || '', r.scene || '', r.scene_title || '',
+                     r.stage || '', r.error || '', !!r.resolved, r.take || '', (r.prompt_ids || []).join(',')]),
+    [...qMsg.entries()]]);
+}
+function renderQueue(q, force) {
+  if (!force && $('queueBody').dataset.sig === qsig(q)) { tickQueueTimes(); return; }
+  $('queueBody').dataset.sig = qsig(q);
+  const mine = q.jobs.filter(r => r.project === slug), others = q.jobs.filter(r => r.project !== slug);
+  $('queueMine').replaceChildren(...mine.map(queueRow));
+  const wrap = $('queueOthersWrap');
+  if (others.length) {
+    wrap.hidden = false;
+    $('queueOthersSum').textContent = `Jobs in other films (${others.length})`;
+    $('queueOthers').replaceChildren(...others.map(queueRow));
+  } else { wrap.hidden = true; $('queueOthers').replaceChildren(); }
+  tickQueueTimes();
+}
+function tickQueueTimes() {
+  const now = Date.now() / 1000;
+  for (const sp of document.querySelectorAll('#queueDrawer [data-times]')) {
+    const [c, s, e] = JSON.parse(sp.dataset.times);
+    const stop = e != null ? e : now;
+    const qf = Math.max(0, Math.round((s != null ? s : stop) - c));
+    sp.textContent = `queued for ${fmt(qf)} · ` +
+      (s == null ? 'not started' : `running for ${fmt(Math.max(0, Math.round(stop - s)))}`);
+  }
+}
+async function refreshQueue() {
+  let q; try { q = await api('/api/queue'); } catch (e) { return; }
+  lastQueue = q;
+  $('queueCount').textContent = String(q.jobs.filter(r => r.live && r.project === slug).length);
+  if ($('queueDrawer').open) renderQueue(q, false);
+}
+setInterval(refreshQueue, 3000);
+refreshQueue();
+$('openQueue').onclick = () => {
+  qflash('');
+  $('queueDrawer').showModal();
+  if (lastQueue) renderQueue(lastQueue, true);
+  refreshQueue();
+};
+$('closeQueue').onclick = () => $('queueDrawer').close();
+
+/* Firefox lets Tab leak out of a modal's tab loop after the last control; keep it inside */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || !$('queueDrawer').open || $('cancelAsk').open) return;
+  const f = [...$('queueDrawer').querySelectorAll('button, [href], input, select, textarea, summary, [tabindex="0"]')]
+    .filter(el => !el.disabled && el.offsetParent !== null);
+  if (!f.length) return;
+  const cur = document.activeElement, first = f[0], last = f[f.length - 1];
+  if (!e.shiftKey && (cur === last || !$('queueDrawer').contains(cur))) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && (cur === first || !$('queueDrawer').contains(cur))) { e.preventDefault(); last.focus(); }
+});
+$('cancelGo').onclick = async () => {
+  const id = cancelJobId; cancelJobId = null; $('cancelAsk').close();
+  if (!id) return;
+  qflash('Asking ComfyUI to stop…');
+  try {
+    const r = await api(`/api/job/${id}/cancel`, {});
+    qflash(r.proved ? 'Cancelled: the stop is proven.'
+                    : (r.warning || 'Cancel asked; the job stays live until the stop is proven.'), !r.proved);
+  } catch (e) { qflash('Cancel failed: ' + e.message, true); }
+  await refreshQueue();
+};
+$('cancelNo').onclick = () => $('cancelAsk').close();
 
 /* keep the main grid height in step with the (wrapping) header */
 function fitGrid() { document.documentElement.style.setProperty('--hdrh', (document.querySelector('header').offsetHeight + 4) + 'px'); }

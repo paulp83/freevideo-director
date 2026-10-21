@@ -30,6 +30,14 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .status { color: var(--muted); font-size: 14px; }
 .status.err { color: var(--err); }
 .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.qerr { color: var(--err); overflow-wrap: anywhere; white-space: normal; }
+.qmsg { color: var(--muted); white-space: normal; }
+.btn { border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink);
+       padding: 4px 10px; cursor: pointer; font: inherit; min-height: 32px; }
+.btn.ghost { background: transparent; }
+dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; color: var(--ink); background: var(--panel); max-width: 480px; }
+dialog .row { display: flex; gap: 8px; margin-top: 10px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -42,17 +50,31 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
     <a href="/">Single shot →</a>
   </div>
   <section>
-    <h2>Running now</h2>
+    <h2>Live jobs and finished ones</h2>
     <p class="hint" id="queueEmpty">Nothing is running.</p>
     <div class="tablewrap">
       <table id="queueTable" hidden>
-        <thead><tr><th>What</th><th>Where</th><th>Elapsed</th><th>Estimate left</th><th>Stage</th></tr></thead>
+        <thead><tr><th>What</th><th>Where</th><th>State</th><th>Stage</th>
+                  <th>Queued for</th><th>Running for</th><th>Estimate left</th><th></th></tr></thead>
         <tbody id="queueBody"></tbody>
       </table>
     </div>
     <p class="hint">Estimates are the median of your last 20 runs of the same kind; they appear after a first run.</p>
+    <p class="hint">Jobs live in memory; restarting the director forgets them (ComfyUI may still finish them)</p>
   </section>
 </main>
+
+<!-- destructive job actions go through a native dialog: Esc closes, focus returns built in -->
+<dialog id="askBox">
+  <div style="padding:14px 16px">
+    <b id="askTitle"></b>
+    <p class="hint" style="margin:8px 0 0" id="askWhat"></p>
+    <div class="row">
+      <button class="btn" id="askGo"></button>
+      <button class="btn ghost" id="askNo">Keep it as it is</button>
+    </div>
+  </div>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -64,18 +86,121 @@ function fmtSecs(s) {
   return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
 }
 
+// state is carried by words, never by colour alone
+const qword = s => ({queued: 'queued', preparing: 'preparing', submitted: 'running', running: 'running',
+                     finished: 'finished', failed: 'failed', cancelled: 'cancelled',
+                     unknown: 'state unknown'})[s] || s;
+
+const qMsg = new Map();          // one reconcile/cancel message per job id, survives refreshes
+let askJob = null;               // {kind: 'cancel'|'dismiss', id} while the confirm dialog is open
+
 function queueRows(data) {
-  const jobs = (data && data.jobs) || [], batches = (data && data.batches) || [];
-  const rows = jobs.map(j => ({
-    what: j.kind,
+  const jobs = ((data && data.jobs) || []).map(j => ({
+    id: 'j' + j.id, jid: j.id, kind: j.kind,
     where: j.project ? (j.project_name || j.project) + (j.scene_title ? ' · ' + j.scene_title : '') : 'single shot',
-    elapsed: fmtSecs(j.elapsed), eta: fmtSecs(j.eta), stage: j.stage || ''}));
-  for (const b of batches) {
-    rows.push({what: b.label, where: b.project_name || b.project, elapsed: fmtSecs(b.seconds), eta: '–',
-               stage: b.step + '/' + (b.of || '?')});
+    state: qword(j.state), stage: j.stage || '', error: j.error || '',
+    times: [j.created, j.started, j.ended], eta: j.eta != null ? fmtSecs(j.eta) : '–',
+    prompt_ids: j.prompt_ids || [], resolved: !!j.resolved, live: !!j.live}));
+  for (const b of ((data && data.batches) || [])) {
+    jobs.push({id: 'b' + b.project + b.label, jid: null, kind: b.label,
+               where: (b.project_name || b.project) + (b.scene ? ' · scene ' + (b.scene) : ''),
+               state: 'running', stage: b.step + '/' + (b.of || '?'), error: '',
+               times: [null, Date.now() / 1000 - (b.seconds || 0), null], eta: '–', prompt_ids: [], resolved: false, live: true});
   }
-  return rows;
+  return jobs;
 }
+
+function tickTimes() {
+  // the two times are computed client-side from epochs: a poll never rewrites the row, so
+  // focus and any click in flight stay where the user left them
+  const now = Date.now() / 1000;
+  for (const tr of $('queueBody').children) {
+    if (!tr.dataset.times) continue;
+    const [c, s, e] = JSON.parse(tr.dataset.times);
+    const tds = tr.children;
+    if (c == null) { tds[4].textContent = '–'; tds[5].textContent = fmtSecs(now - s); continue; }
+    const stop = e != null ? e : now;
+    tds[4].textContent = fmtSecs(Math.max(0, (s != null ? s : stop) - c));
+    tds[5].textContent = s == null ? 'not started' : fmtSecs(Math.max(0, stop - s));
+  }
+}
+
+function buildRow(j) {
+  const tr = document.createElement('tr');
+  if (j.times[0] != null) tr.dataset.times = JSON.stringify(j.times);
+  const td = txt => { const e = document.createElement('td'); e.textContent = txt; return e; };
+  tr.append(td(j.kind), td(j.where));
+  const stCell = td(j.state);
+  if (j.error) { const err = document.createElement('span'); err.className = 'qerr'; err.textContent = ': ' + j.error; stCell.append(err); }
+  tr.append(stCell, td(j.stage), td('–'), td('–'), td(j.eta));
+  const act = document.createElement('td');
+  if (j.state === 'state unknown') {                 // the verdict stays on the row in words,
+    if (j.resolved) {                                // not just in this tab's flash memory
+      const rv = document.createElement('span'); rv.className = 'qerr';
+      rv.textContent = j.resolved.verdict === 'dismissed'
+        ? ' · dismissed without proof: the scene is free again, but the prompt may still be running'
+        : ' · ComfyUI confirmed ' + j.resolved.verdict;
+      stCell.append(rv);
+    } else {
+      const why = document.createElement('span'); why.className = 'qmsg';
+      why.textContent = 'ComfyUI may still be executing' + (j.prompt_ids.length ? ` (prompt ids ${j.prompt_ids.join(', ')})` : '');
+      act.append(why, ' ');
+      const rec = document.createElement('button'); rec.className = 'btn'; rec.textContent = 'Reconcile';
+      rec.onclick = () => reconcile(j.jid);
+      const dis = document.createElement('button'); dis.className = 'btn ghost'; dis.textContent = 'Dismiss…';
+      dis.onclick = () => { askJob = {kind: 'dismiss', id: j.jid};
+        $('askTitle').textContent = 'Dismiss this unknown job without proof?';
+        $('askWhat').textContent = 'Reconciling could not prove the prompt stopped. Dismissing frees the scene for ' +
+          'new work anyway — if ComfyUI is still running that prompt, new work now could generate a duplicate take.';
+        $('askGo').textContent = 'Dismiss without proof'; $('askBox').showModal(); };
+      act.append(rec, ' ', dis);
+    }
+    const m = document.createElement('span'); m.className = 'qmsg'; m.textContent = qMsg.get(j.jid) || '';
+    act.append(' ', m);
+  } else if (j.live && !j.resolved) {
+    const can = document.createElement('button'); can.className = 'btn ghost'; can.textContent = 'Cancel…';
+    can.onclick = () => { askJob = {kind: 'cancel', id: j.jid};
+      $('askTitle').textContent = 'Cancel this job?';
+      $('askWhat').textContent = `${j.kind} · ${j.where} — ${j.state}${j.stage ? ' · ' + j.stage : ''}. ` +
+        'Cancelling asks ComfyUI to stop; the job only counts as cancelled once the stop is proven.';
+      $('askGo').textContent = 'Cancel job'; $('askBox').showModal(); };
+    act.append(can);
+  }
+  tr.append(act);
+  return tr;
+}
+
+async function reconcile(id) {
+  qMsg.set(id, 'Asking ComfyUI…'); refresh();
+  let msg;
+  try {
+    const r = await fetch(`/api/job/${id}/reconcile`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    const v = d.proved;
+    if (v === 'running') msg = 'ComfyUI still has the prompt — nothing to free yet; the scene stays reserved.';
+    else if (v) msg = `ComfyUI says the prompt ${v} — the scene is free again.`;
+    else msg = 'ComfyUI cannot tell (unreachable, or the submit was never answered): the job stays unknown and the scene stays reserved.';
+  } catch (e) { msg = 'Reconcile failed: ' + e.message; }
+  qMsg.set(id, msg);
+  await refresh();
+}
+
+async function askGo() {
+  const a = askJob; askJob = null; $('askBox').close();
+  if (!a) return;
+  try {
+    const r = await fetch(`/api/job/${a.id}/${a.kind === 'dismiss' ? 'resolve' : a.kind}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    qMsg.set(a.id, a.kind === 'cancel'
+      ? (d.proved ? 'Cancelled: the stop is proven.' : (d.warning || 'Cancel asked; the job stays live until the stop is proven.'))
+      : `Job dismissed (${d.proved || 'no proof'}): the scene is free again, but the prompt may still be running`);
+  } catch (e) { qMsg.set(a.id, (a.kind === 'cancel' ? 'Cancel' : 'Dismiss') + ' failed: ' + e.message); }
+  await refresh();
+}
+$('askGo').onclick = askGo;
+$('askNo').onclick = () => $('askBox').close();
 
 async function refresh() {
   const st = $('queueStatus');
@@ -84,16 +209,15 @@ async function refresh() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = queueRows(await r.json());
     const body = $('queueBody');
-    body.replaceChildren();
-    for (const row of rows) {
-      const tr = document.createElement('tr');
-      for (const key of ['what', 'where', 'elapsed', 'eta', 'stage']) {
-        const td = document.createElement('td');
-        td.textContent = row[key];
-        tr.append(td);
-      }
-      body.append(tr);
+    // rebuild only when a row's data actually changes; the times tick in place otherwise
+    const sig = JSON.stringify([rows.map(x => [x.id, x.state, x.stage, x.error, x.eta,
+                                               x.prompt_ids.join(','), x.resolved]),
+                                [...qMsg.entries()]]);
+    if (body.dataset.sig !== sig) {
+      body.dataset.sig = sig;
+      body.replaceChildren(...rows.map(buildRow));
     }
+    tickTimes();
     $('queueTable').hidden = !rows.length;
     $('queueEmpty').hidden = !!rows.length;
     st.textContent = 'Updated ' + new Date().toLocaleTimeString();
@@ -106,6 +230,7 @@ async function refresh() {
 
 refresh();
 setInterval(refresh, 5000);
+setInterval(tickTimes, 1000);
 </script>
 </body>
 </html>

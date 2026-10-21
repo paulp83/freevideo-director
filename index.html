@@ -86,6 +86,10 @@ input[type=range] { accent-color: var(--accent); }
 .badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
 .badge.final { border-color: var(--accent); color: var(--accent); }
 .badge.err { border-color: var(--err); color: var(--err); }
+.qerr { color: var(--err); overflow-wrap: anywhere; }
+.qmsg { color: var(--muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+dialog { border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--panel); max-width: 480px; }
 @media (max-width: 640px) { .slots, .presets, .results { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -177,7 +181,26 @@ input[type=range] { accent-color: var(--accent); }
     <h2>Recent takes (this session)</h2>
     <ul class="takes" id="takes"></ul>
   </section>
+
+  <section id="queueBox" hidden>
+    <h2>Queue</h2>
+    <ul class="takes" id="queueJobs"></ul>
+    <p class="hint">Estimates are the median of your last 20 runs of the same kind; they appear after a first run.</p>
+    <p class="hint">Jobs live in memory; restarting the director forgets them (ComfyUI may still finish them)</p>
+  </section>
 </main>
+
+<!-- destructive job actions go through a native dialog: Esc closes, focus returns built in -->
+<dialog id="askBox">
+  <div style="padding:14px 16px">
+    <b id="askTitle"></b>
+    <p class="hint" style="margin:8px 0 0" id="askWhat"></p>
+    <div class="row">
+      <button class="btn" id="askGo"></button>
+      <button class="btn ghost" id="askNo">Keep it as it is</button>
+    </div>
+  </div>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 const images = [null, null];
@@ -391,6 +414,111 @@ $('enhance').onclick = async () => {
 };
 
 setMode('ref');
+
+/* ---------- queue: every live job, recent finished ones, and unknowns, from /api/queue ----------
+   Two separate times per job (waited before ComfyUI picked it up, and executing since), worded
+   states only. Rows keep their identity through the poll: times tick in place. */
+const qword = s => ({queued: 'queued', preparing: 'preparing', submitted: 'running', running: 'running',
+                     finished: 'finished', failed: 'failed', cancelled: 'cancelled',
+                     unknown: 'state unknown'})[s] || s;
+function fmt2(s) {
+  if (typeof s !== 'number' || !isFinite(s)) return '–';
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+}
+const qMsg = new Map();
+let askJob = null;
+function qReconcile(id) {
+  qMsg.set(id, 'Asking ComfyUI…'); drawQueue(lastQ, true);
+  fetch(`/api/job/${id}/reconcile`, {method: 'POST'}).then(r => r.json().then(d => ({ok: r.ok, d}))).then(({ok, d}) => {
+    if (!ok) throw new Error(d.error || 'failed');
+    const v = d.proved;
+    qMsg.set(id, v === 'running' ? 'ComfyUI still has the prompt — the scene stays reserved.'
+      : v ? `ComfyUI says the prompt ${v} — the scene is free again.`
+          : 'ComfyUI cannot tell: the job stays unknown and the scene stays reserved.');
+  }).catch(e => qMsg.set(id, 'Reconcile failed: ' + e.message)).finally(refreshQueue);
+}
+function qAsk(kind, id, what) {
+  askJob = {kind, id};
+  $('askTitle').textContent = kind === 'cancel' ? 'Cancel this job?' : 'Dismiss this unknown job without proof?';
+  $('askWhat').textContent = what;
+  $('askGo').textContent = kind === 'cancel' ? 'Cancel job' : 'Dismiss without proof';
+  $('askBox').showModal();
+}
+$('askGo').onclick = () => {
+  const a = askJob; askJob = null; $('askBox').close();
+  if (!a) return;
+  fetch(`/api/job/${a.id}/${a.kind}`, {method: 'POST'}).then(r => r.json().then(d => ({ok: r.ok, d}))).then(({ok, d}) => {
+    if (!ok) throw new Error(d.error || 'failed');
+    qMsg.set(a.id, a.kind === 'cancel'
+      ? (d.proved ? 'Cancelled: the stop is proven.' : (d.warning || 'Cancel asked; the job stays live until the stop is proven.'))
+      : `Job dismissed (${d.proved || 'no proof'}): the scene is free again, but the prompt may still be running`);
+  }).catch(e => qMsg.set(a.id, (a.kind === 'cancel' ? 'Cancel' : 'Dismiss') + ' failed: ' + e.message)).finally(refreshQueue);
+};
+$('askNo').onclick = () => $('askBox').close();
+let lastQ = null;
+function drawQueue(q, force) {
+  const rows = (q && q.jobs) || [];
+  $('queueBox').hidden = !rows.length;
+  const sig = JSON.stringify([rows.map(r => [r.id, r.kind, r.state, r.project || '', r.project_name || '', r.scene_title || '',
+                                             r.stage || '', r.error || '', !!r.resolved, (r.prompt_ids || []).join(',')]),
+                              [...qMsg.entries()]]);
+  if (!force && $('queueJobs').dataset.sig === sig) { tickQueue(); return; }
+  $('queueJobs').dataset.sig = sig;
+  const ul = $('queueJobs');
+  ul.replaceChildren(...rows.map(r => {
+    const li = document.createElement('li');
+    li.dataset.times = JSON.stringify([r.created, r.started, r.ended]);
+    const b = document.createElement('b'); b.textContent = r.kind; li.append(b);
+    li.append(' ' + (r.project ? (r.project_name || r.project) + (r.scene_title ? ' · ' + r.scene_title : '') : 'single shot') + ' ');
+    const st = document.createElement('span');
+    st.textContent = qword(r.state) + (r.stage ? ' · ' + r.stage : '') + (r.error ? ': ' + r.error : '');
+    if (r.error) st.className = 'qerr';
+    li.append(st);
+    const t = document.createElement('span'); t.className = 'when'; li.append(' ', t);
+    if (r.eta != null && r.live) { const e = document.createElement('span'); e.className = 'when'; e.textContent = ' · about ' + fmt2(r.eta) + ' left'; li.append(e); }
+    if (r.state === 'unknown' && !r.resolved) {
+      const why = document.createElement('span'); why.className = 'qmsg';
+      why.textContent = 'ComfyUI may still be executing' + (r.prompt_ids.length ? ` (prompt ids ${r.prompt_ids.join(', ')})` : '');
+      const rec = document.createElement('button'); rec.className = 'btn ghost'; rec.textContent = 'Reconcile'; rec.onclick = () => qReconcile(r.id);
+      const dis = document.createElement('button'); dis.className = 'btn ghost'; dis.textContent = 'Dismiss…';
+      dis.onclick = () => qAsk('dismiss', r.id, 'Reconciling could not prove the prompt stopped. Dismissing frees the scene for new work anyway — if ComfyUI is still running that prompt, new work now could generate a duplicate take.');
+      li.append(' ', why, ' ', rec, ' ', dis);
+      const m = qMsg.get(r.id);
+      if (m) { const s2 = document.createElement('span'); s2.className = 'qmsg'; s2.textContent = m; li.append(' ', s2); }
+    } else if (r.live && !r.resolved) {
+      const can = document.createElement('button'); can.className = 'btn ghost'; can.textContent = 'Cancel…';
+      can.onclick = () => qAsk('cancel', r.id, `${r.kind} · ${r.project ? (r.project_name || r.project) : 'single shot'} — ` +
+        `${qword(r.state)}${r.stage ? ' · ' + r.stage : ''}. Cancelling asks ComfyUI to stop; the job only counts as cancelled once the stop is proven.`);
+      li.append(' ', can);
+    }
+    const m2 = qMsg.get(r.id);
+    if (m2 && !(r.state === 'unknown' && !r.resolved)) { const s3 = document.createElement('span'); s3.className = 'qmsg'; s3.textContent = m2; li.append(' ', s3); }
+    return li;
+  }));
+  tickQueue();
+}
+function tickQueue() {
+  const now = Date.now() / 1000;
+  for (const li of $('queueJobs').children) {
+    const [c, s, e] = JSON.parse(li.dataset.times || '[null,null,null]');
+    if (c == null) continue;
+    const stop = e != null ? e : now;
+    const t = li.querySelector('.when');
+    if (t) t.textContent = 'queued for ' + fmt2(Math.max(0, (s != null ? s : stop) - c)) + ' · ' +
+      (s == null ? 'not started' : 'running for ' + fmt2(Math.max(0, stop - s)));
+  }
+}
+async function refreshQueue() {
+  try { const r = await fetch('/api/queue'); if (!r.ok) return; lastQ = await r.json(); }
+  catch (e) { return; }
+  drawQueue(lastQ, false);
+}
+refreshQueue();
+setInterval(refreshQueue, 3000);
+setInterval(tickQueue, 1000);
 </script>
 </body>
 </html>
