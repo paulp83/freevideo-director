@@ -190,7 +190,11 @@ def main():
     slug, ids = man['slug'], man['scene_ids']
     launcher = LAUNCHER % (str(HERE), str(HERE / 'tests' / 'fixtures'), str(projects.ROOT), json.dumps([slug, ids]), WEB_PORT)
     web = subprocess.Popen([sys.executable, '-c', launcher],
-                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1', JOBS_DB=str(tmp / 'jobs.db')),
+                           # DIRECTOR_URL pinned closed: the prompt chip is deterministically
+                           # Down, whatever docker happens to hold on 8144/8078
+                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1',
+                                    DIRECTOR_URL='http://127.0.0.1:1/v1/chat/completions',
+                                    JOBS_DB=str(tmp / 'jobs.db')),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d = None
     try:
@@ -318,15 +322,18 @@ def main():
                                 hits: window.__hits('/resolve')};""")
         check('Dismiss frees the scene, records the verdict and says no proof was had',
               bool(gone) and not after['ask'] and after['exec'] == 'Unknown job resolved: dismissed'
-              and after['why'] == 'ComfyUI not reachable'
+              and after['why'] == 'ComfyUI not reachable at http://127.0.0.1:1'
               and after['flash'] == 'Job dismissed (no proof): the scene is free again, but the prompt may still be running'
               and after['hits'] == 1, json.dumps(after))
         hdr = d.js("""const h = document.querySelector('header');
                       const s = document.getElementById('saveStatus');
                       const over = [...document.getElementById('hdr').children]
                           .filter(e => e.offsetParent !== null).some(e => e.getBoundingClientRect().right > innerWidth + 1);
+                      const kids = [...document.getElementById('hdr').children].filter(e => e.offsetParent !== null)
+                          .map(e => [e.id || e.className, Math.round(e.getBoundingClientRect().top),
+                                     Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]);
                       return {h: h.getBoundingClientRect().height, cw: s.clientWidth, sw: s.scrollWidth,
-                              t: s.textContent, title: s.title, role: s.getAttribute('role'), over};""")
+                              t: s.textContent, title: s.title, role: s.getAttribute('role'), over, kids};""")
         check('the long dismiss flash keeps the header inside its 110 px budget and squeezes no control',
               hdr['h'] <= 110 and not hdr['over'], json.dumps(hdr))
         check('the full flash text stays in the aria-live region and in its title',
@@ -469,6 +476,8 @@ def main():
         d.js("document.getElementById('bAddScene').click(); return 1;")
         d.wait("document.querySelectorAll('#navigator .navitem').length === 7")
         select(6)
+        d.wait("document.querySelector('#readiness .rchip .rstate').textContent !== 'Checking…'",
+               timeout=15)
         fresh = d.js("""const w = id => document.getElementById(id).textContent;
                         const vis = ids => ids.filter(id => { const e = document.getElementById(id);
                                 return !e.hidden && e.offsetParent !== null; })
@@ -482,12 +491,14 @@ def main():
               and fresh['enhance'] == 'no take to enhance' and fresh['render'] == 'Create a prompt first'
               and fresh['primary'] == 'Create prompt'
               and sorted(fresh['shown']) == sorted(['Create a prompt first', 'no take to enhance',
-                                                    'this scene has fewer than two takes']), json.dumps(fresh))
+                                                    'this scene has fewer than two takes',
+                                                    'Prompt model not reachable at http://127.0.0.1:1/v1']),
+              json.dumps(fresh))
         h2 = d.js("return window.__hits('/save');")
         d.js("""const ta = document.getElementById('scPrompt'); ta.value = 'a lantern swings twice';
                 ta.dispatchEvent(new Event('input')); return 1;""")
         armed = d.wait(f"""window.__hits('/save') > {h2} &&
-                          document.getElementById('anotherWhy').textContent === 'ComfyUI not reachable'""", timeout=8)
+                          document.getElementById('anotherWhy').textContent === 'ComfyUI not reachable at http://127.0.0.1:1'""", timeout=8)
         check('once a prompt exists, render reasons switch to renderer availability',
               bool(armed),
               str(d.js("return document.getElementById('anotherWhy').textContent;")))

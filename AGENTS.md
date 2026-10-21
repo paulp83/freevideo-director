@@ -10,7 +10,8 @@ what the code does not say.
   ComfyUI and the director model over `urllib` and raw sockets. Shell out to `ffmpeg` for media work.
 - **One module per concern**, flat in the repo root: `config.py` (every service address, path and
   default), `director.py` (prompt + CLI), `web.py` (HTTP server + jobs), `project.py` (films),
-  `enhance.py` (finishing graph), `h3check.py` (format checks). `web.py` is the top of the import
+  `enhance.py` (finishing graph), `h3check.py` (format checks), `readiness.py` (the three health
+  checks behind the header chips and the 503 gates on POST actions). `web.py` is the top of the import
   graph: it imports `director`, `project`, `enhance` and the rest; only `config.py` sits below
   everything and imports nothing from the project.
 - **Pages are single files.** `index.html`, `project.html`, `queue.html` carry their own CSS and JS

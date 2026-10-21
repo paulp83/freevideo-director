@@ -37,8 +37,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / 'tests' / 'fixtures'))
+sys.path.insert(0, str(HERE / 'tests'))
 import project as projects   # noqa: E402
 import make_fixture          # noqa: E402
+import stub_comfy          # noqa: E402  canonical /object_info map the stub serves
 
 WEB_PORT, DRIVER_PORT = 8209, 4463
 SHOTS = HERE / 'docs' / 'screenshots' / 'm3-acceptance'
@@ -49,6 +51,12 @@ results = []
 def check(name, ok, detail=''):
     results.append(ok)
     print(('ok   - ' if ok else 'FAIL - ') + name + (f'  [{detail}]' if detail and not ok else ''))
+
+
+def CHIPS(d):
+    """the three readiness chip texts, in stage order, whitespace collapsed"""
+    return d.js("return [...document.querySelectorAll('#readiness .rchip')].map(function (c) "
+                "{return c.textContent.replace(/\\s+/g, ' ').trim();});")
 
 
 # ---------------------------------------------------------------- stub ComfyUI
@@ -110,9 +118,12 @@ class Stub(BaseHTTPRequestHandler):
                                'queue_pending': []})
         if self.path.startswith('/history/'):
             return self._send({})               # never finishes: the stub does not render
-        if self.path.startswith('/object_info/'):
-            return self._send({'FreeVideoLoRA': {'input': {'required': {
-                'lora': ['COMBO', {'options': ['meadow-style.safetensors', 'gate-grain.safetensors']}]}}}})
+        if self.path == '/object_info' or self.path.startswith('/object_info/'):
+            info = stub_comfy.object_info()        # render + finishing classes, LoRA list,
+            if self.path == '/object_info':        # and the model files the graph loads
+                return self._send(info)
+            cls = self.path[len('/object_info/'):]
+            return self._send({cls: info[cls]}) if cls in info else self._send({})
         return self._send({})
 
 
@@ -324,9 +335,9 @@ def main():
               lazy['posters'] >= 2 and lazy['preload'] == 'none', json.dumps(lazy))
         check('load: page does not scroll at 1440x900',
               d.js('return [document.documentElement.scrollTop, document.body.scrollTop];') == [0, 0])
-        check('load: dark check deferred; backend chip reachable (stub /object_info)',
-              'reachable' in d.js("return document.getElementById('backend').textContent;"),
-              d.js("return document.getElementById('backend').textContent;"))
+        check('load: dark check deferred; video readiness chip reads Ready (stub /object_info)',
+              'Video' in CHIPS(d)[1] and CHIPS(d)[1].endswith('Ready'),
+              ' | '.join(CHIPS(d)))
         d.screenshot(SHOTS / '1-load-lazy.png')
 
         # ================= counted flow: <= 8 user actions =================

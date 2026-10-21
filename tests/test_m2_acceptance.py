@@ -28,7 +28,7 @@ rgb.npy; and the real web.Handler answering over HTTP on a spare port.
 
     python3 -m unittest discover tests      (from the repo root)
 """
-import base64, copy, hashlib, io, json, re, shutil, sys, tempfile, threading, time, unittest
+import base64, copy, hashlib, io, json, os, re, shutil, sys, tempfile, threading, time, unittest
 from http.server import ThreadingHTTPServer
 import urllib.error, urllib.request
 from pathlib import Path
@@ -44,6 +44,8 @@ import web
 import test_fingerprint
 import test_provenance
 import test_status
+import config
+import readiness
 
 # scene 1 is a cut, 2 and 3 continue the scene before them, 4 is another cut (independent)
 PLAN = {'title': 'Acceptance film', 'bible': 'the bible', 'music': '',
@@ -89,6 +91,9 @@ class Runs(test_provenance.StubComfy):
             Runs.uploads.append((fm.group(1).decode(), raw if cut < 0 else raw[:cut]))
 
     def do_GET(self):
+        if self.path == '/object_info':
+            import stub_comfy
+            return self._json(200, stub_comfy.object_info())
         if self.path.startswith('/history/'):
             pid = self.path.rsplit('/', 1)[-1]
             if test_provenance.StubComfy.mode == 'hang':
@@ -124,6 +129,13 @@ class Acceptance(unittest.TestCase):
     def tearDown(self):
         (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
          web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS) = self.saved
+        for k, v in self.env_saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        config.reload()
+        readiness.forget()
         for root in self.roots:
             shutil.rmtree(root, ignore_errors=True)
 
@@ -176,6 +188,12 @@ class Acceptance(unittest.TestCase):
         enhance.COMFY = web.COMFY = self.stub_url
         enhance.COMFY_ROOT = root / 'comfy'
         web.COMFY_OUTPUT = root / 'comfy' / 'output'
+        (root / 'comfy' / 'output').mkdir(parents=True)     # readiness: a real install has them
+        # readiness reads config, not module globals: point it at this stub + fake install
+        self.env_saved = {k: os.environ.get(k) for k in ('COMFY_URL', 'COMFY_ROOT')}
+        os.environ.update(COMFY_URL=self.stub_url, COMFY_ROOT=str(root / 'comfy'))
+        config.reload()
+        readiness.forget()
         web.JOB_TIMEOUT, web.POLL_SECONDS = 120.0, 0.05
         for table in (web.JOBS, web.RESERVES, web.SCENE_JOB, web.BATCH, web.PROGRESS):
             table.clear()

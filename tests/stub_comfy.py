@@ -24,9 +24,40 @@ and /_ctl/hold-uploads blocks /upload/image responses the same way, which is how
 during preparation (before any submit) is made deterministic. Stdlib only; test scaffolding,
 never part of the shipped app.
 """
-import argparse, json, threading, time
+import argparse, json, os, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import enhance                                  # the real finishing graph names the node
+                                                # classes and model files this stub should offer
+
+
+RENDER_CLASSES = ('LoadImage', 'FreeVideoReference', 'FreeVideoLoRAStack', 'FreeVideoGenerate')
+
+
+DROP = ()
+
+
+def object_info(without=None):
+    """What a fully installed ComfyUI answers /object_info with, derived from the graphs the
+    director really submits: enhance.graph() for the finishing classes and model file names,
+    the render class names below. `without` drops classes, for negative readiness tests."""
+    if without is None:
+        without = DROP
+    info = {}
+    for node in enhance.graph('probe.mp4', 'probe').values():
+        required = {key: ['COMBO', {'options': [value]}]
+                    for key, value in node['inputs'].items()
+                    if isinstance(value, str) and value.endswith(('.safetensors', '.pth', '.pt'))}
+        info[node['class_type']] = {'input': {'required': required}}
+    for cls in RENDER_CLASSES:
+        info.setdefault(cls, {'input': {'required': {}}})
+    info['FreeVideoLoRA'] = {'input': {'required': {
+        'lora': ['COMBO', {'options': ['None', 'meadow-style.safetensors',
+                                       'gate-grain.safetensors']}]}}}
+    return {cls: entry for cls, entry in info.items() if cls not in without}
+
 
 ROOT = Path('.')                       # set from --root; "output files" land under ROOT/output
 FAIL_MESSAGE = 'CUDA out of memory'   # what mode 'fail' blames
@@ -99,6 +130,15 @@ class Stub(BaseHTTPRequestHandler):
         except ValueError:
             return {'_raw': raw.decode(errors='replace')}
 
+    # -- what a complete install offers (readiness.py's finishing probe reads this) ------
+    def do_GET(self):
+        path = self.path.split('?', 1)[0]
+        if path == '/object_info':
+            return self._json(200, object_info())
+        if path.startswith('/object_info/'):
+            cls = path[len('/object_info/'):]
+            info = object_info()
+            return self._json(200, {cls: info[cls]} if cls in info else {})
     # -- prompts ----------------------------------------------------------------
     def _prompt(self, payload):
         with LOCK:
@@ -221,6 +261,14 @@ class Stub(BaseHTTPRequestHandler):
                 if pid and pid in STATE['history']:
                     return self._json(200, {pid: STATE['history'][pid]})
                 return self._json(200, {})        # real ComfyUI answers {} for an unknown id
+        if path == '/object_info':
+            return self._json(200, object_info())
+        if path.startswith('/object_info/'):
+            cls = path[len('/object_info/'):]
+            entry = object_info().get(cls)
+            if entry is None:
+                return self._json(404, {'error': f'no such node class {cls}'})
+            return self._json(200, {cls: entry})
         if path == '/view':
             import urllib.parse
             q = urllib.parse.parse_qs(self.path.split('?', 1)[1] if '?' in self.path else '')
@@ -247,6 +295,8 @@ def main():
     ROOT = Path(a.root)
     (ROOT / 'output').mkdir(parents=True, exist_ok=True)
     (ROOT / 'input' / 'director').mkdir(parents=True, exist_ok=True)
+    global DROP
+    DROP = tuple(v for v in os.environ.get('COMFY_STUB_DROP', '').split(',') if v)
     srv = ThreadingHTTPServer(('127.0.0.1', a.port), Stub)
     print(f'stub listening {a.port}', flush=True)
     srv.serve_forever()

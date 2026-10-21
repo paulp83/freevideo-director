@@ -66,6 +66,9 @@ class Harness:
         self.root = Path(tempfile.mkdtemp(prefix='director-restart-'))
         self.projects_root = self.root / 'projects'
         self.comfy_root = self.root / 'comfy'
+        # readiness checks the ComfyUI folders, so the fake install has them from the start
+        (self.comfy_root / 'input').mkdir(parents=True, exist_ok=True)
+        (self.comfy_root / 'output').mkdir(parents=True, exist_ok=True)
         self.db = self.root / 'jobs.db'
         self.stub_port = free_port()
         self.web_port = free_port()

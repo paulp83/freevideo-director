@@ -569,7 +569,7 @@ def main():
                           window.__ta.selectionStart === 3 && window.__ta.selectionEnd === 7;"""))
 
         # ---------- status never travels by colour alone ----------
-        words = d.js("""const sel = ['.badge', '.chip', '.navstate', '#timeline .tls', '#scExec', '#backend',
+        words = d.js("""const sel = ['.badge', '.chip', '.navstate', '#timeline .tls', '#scExec', '#readiness .rchip',
                                      '#queueCount', '#queueDrawer .qstate'];
                         return sel.flatMap(s => [...document.querySelectorAll(s)]
                           .filter(e => e.offsetParent !== null)

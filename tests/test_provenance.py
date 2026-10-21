@@ -12,12 +12,14 @@ import urllib.error, urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # stub_comfy lives in tests/
 
 import enhance
 import jobs_db
 import project as projects
 import stats
 import web
+import stub_comfy                                  # canonical /object_info map
 
 
 class StubComfy(BaseHTTPRequestHandler):
@@ -46,6 +48,14 @@ class StubComfy(BaseHTTPRequestHandler):
         self._json(200, {})
 
     def do_GET(self):
+        if self.path.startswith('/object_info'):
+            info = stub_comfy.object_info()
+            if self.path == '/object_info':
+                return self._json(200, info)
+            cls = self.path[len('/object_info/'):]
+            return self._json(200, {cls: info[cls]}) if cls in info else self._json(404, {})
+        if self.path.startswith('/system_stats'):
+            return self._json(200, {'system': {}})
         if self.path.startswith('/history/'):
             pid = self.path.rsplit('/', 1)[-1]
             if StubComfy.mode == 'hang':
@@ -91,6 +101,8 @@ class Provenance(unittest.TestCase):
         enhance.COMFY = web.COMFY = self.stub_url
         enhance.COMFY_ROOT = self.root / 'comfy'
         web.COMFY_OUTPUT = self.root / 'comfy' / 'output'
+        (enhance.COMFY_ROOT / 'input').mkdir(parents=True, exist_ok=True)   # readiness
+        (enhance.COMFY_ROOT / 'output').mkdir(exist_ok=True)  # checks folders exist
         web.JOB_TIMEOUT = 120.0
         web.POLL_SECONDS = 0.05
         for table in (web.JOBS, web.RESERVES, web.SCENE_JOB, web.BATCH, web.PROGRESS):

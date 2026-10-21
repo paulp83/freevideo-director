@@ -12,7 +12,7 @@ throwaway projects dir; never touches real projects. Takes are hand-written reco
 tests/test_status.py: no ComfyUI, no ffmpeg, no director model.
 Run: python3 tests/browser_status.py
 """
-import hashlib, json, secrets, shutil, subprocess, sys, tempfile, time, urllib.request
+import hashlib, json, os, secrets, shutil, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent

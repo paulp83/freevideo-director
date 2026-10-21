@@ -57,6 +57,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 | `project.py`, `project.html` | Multi-scene film projects (the workspace page; `/project/classic` keeps the old single-column page as `project-classic.html`) |
 | `enhance.py` | SeedVR2 upscale, RIFE 48 fps, H.264 encode |
 | `h3check.py` | H3 format checks used by the retry loop and `eval.py` |
+| `readiness.py` | Prompt / video / finishing health probes behind the header chips |
 | `skill/` | Pinned MiniMax-H3 prompt-writing skill |
 | `eval/` | Director-model A/B outputs (Qwen3.6-35B vs Qwen3.8-27B) |
 | `docs/` | Documentation and screenshots |

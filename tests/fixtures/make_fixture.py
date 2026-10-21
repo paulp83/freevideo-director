@@ -71,6 +71,9 @@ def build(root):
     root.mkdir(parents=True, exist_ok=True)
     projects.ROOT = root / 'projects'
     comfy = root / 'comfy-output'
+    # a real ComfyUI install already has these folders; readiness checks for them
+    (comfy / 'input').mkdir(parents=True, exist_ok=True)
+    (comfy / 'output').mkdir(parents=True, exist_ok=True)
     slug = projects.create('Meadow chase', 'A hare crosses the meadows at dawn.', 30, '16:9',
                            [('meadow.png', _png_bytes('mandelbrot=size=256x144')),
                             ('hare.png', _png_bytes('testsrc=size=256x144:duration=1'))])['slug']

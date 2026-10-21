@@ -156,7 +156,11 @@ def main():
                 % (str(HERE), str(projects.ROOT), WEB_PORT, str(HERE / 'web.py')))
     # COMFY_URL points at a closed port so the renderer chip is deterministically "unavailable"
     web = subprocess.Popen([sys.executable, '-c', launcher],
-                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1', JOBS_DB=str(tmp / 'jobs.db')),
+                           # DIRECTOR_URL pinned to a closed port: the prompt chip is
+                           # deterministically Down, whatever docker holds on 8144/8078
+                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1',
+                                    DIRECTOR_URL='http://127.0.0.1:1/v1/chat/completions',
+                                    JOBS_DB=str(tmp / 'jobs.db')),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d = None
     try:
@@ -217,8 +221,10 @@ def main():
         check('desktop: text stays >= 14 px', all(f >= 14 for f in fonts), str(fonts))
 
         # ---------- words, not colour: status surfaces ----------
-        chip = d.js("return document.getElementById('backend').textContent;")
-        check('backend chip reports the renderer probe in words', chip.startswith('Renderer unavailable'), chip)
+        chips = d.js("return [...document.querySelectorAll('#readiness .rchip')].map(function (c) "
+                     "{return c.textContent.replace(/\\s+/g, ' ').trim();});")
+        check('readiness chips report all three checks in words',
+              chips == ['Prompts: Down', 'Video: Down', 'Finishing: Down'], str(chips))
         d.js("""document.querySelectorAll('#navigator .navitem')[4].click();""")
         d.wait("""[...document.querySelectorAll('#scFlags .badge')].some(b => b.textContent.includes('legacy'))""")
         flags = d.js("""return [...document.querySelectorAll('#scFlags .badge')].map(b => b.textContent);""")
@@ -317,14 +323,19 @@ def main():
               bool(d.wait("!!document.getElementById('stageMenu')")))
         mbtn = d.js("""const b = document.querySelector('#stageMenu button');
                        const r = b.getBoundingClientRect();
-                       return {txt: b.textContent, dis: b.disabled,
+                       return {txt: b.textContent, dis: b.disabled, title: b.title,
                                in: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.height >= 32};""")
         check('the menu action is visible, enabled and full-size', not mbtn['dis'] and mbtn['in'], str(mbtn))
+        check('the gated menu action names the model as the reason in its title',
+              'Prompt model' in mbtn['title'], mbtn['title'][:120])
         m_before = d.js("return window.__hits('/prompts');")
         d.js("document.querySelector('#stageMenu button').click(); return 1;")
-        check('the menu action reaches the server', bool(d.wait("window.__hits('/prompts') > " + str(m_before), timeout=5)))
-        check('clicking the menu closes it', d.js("return !document.getElementById('stageMenu');"))
-        d.go(f'http://127.0.0.1:{WEB_PORT}/project?p={slug}')   # clean slate after the failed director job
+        closed = d.wait("document.getElementById('saveStatus').textContent.includes('Prompt model')", timeout=5)
+        check('the gated menu action closes the menu and flashes the reason without a request',
+              bool(closed) and d.js("return !document.getElementById('stageMenu');")
+              and d.js("return window.__hits('/prompts');") == m_before,
+              d.js("return document.getElementById('saveStatus').textContent;"))
+        d.go(f'http://127.0.0.1:{WEB_PORT}/project?p={slug}')   # clean slate after the flash
         d.wait("document.querySelectorAll('#navigator .navitem').length === 6", timeout=20)
 
         # ---------- stacked tablet: navigator becomes a strip ----------
@@ -374,7 +385,7 @@ def main():
                       const na = document.getElementById('nextAction').getBoundingClientRect();
                       const seen = id => document.getElementById(id) && document.getElementById(id).offsetParent !== null;
                       return {rows,
-                              vis: seen('openSettings') && seen('backend') &&
+                              vis: seen('openSettings') && seen('readiness') &&
                                    !!document.querySelector('#hdr .btn-shot') &&
                                    [...document.querySelectorAll('#hdr a')].every(a => a.offsetParent !== null),
                               naIn: na.height > 0 && na.left >= 0 && na.right <= innerWidth && na.bottom <= innerHeight,
