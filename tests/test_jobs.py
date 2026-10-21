@@ -19,8 +19,18 @@ import web
 
 
 class StubComfy(BaseHTTPRequestHandler):
-    mode = 'complete'        # complete | hang | drop | reject
+    mode = 'complete'        # complete | hang | drop | reject | gate (POST /prompt stalls)
     submits = 0
+    pending, running_ids = [], []        # the stub's /queue model
+    deletes, interrupts = [], 0
+    honour_delete = True                 # False: /queue delete is ignored (cancel cannot be confirmed)
+    at_prompt, gate = threading.Event(), threading.Event()
+
+    @classmethod
+    def reset(cls):
+        cls.pending, cls.running_ids = [], []
+        cls.deletes, cls.interrupts, cls.honour_delete = [], 0, True
+        cls.at_prompt, cls.gate = threading.Event(), threading.Event()
 
     def log_message(self, fmt, *args):
         pass
@@ -33,22 +43,48 @@ class StubComfy(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _queue(self):
+        row = lambda pos, pid: [pos, pid, [], {}, '']
+        return {'queue_running': [row(0, p) for p in StubComfy.running_ids],
+                'queue_pending': [row(n + 1, p) for n, p in enumerate(StubComfy.pending)]}
+
     def do_POST(self):
-        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        raw = self.rfile.read(int(self.headers.get('Content-Length', 0)))
         if self.path == '/prompt':
+            StubComfy.at_prompt.set()
+            if StubComfy.mode == 'gate':
+                StubComfy.gate.wait(10)        # the cancel may land while this POST is in flight
             StubComfy.submits += 1
             if StubComfy.mode == 'reject':
                 return self._json(400, {'error': 'bad graph'})
             if StubComfy.mode == 'drop':
                 self.connection.close()        # answer nothing: the submit stays ambiguous
                 return
-            return self._json(200, {'prompt_id': f'stub-{StubComfy.submits}'})
+            pid = f'stub-{StubComfy.submits}'
+            if StubComfy.mode == 'gate':
+                StubComfy.pending.append(pid)
+            elif StubComfy.mode == 'hang':
+                StubComfy.running_ids.append(pid)   # hangs mid-execution: /history stays empty
+            return self._json(200, {'prompt_id': pid})
+        if self.path == '/queue':              # {"delete": [ids]}: drop them from the queue
+            ids = set(json.loads(raw or b'{}').get('delete', []))
+            StubComfy.deletes.append(sorted(ids))
+            if StubComfy.honour_delete:
+                StubComfy.pending = [p for p in StubComfy.pending if p not in ids]
+                StubComfy.running_ids = [p for p in StubComfy.running_ids if p not in ids]
+            return self._json(200, self._queue())
+        if self.path == '/interrupt':          # stops whatever the stub is "executing"
+            StubComfy.interrupts += 1
+            StubComfy.running_ids = []
+            return self._json(200, {})
         self._json(200, {})
 
     def do_GET(self):
+        if self.path == '/queue':
+            return self._json(200, self._queue())
         if self.path.startswith('/history/'):
             pid = self.path.rsplit('/', 1)[-1]
-            if StubComfy.mode == 'hang':
+            if StubComfy.mode in ('hang', 'gate'):
                 return self._json(200, {})     # never finishes
             outputs = {'9': {'gifs': [{'filename': 'take.mp4', 'subfolder': 'director', 'type': 'output'}]}}
             return self._json(200, {pid: {'status': {'completed': True}, 'outputs': outputs}})
@@ -75,6 +111,7 @@ class Jobs(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix='director-jobs-'))
         StubComfy.mode, StubComfy.submits = 'complete', 0
+        StubComfy.reset()
         self.saved = (projects.ROOT, stats.FILE, enhance.COMFY, enhance.COMFY_ROOT,
                       web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS)
         projects.ROOT = self.root
@@ -179,6 +216,53 @@ class Jobs(unittest.TestCase):
         self.assertEqual(job['state'], 'cancelled')
         self.assertEqual(StubComfy.submits, 1)
         self.assertEqual(web.RESERVES, {})
+
+    def test_cancel_during_submit_targets_only_the_new_prompt(self):
+        StubComfy.mode = 'gate'
+        StubComfy.running_ids = ['someone-else']        # an unrelated prompt occupies ComfyUI
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        t = threading.Thread(target=web.run_job,
+                             args=(job, web.render_job, self.slug, self.ids[0], 'draft'))
+        t.start()
+        StubComfy.at_prompt.wait(5)                     # the POST /prompt is in flight
+        job['cancel'] = True                            # the cancel lands mid-submit
+        StubComfy.gate.set()
+        t.join(15)
+        self.assertEqual(job['state'], 'cancelled')
+        self.assertEqual(job['prompt_ids'], ['stub-1'])
+        self.assertEqual(StubComfy.deletes, [['stub-1']])   # exactly our prompt is dropped from the queue
+        self.assertEqual(StubComfy.interrupts, 0)           # none of ours was executing: never interrupt
+        self.assertEqual(StubComfy.running_ids, ['someone-else'])   # the unrelated prompt is untouched
+
+    def test_unconfirmed_cancel_becomes_unknown(self):
+        StubComfy.mode = 'gate'
+        StubComfy.honour_delete = False                 # ComfyUI ignores our delete: did it stop?
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        t = threading.Thread(target=web.run_job,
+                             args=(job, web.render_job, self.slug, self.ids[0], 'draft'))
+        t.start()
+        StubComfy.at_prompt.wait(5)
+        job['cancel'] = True
+        StubComfy.gate.set()
+        t.join(15)
+        self.assertEqual(job['state'], 'unknown')
+        self.assertIn('may still be executing', job['error'])
+        self.assertEqual(StubComfy.interrupts, 0)
+        self.assertEqual(StubComfy.submits, 1)          # and it is never resubmitted
+
+    def test_poll_cancel_interrupts_when_our_prompt_is_running(self):
+        StubComfy.mode = 'hang'                         # our prompt is the one executing
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        t = threading.Thread(target=web.run_job,
+                             args=(job, web.render_job, self.slug, self.ids[0], 'draft'))
+        t.start()
+        self.assertTrue(self.wait_for(lambda: StubComfy.submits == 1))
+        job['cancel'] = True
+        t.join(15)
+        self.assertEqual(job['state'], 'cancelled')
+        self.assertEqual(StubComfy.interrupts, 1)       # ours was executing -> interrupt is correct
+        self.assertEqual(StubComfy.submits, 1)
+
 
     def test_cancel_project_flags_only_that_films_jobs(self):
         other = projects.create('Other film', 'nothing else', 30, '16:9', [])['slug']

@@ -333,6 +333,54 @@ def check_cancel(job):
         raise Cancelled()
 
 
+def comfy_queue():
+    """(running, pending) prompt ids as ComfyUI sees them right now, or None if it is unreachable."""
+    try:
+        q = comfy('/queue')
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    ids = lambda rows: {row[1] for row in rows or [] if len(row) > 1}
+    return ids(q.get('queue_running')), ids(q.get('queue_pending'))
+
+
+def target_cancel(pids):
+    """Stop only this job's prompts: delete ours from the queue, and interrupt only while one of
+    ours is the prompt executing, so an unrelated job's prompt is never collateral damage.
+    Returns True only when ComfyUI shows none of ours left; False means we cannot tell."""
+    ours = set(pids)
+    if not ours:
+        return True                                   # nothing was ever submitted
+    for _ in range(2):
+        q = comfy_queue()
+        if q is None:
+            return False
+        running, pending = q
+        mine_run, mine_pend = ours & running, ours & pending
+        if not mine_run and not mine_pend:
+            return True
+        if mine_run:                                  # one of ours executes: interrupt stops it
+            try:
+                comfy('/interrupt', b'{}', {'Content-Type': 'application/json'})
+            except (urllib.error.URLError, OSError, ValueError):
+                pass                                  # ComfyUI answers /interrupt with an empty body
+        if mine_pend:
+            try:
+                comfy('/queue', json.dumps({'delete': sorted(mine_pend)}).encode(),
+                      {'Content-Type': 'application/json'})
+            except (urllib.error.URLError, OSError, ValueError):
+                pass
+        time.sleep(0.2)                               # give the interrupt a moment to take effect
+    q = comfy_queue()
+    return q is not None and not ours & (q[0] | q[1])
+
+
+def confirm_cancel(job):
+    """Did ComfyUI really stop this job's prompts? Asked once per job, then remembered."""
+    if 'cancel_ok' not in job:
+        job['cancel_ok'] = target_cancel(job['prompt_ids'])
+    return job['cancel_ok']
+
+
 def new_job(kind, stage_keys, project=None, scene=None):
     job = {'id': uuid.uuid4().hex[:12], 'kind': kind, 'created': time.time(), 'error': None, 'done': False,
            'state': 'queued', 'deadline': time.time() + JOB_TIMEOUT,
@@ -417,7 +465,12 @@ def run_job(job, fn, *args, **kwargs):
         if not job['done']:
             finish(job)
     except Cancelled:
-        cancel_job(job)
+        if confirm_cancel(job):
+            cancel_job(job)
+        else:                                          # we cannot show the prompts stopped
+            ids = ', '.join(job['prompt_ids'])
+            unknown(job, f'the cancel of ComfyUI prompt {ids} was not confirmed; it may still be '
+                         'executing. The job will not be resubmitted.')
     except (AmbiguousSubmit, JobTimeout) as e:
         ids = ', '.join(job['prompt_ids'])
         if ids:
@@ -465,6 +518,7 @@ def do_render(job, graph, finish_after, on_take=None, on_final=None):
     check_cancel(job)                                  # a cancel after prep never submits
     pid = submit_prompt({'prompt': graph})
     job['prompt_ids'].append(pid)
+    check_cancel(job)                                  # a cancel that landed mid-submit still counts
     transition(job, 'submitted')
     transition(job, 'running')
 
@@ -496,6 +550,7 @@ def enhance_stages(job, run, on_final=None):
         enhance.free_gpu()
         pid = submit_prompt({'prompt': enhance.graph(source, run_dir.name)})
         job['prompt_ids'].append(pid)
+        check_cancel(job)                              # a cancel that landed mid-submit still counts
         if job['state'] == 'preparing':                # enhance-only job; a render chain is already running
             transition(job, 'submitted')
             transition(job, 'running')
@@ -509,6 +564,9 @@ def enhance_stages(job, run, on_final=None):
                 st.update(value=p.get('value', 0), max=p.get('max', 0))
 
         final = poll(job, lambda: enhance.result(pid), progress)
+    except Cancelled:
+        confirm_cancel(job)                            # remember whether ComfyUI stopped for the caller
+        raise
     finally:
         enhance.remove_workdir(workdir)   # the lossless raw mkv is only needed while ComfyUI reads it
     job['final'] = final
@@ -811,22 +869,7 @@ def cancel_project(slug):
         ours.update(job['prompt_ids'])
     if not ours:
         return
-    try:
-        queue_state = comfy('/queue')
-    except (OSError, ValueError):
-        return
-    header = {'Content-Type': 'application/json'}
-    if any(item[1] in ours for item in queue_state.get('queue_running', [])):
-        try:
-            comfy('/interrupt', b'{}', header)
-        except (OSError, ValueError):         # ComfyUI answers /interrupt with an empty body
-            pass
-    pending = [item[1] for item in queue_state.get('queue_pending', []) if item[1] in ours]
-    if pending:
-        try:
-            comfy('/queue', json.dumps({'delete': pending}).encode(), header)
-        except (OSError, ValueError):
-            pass
+    target_cancel(ours)                                # our prompts only; unconfirmed ones surface as unknown in the job threads
 
 
 def batch_prompts(slug, only_missing):
