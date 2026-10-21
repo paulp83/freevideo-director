@@ -649,7 +649,7 @@ function pump() {                 // drain the pending drafts; never more than o
     while (slug && !st.conflict && asHasPending(st)) {
       saveAgain = false;
       await doSave();
-      if (st.error && saveAgain) continue;    // edits typed during the failed attempt deserve one more try
+      if (st.error && !saveAgain) break;      // failed save: hand back; the draft stays put until the next edit
     }
   })();
   saveBusy.finally(() => { saveBusy = null; });
@@ -671,7 +671,7 @@ async function doSave() {
       if (asStale(st, requestSlug)) return;
       const rev = asResolveConflict(st, mine);
       if (rev !== null) st.rev = rev;                       // Keep mine: the loop below resends on the new rev
-      else { proj = e.payload.project; viewToken++; draw(true); flash('Reloaded the saved copy'); }
+      else { proj = e.payload.project; viewToken++; document.activeElement.blur(); draw(true); flash('Reloaded the saved copy'); }  // the draft is gone: repaint the field the user typed in
       return;
     }
     st.error = e;
@@ -689,7 +689,7 @@ async function flushEdits() {   // dependent actions await this; it rejects unle
   clearTimeout(saveTimer);
   for (;;) {
     if (saveBusy) { await saveBusy; continue; }
-    if (st.conflict || !asHasPending(st)) break;
+    if (st.conflict || !asHasPending(st) || st.error) break;   // a failed save is the caller's decision, not a retry storm
     await pump();
   }
   if (st.conflict) throw new Error('not saved: the film changed while you were editing — pick Reload or Keep mine first');

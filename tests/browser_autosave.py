@@ -107,6 +107,16 @@ def type_into(d, css, text):
     d.s('POST', f'/element/{eid}/value', {'text': text})
 
 
+
+def wait_alert(d, timeout=8):
+    end = time.time() + timeout
+    while time.time() < end:
+        t = d.alert_text()
+        if t:
+            return t
+        time.sleep(0.2)
+    return None
+
 def main():
     tmp = Path(tempfile.mkdtemp(prefix='director-browser-'))
     projects.ROOT = tmp / 'projects'
@@ -163,7 +173,7 @@ def main():
         time.sleep(2.0)
         check('3b unsaved edit survives an immediate project switch', server_project(alpha).get('notes') == 'late', server_project(alpha).get('notes'))
 
-        # 4. two tabs: stale tab must conflict, keep its draft, and not overwrite
+        # 4. two tabs: stale tab must conflict, refuse to overwrite, and reload the server copy on Cancel
         d.go(url(beta)); d.wait("document.getElementById('pTitle')"); tab1 = d.s('GET', '/window')
         tab2 = d.new_tab(); d.go(url(beta)); d.wait("document.getElementById('pTitle')")
         d.switch(tab1); type_into(d, '#pTitle', ' one'); time.sleep(2.0)
@@ -173,9 +183,9 @@ def main():
         check('4 conflict dialog appears in stale tab', bool(text), text)
         check('4 server keeps first tab edit while dialog open', server_project(beta)['title'] == t1, server_project(beta)['title'])
         if text:
-            d.s('POST', '/alert/dismiss'); time.sleep(1.0)    # dismiss = confirm() false
-        draft = d.js("return document.getElementById('pTitle').value")
-        check('4 stale tab keeps its draft', draft.endswith(' two'), draft)
+            d.s('POST', '/alert/dismiss'); time.sleep(1.2)    # Cancel = Reload the server copy
+        shown = d.js("return document.getElementById('pTitle').value")
+        check('4 Cancel reloads the server copy in the stale tab', shown == t1, shown)
         d.s('DELETE', '/window') if False else None
 
         # 5. polling must not overwrite a dirty field
@@ -241,6 +251,68 @@ def main():
         labels = d.js("return [...document.querySelectorAll('#scene-" + sid + " .take [data-k=bChoose]')].map(b => b.textContent)")
         check('6 page still marks the pinned take chosen after a new take arrives',
               labels == ['☆ choose', '☆ choose', '★ chosen'], labels)
+
+        # 7. a real 409 mid-edit: OK (Keep mine) resends the draft and keeps a take recorded server-side
+        p = server_project(alpha)
+        p['scenes'][0]['takes'].append(take_rec(9, 'dddd0009'))    # a render finished while the user typed
+        projects.save(p)
+        takes_now = len(p['scenes'][0]['takes'])
+        d.go(url(alpha)); d.wait("document.getElementById('pTitle')"); d.js(HOOK)
+        projects.save_editor(alpha, {'title': 'from-elsewhere'})   # another editor wins the title first
+        type_into(d, '#pTitle', ' mine')
+        text = wait_alert(d)
+        check('7 a 409 opens the conflict dialog naming the field', bool(text) and 'title' in text, text)
+        d.s('POST', '/alert/accept')                               # OK = Keep mine
+        d.wait("document.getElementById('saveStatus').textContent === 'Saved'", 10)
+        time.sleep(0.5)
+        sp = next(s for s in server_project(alpha)['scenes'] if s['id'] == sid)
+        check('7 Keep mine lands the draft', server_project(alpha)['title'].endswith(' mine'), server_project(alpha)['title'])
+        check('7 Keep mine does not drop the take recorded server-side',
+              len(sp['takes']) == takes_now and sp['takes'][-1]['id'] == 'dddd0009', sp['takes'])
+
+        # 7b. Cancel (Reload) discards the draft and adopts the server revision
+        projects.save_editor(alpha, {'title': 'server-won'})
+        type_into(d, '#pTitle', ' mine2')
+        text = wait_alert(d)
+        check('7b a second conflict opens the dialog again', bool(text), text)
+        d.s('POST', '/alert/dismiss')                              # Cancel = Reload
+        time.sleep(1.2)
+        shown = d.js("return document.getElementById('pTitle').value")
+        check('7b Reload shows the server copy', shown == 'server-won', shown)
+        type_into(d, '#pTitle', ' after-reload'); time.sleep(1.5)
+        check('7b Reload adopted the server revision: the next save merges cleanly',
+              server_project(alpha)['title'] == 'server-won after-reload', server_project(alpha)['title'])
+
+        # 8. the 3 s poll landing while a save is in flight must not clobber the draft
+        d.go(url(alpha)); d.wait("document.getElementById('pNotes')"); d.js(HOOK); d.js('window.__delay = 4000')
+        type_into(d, '#pNotes', ' mid-flight')
+        time.sleep(3.4)                                            # the poll has redrawn; the save is still pending
+        notes = d.js("return document.getElementById('pNotes').value")
+        check('8 poll during an in-flight save leaves the draft in the field', notes.endswith(' mid-flight'), notes)
+        d.js('window.__delay = 0')
+        landed = d.wait("document.getElementById('saveStatus').textContent === 'Saved'", 10)
+        check('8 the in-flight save lands after the poll', bool(landed) and server_project(alpha)['notes'].endswith(' mid-flight'), server_project(alpha)['notes'])
+
+        # 9. Assemble with edits that cannot save: flushEdits rejects, the click posts nothing, and nothing hammers /save
+        p = server_project(alpha)
+        p['scenes'][1]['takes'].append(take_rec(8, 'eeee0008'))    # every scene has a take: the button is enabled
+        projects.save(p)
+        clickable = d.wait("[...document.querySelectorAll('#steps button')].some(b => b.textContent === 'Assemble' && !b.disabled)", 10)
+        check('9 the Assemble button became clickable', bool(clickable))
+        d.js("window.__mode = 'fail'")
+        type_into(d, '#pTitle', ' doomed'); time.sleep(1.2)        # one doomed save attempt
+        clicked = d.js("const b = [...document.querySelectorAll('#steps button')].find(x => x.textContent === 'Assemble' && !x.disabled); if (b) b.click(); return !!b")
+        check('9 clicked Assemble', clicked is True)
+        time.sleep(1.5)
+        posted = d.js("return window.__log.filter(x => /\\/assemble/.test(x.url)).length")
+        check('9 Assemble never reached the server while edits were unsaved', posted == 0, posted)
+        status = d.js("const s = document.getElementById('saveStatus'); return [s.textContent, s.classList.contains('err')]")
+        check('9 the flushEdits rejection is surfaced in the status line',
+              status[1] is True and 'draft is still here' in status[0], status)
+        saves_a = d.js("return window.__log.filter(x => x.url.endsWith('/save')).length")
+        time.sleep(1.5)
+        saves_b = d.js("return window.__log.filter(x => x.url.endsWith('/save')).length")
+        check('9 the failed save is not retried in a loop', saves_b - saves_a <= 1, saves_b - saves_a)
     finally:
         if d: d.close()
         web.terminate()
