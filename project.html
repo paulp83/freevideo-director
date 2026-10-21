@@ -1223,7 +1223,9 @@ function drawTimeline(p) {
   const finWhy = rdReason('finishing');
   $('bPreviewFilm').disabled = busy() || drafted < p.scenes.length || !!finWhy;
   $('bExportFilm').disabled = busy() || drafted < p.scenes.length || !!finWhy;
-  $('bPreviewFilm').title = finWhy || ''; $('bExportFilm').title = finWhy || '';
+  for (const id of ['bPreviewFilm', 'bExportFilm']) { const b = $(id);
+    if (!b.dataset.help) b.dataset.help = b.title;   // static help survives being disabled too
+    b.title = [b.dataset.help, finWhy].filter(Boolean).join(' — '); }
   for (const [kind, id] of [['animatic', 'animFlag'], ['film', 'filmFlag']]) {
     const o = p.outputs[kind], f = $(id);
     if (o && o.outdated && o.changes) { f.hidden = false; f.textContent = `cut outdated: a new cut would change ${o.changes.join(', ')}`; }
@@ -1595,7 +1597,8 @@ function drawInspector(p) {
   why('enhanceWhy', actionReason(s, 'enhance'));   // a take-less scene says 'no take to enhance', never silence
   why('renderWhy', actionReason(s, 'final') || actionReason(s, 'variants'));
   why('compareWhy', actionReason(s, 'compare'));
-  const dis = (id, r) => { const b = $(id); b.disabled = !!r; b.title = r || ''; };
+  const dis = (id, r) => { const b = $(id); b.disabled = !!r;   // help stays on disabled buttons;
+    b.title = [b.dataset.help, r].filter(Boolean).join(' — '); };  // the blocking reason only appends
   dis('bAnother', actionReason(s, 'reroll'));
   dis('bVariants', actionReason(s, 'variants'));
   dis('bFinal', actionReason(s, 'final'));
@@ -1887,6 +1890,7 @@ function finTitles() {                      // every action names what it will a
     'music ducked under dialogue and loudness-normalised';
   $('bEnhanceSel').title = `Finishing only on the in-use take: ${stages}`;
   $('bFinal').title = `One render straight to finished: render, ${stages}`;
+  for (const id of ['bExportFilm', 'bEnhanceSel', 'bFinal']) $(id).dataset.help = $(id).title;
 }
 /* ---------- readiness: three separate checks, one place (readiness.py backs all three) ---------- */
 let RD = null, rdOpen = null;
