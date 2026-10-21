@@ -203,6 +203,8 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
                 position: sticky; top: 0; background: var(--panel); }
 #settingsBody { padding: 14px 16px 20px; overflow-y: auto; }
 #settingsBody section { margin-bottom: 18px; }
+/* an empty library still answers: the list names itself empty instead of showing a blank hole */
+#libList:empty::after { content: 'No saved characters yet.'; color: var(--muted); font-size: 14px; }
 #pSizeText { font-size: 14px; color: var(--muted); }
 
 /* new film view */
@@ -223,7 +225,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 }
 @media (max-width: 600px) {
   #navigator { order: 9; }
-  button, .btn, input[type=text], input[type=number], select, textarea, .seg button, .navitem, .tl { min-height: 44px; }
+  button, .btn, input[type=text], input[type=number], input[type=range], select, textarea, .seg button, .navitem, .tl { min-height: 44px; }
   /* header: picker on its own line, then one row of controls; text chips share that row.
      only the stage caret stays a compact pill part; the menu button it opens is full-size */
   .stage .caret { min-height: 24px; min-width: 44px; }
@@ -231,9 +233,12 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   #hdr .btn { padding: 2px 2px; }
   #hdr #queueCount { min-width: 8px; padding: 0 2px; font-size: 11px; }
   #hdr a { display: inline-flex; align-items: center; min-height: 44px; }
-  #hdr #nameTitle, #hdr #saveStatus { display: none; }
-  #hdr #picker { order: 0; flex: 1 1 100%; }
-  #hdr #newBtn { order: 1; } #hdr #openSettings { order: 2; } #hdr .btn-queue { order: 3; }
+  /* save feedback must survive the small screen: the title gives its slot to the flash line,
+     and the flash line shares the picker's row instead of squeezing the control row below */
+  #hdr #nameTitle { display: none; }
+  #hdr #picker { order: 0; flex: 0 1 190px; }
+  #hdr #saveStatus { order: 1; flex: 1 1 0; min-height: 44px; line-height: 44px; }
+  #hdr #newBtn { order: 2; } #hdr #openSettings { order: 3; } #hdr .btn-queue { order: 4; }
   #hdr .btn-shot { order: 5; }
   #hdr #backend { order: 4; display: inline-flex; align-items: center; min-height: 44px; max-width: 10ch; min-width: 0; flex: 0 1 auto; }
   #hdr select { min-height: 44px; }
@@ -359,7 +364,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   <div id="center">
     <div id="viewerBox">
       <span id="viewerEmpty" class="status" style="color:#bbb">No cut or take selected. Pick a scene on the left.</span>
-      <video id="viewer" controls preload="metadata" hidden></video>
+      <video id="viewer" controls preload="none" hidden></video>
       <div id="cmpWrap" hidden></div>
     </div>
     <div id="cmpBar" hidden>
@@ -1476,7 +1481,9 @@ function drawInspector(p) {
   else primary = {t: 'Generate another take', fn: () => sceneReroll(s.id)};
   const prim = $('bPrimary');
   prim.textContent = primary.t; prim.onclick = primary.fn;
-  const block = busy() || !!(s.job && !s.job.done);
+  // an unresolved unknown job still holds the scene (web.py keeps its reservations), so the
+  // primary action is blocked for it too -- not only for a visibly running job
+  const block = busy() || !!(s.job && (!s.job.done || (s.job.state === 'unknown' && !s.job.resolved)));
   prim.disabled = block;
   const blockWhy = block ? sceneBlockReason(s) : '';
   $('primaryWhy').textContent = blockWhy; $('primaryWhy').hidden = !blockWhy;

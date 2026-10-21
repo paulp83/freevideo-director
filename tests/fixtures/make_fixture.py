@@ -159,7 +159,10 @@ def build(root):
     take(2, 'take 4', prompts['The gate'], 77, seconds=7,
          loras=projects.clean_loras([{'name': 'gate-grain.safetensors', 'strength': 0.5}]))
 
+    # scene 4 (Lantern): two takes, auto selection -> comparison and "Use this take"
+    # have somewhere to live on the scene the acceptance walk selects
     take(3, 'take 1', prompts['Lantern'], 41)
+    take(3, 'take 2', prompts['Lantern'], 42)
 
     # scene 5: a legacy take from before generation records -- no id/job/provenance, but real media
     title, seconds, _c, _a, hue, freq = PLAN[4]

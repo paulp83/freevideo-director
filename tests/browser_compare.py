@@ -269,7 +269,7 @@ def main():
               all(x['t'] == 'scene has a running job' for x in why['m'])
               and sum(1 for x in why['m'] if x['vis']) == 1
               and all(b[0] and b[1] == 'scene has a running job' for b in why['btns']), json.dumps(why))
-        select(3)
+        select(5)   # Dusk: still a single take; scene 4 gained its second take for the acceptance walk
         few = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
         check('a one-take scene explains the disabled comparison',
               few[0] and few[1] == 'this scene has fewer than two takes', json.dumps(few))

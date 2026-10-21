@@ -168,9 +168,12 @@ def main():
         d.js(HOOK)
 
         d.resize(1920, 1080)
-        ok = d.wait("document.getElementById('viewer').videoWidth > 0 && document.getElementById('viewer').readyState >= 1", timeout=20)
-        check('viewer loads metadata of the in-use take', bool(ok),
-              str(d.js("const v=document.getElementById('viewer'); return [v.readyState, v.videoWidth];")))
+        lazy = d.js("""const v = document.getElementById('viewer');
+                       return [v.readyState, v.videoWidth, v.networkState,
+                               v.getAttribute('src') || '', v.getAttribute('poster') || ''];""")
+        check('viewer shows the in-use take wired up but lazy: src + poster, zero bytes fetched',
+              lazy[0] == 0 and lazy[1] == 0 and lazy[2] == 1 and '/files/' in lazy[3] and lazy[4],
+              json.dumps(lazy)[:200])
 
         # ---------- desktop grid ----------
         for (w, h) in [(1920, 1080), (1440, 900), (1100, 900)]:
@@ -265,11 +268,11 @@ def main():
                 c.click(); return 1;""")
         vs = d.js("return [document.getElementById('viewer').currentSrc || document.getElementById('viewer').src, window.__before];")
         check('clicking a take card plays it in the viewer', vs[0] != vs[1] and '/files/' in vs[0], str(vs)[:160])
-        check('viewer video preloads metadata',
-              d.js("return document.getElementById('viewer').preload;") == 'metadata')
+        check('viewer stays lazy: preload=none so no mp4 is fetched before playback',
+              d.js("return document.getElementById('viewer').preload;") == 'none')
         cmp = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
         check('Compare takes is enabled when the selected scene has two takes', not cmp[0] and cmp[1] == '', str(cmp))
-        d.js("document.querySelectorAll('#navigator .navitem')[3].click(); return 1;")
+        d.js("document.querySelectorAll('#navigator .navitem')[5].click(); return 1;")
         d.wait("document.getElementById('bCompare').disabled")
         cmp1 = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
         check('Compare takes says why it is disabled on a one-take scene', cmp1[0] and cmp1[1] == 'this scene has fewer than two takes', str(cmp1))
