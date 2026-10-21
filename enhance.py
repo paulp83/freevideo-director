@@ -7,15 +7,21 @@ workspace (:8190, GPU 0); FreeVideo's idle engine is released first via ComfyUI'
 
   python3 enhance.py <freevideo run dir | video.mp4> [--resolution 1080] [--fps-multiplier 2]
 """
-import argparse, ast, json, os, shutil, subprocess, tempfile, time, urllib.parse, urllib.request
+import argparse, ast, json, shutil, subprocess, sys, tempfile, time, urllib.parse, urllib.request
 from pathlib import Path
 
-COMFY = os.environ.get('COMFY_URL') or 'http://127.0.0.1:8190'
-COMFY_ROOT = Path(os.environ.get('COMFY_ROOT') or Path(__file__).resolve().parent.parent / 'ComfyUI')
-FPS = 24
+import config
 
-DEFAULTS = dict(resolution=1080, multiplier=2, crf=16, upscaler='seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors',
-                batch_size=21, temporal_overlap=3, rife='rife49.pth')
+COMFY = config.value('comfy_url')                       # --comfy-url / COMFY_URL / config.json
+COMFY_ROOT = config.value('comfy_root')                 # --comfy-root / COMFY_ROOT / config.json
+CLIENT_ID = config.value('comfy_client_id')
+FPS = config.value('enhance_fps')
+FFMPEG = config.value('ffmpeg')
+
+DEFAULTS = dict(resolution=config.value('enhance_resolution'), multiplier=config.value('enhance_multiplier'),
+                crf=config.value('enhance_crf'), upscaler=config.value('enhance_upscaler'),
+                batch_size=config.value('enhance_batch_size'), temporal_overlap=config.value('enhance_temporal_overlap'),
+                rife=config.value('enhance_rife'))
 
 
 def _post(path, body):
@@ -68,7 +74,7 @@ def intermediate(run, workdir):
     frames, height, width, _ = shape
     out = workdir / f'{run.name}-raw.mkv'
     audio = run / 'video.artifacts' / 'audio.wav'
-    cmd = ['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}',
+    cmd = [FFMPEG, '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}',
            '-r', str(FPS), '-i', 'pipe:0']
     if audio.is_file():
         cmd += ['-i', str(audio), '-c:a', 'flac']
@@ -171,7 +177,7 @@ def submit(path, ident='cli', **opts):
     try:
         source, _ = intermediate(run, workdir)
         free_gpu()
-        reply = _post('/prompt', {'prompt': graph(source, run.name, **opts), 'client_id': 'freevideo-director'})
+        reply = _post('/prompt', {'prompt': graph(source, run.name, **opts), 'client_id': CLIENT_ID})
     except BaseException:
         remove_workdir(workdir)
         raise
@@ -213,7 +219,9 @@ def main():
     p.add_argument('--fps-multiplier', type=int, default=DEFAULTS['multiplier'], help='RIFE multiplier (1 = off)')
     p.add_argument('--crf', type=int, default=DEFAULTS['crf'])
     p.add_argument('--batch-size', type=int, default=DEFAULTS['batch_size'], help='SeedVR2 frames per batch (4n+1)')
+    config.add_service_args(p, ('comfy_url', 'comfy_root'))
     a = p.parse_args()
+    print(f'enhance: {config.summary()}', file=sys.stderr)
     start = time.time()
     workdir = None
     try:

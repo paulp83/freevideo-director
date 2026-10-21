@@ -11,13 +11,16 @@ freevideo-director vLLM container on GPU 1, :8078). Stdlib only.
 
 A browser UI over the same function lives in web.py.
 """
-import argparse, base64, hashlib, json, os, re, subprocess, sys, tempfile, time, urllib.request
+import argparse, base64, hashlib, json, re, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
+import config
 import h3check
+
 
 HERE = Path(__file__).resolve().parent
 SKILL = HERE / 'skill'
+FFMPEG = config.value('ffmpeg')
 
 
 def skill_revision():
@@ -31,16 +34,16 @@ def skill_revision():
     return h.hexdigest()[:16]
 
 
-# Director backends on GPU 1, in order of preference (see README / eval/). Whichever answers is used.
+# Director backends on GPU 1, in order of preference (see README / eval/). Whichever answers is
+# used; director_backends in config.json / docs/configuration.md sets the order, and
 # DIRECTOR_URL (+ DIRECTOR_MODEL) pins one explicitly.
-BACKENDS = [('http://127.0.0.1:8144/v1/chat/completions', 'qwen3.8-27b'),       # sgl single, best scripts
-            ('http://127.0.0.1:8078/v1/chat/completions', 'qwen3.6-35b-a3b')]   # vllm single nvfp4, fastest
+BACKENDS = config.value('director_backends')
 
 
 def backend():
     """Return (url, model) of the first director backend that is up."""
-    if os.environ.get('DIRECTOR_URL'):
-        return os.environ['DIRECTOR_URL'], os.environ.get('DIRECTOR_MODEL', 'default')
+    if config.value('director_url'):
+        return config.value('director_url'), config.value('director_model') or 'default'
     for url, model in BACKENDS:
         try:
             with urllib.request.urlopen(url.replace('/chat/completions', '/models'), timeout=2):
@@ -76,7 +79,7 @@ def image_part(path, max_side):
         raise DirectorError(f'image not found: {path}')
     with tempfile.NamedTemporaryFile(suffix='.jpg') as tmp:
         scale = f"scale='if(gt(iw,ih),min({max_side},iw),-2)':'if(gt(iw,ih),-2,min({max_side},ih))'"
-        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(path), '-vf', scale, '-q:v', '3', tmp.name],
+        subprocess.run([FFMPEG, '-v', 'error', '-y', '-i', str(path), '-vf', scale, '-q:v', '3', tmp.name],
                        check=True)
         data = base64.b64encode(Path(tmp.name).read_bytes()).decode()
     return {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{data}'}}
@@ -291,7 +294,7 @@ def scene_idea(film, index):
 
 
 def save(text, out=None):
-    out = Path(out) if out else HERE / 'out' / time.strftime('%Y%m%d-%H%M%S.txt')
+    out = Path(out) if out else config.value('out_dir') / time.strftime('%Y%m%d-%H%M%S.txt')
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text + '\n')
     return out
@@ -310,7 +313,9 @@ def main():
     p.add_argument('--url', help='Chat completions URL (default: first running backend)')
     p.add_argument('--model', help='Served model name (with --url)')
     p.add_argument('--out', type=Path, help='Write the prompt here (default: out/<timestamp>.txt)')
+    config.add_service_args(p, ('director_url', 'director_model', 'out_dir'))
     a = p.parse_args()
+    print(f'director: {config.summary()}', file=sys.stderr)
 
     start = time.time()
     try:

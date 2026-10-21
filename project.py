@@ -13,11 +13,12 @@ Takes stay in ComfyUI's output folder; the project only points at them. Stdlib +
 import copy, hashlib, json, os, re, secrets, shutil, subprocess, tempfile, threading, time
 from pathlib import Path
 
+import config
 import enhance
 import library
 
 HERE = Path(__file__).resolve().parent
-ROOT = Path(os.environ.get('PROJECTS_ROOT') or HERE / 'projects')
+ROOT = config.value('projects_root')   # --projects-root / PROJECTS_ROOT / config.json
 LOCK = threading.Lock()
 
 SIZES = {'16:9': (1344, 768), '9:16': (768, 1344)}
@@ -25,8 +26,14 @@ FILM_SIZES = {'16:9': (1920, 1080), '9:16': (1080, 1920)}
 I2VA_LINE = 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.'
 MAX_REFS = 4                                  # reference pictures per film, uploads and library characters together
 TRANSITIONS = ('cut', 'crossfade', 'dip')
-XFADE = 0.5
-DIP = 0.4
+XFADE = config.value('xfade_seconds')
+DIP = config.value('dip_seconds')
+FFMPEG = config.value('ffmpeg')
+FFPROBE = config.value('ffprobe')
+FILM_FPS = config.value('film_export_fps')      # the encoder flags assemble() runs with;
+PREVIEW_FPS = config.value('preview_export_fps')  # cut_plan() reports them in the export spec
+FILM_CRF = config.value('film_export_crf')
+PREVIEW_CRF = config.value('preview_export_crf')
 HISTORY_MAX = 20
 EDIT_WINDOW = 300
 NOTES_MAX = 1000
@@ -640,7 +647,7 @@ def last_frame(project, run):
         return out
     if not npy.is_file():                         # FreeVideo 0.4.9+ frees the raw frames: take it from the MP4
         out.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-sseof', '-0.5', '-i', str(run / 'video.mp4'),
+        subprocess.run([FFMPEG, '-v', 'error', '-y', '-sseof', '-0.5', '-i', str(run / 'video.mp4'),
                         '-update', '1', str(out)], check=True)
         return out
     (frames, height, width, _), offset = enhance.npy_header(npy)
@@ -648,7 +655,7 @@ def last_frame(project, run):
     with open(npy, 'rb') as f:
         f.seek(offset + (frames - 1) * size)
         raw = f.read(size)
-    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}',
+    subprocess.run([FFMPEG, '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}',
                     '-i', 'pipe:0', '-frames:v', '1', str(out)], input=raw, check=True)
     return out
 
@@ -994,8 +1001,8 @@ def cut_plan(project, used_takes, kind='film'):
             'cards': {'title': _card_plan(project.get('title_card')), 'end': _card_plan(project.get('end_card'))},
             'music': music,
             # the encoder flags assemble() puts on its command line; change both together
-            'export': {'width': int(w), 'height': int(h), 'fps': 48 if kind == 'film' else 24,
-                       'video_codec': 'libx264', 'preset': 'medium', 'crf': '16' if kind == 'film' else '20',
+            'export': {'width': int(w), 'height': int(h), 'fps': FILM_FPS if kind == 'film' else PREVIEW_FPS,
+                       'video_codec': 'libx264', 'preset': 'medium', 'crf': str(FILM_CRF) if kind == 'film' else str(PREVIEW_CRF),
                        'pix_fmt': 'yuv420p', 'audio_codec': 'aac', 'audio_bitrate': '192k',
                        'audio_rate': 48000, 'faststart': True, 'crossfade': XFADE, 'dip': DIP}}
 
@@ -1040,13 +1047,13 @@ def output_status(project, kind, entry):
 # ---------------------------------------------------------------- assembly
 
 def _duration(file):
-    out = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', str(file)],
+    out = subprocess.run([FFPROBE, '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', str(file)],
                          capture_output=True, text=True, check=True).stdout.strip()
     return float(out)
 
 
 def _has_audio(file):
-    out = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index',
+    out = subprocess.run([FFPROBE, '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index',
                           '-of', 'csv=p=0', str(file)], capture_output=True, text=True).stdout.strip()
     return bool(out)
 
@@ -1060,7 +1067,7 @@ def _make_card(card, w, h, fps, tmpdir, name):
     fs = max(16, min(h // 12, int(1.3 * w / len(card['text']))))
     alpha = f'if(lt(t,0.5),t/0.5,if(gt(t,{s}-0.5),({s}-t)/0.5,1))'
     out = Path(tmpdir, f'{name}.mp4')
-    cmd = ['ffmpeg', '-v', 'error', '-y',
+    cmd = [FFMPEG, '-v', 'error', '-y',
            '-f', 'lavfi', '-i', f'color=c=black:s={w}x{h}:r={fps}:d={s}',
            '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
            '-filter_complex',
@@ -1099,7 +1106,7 @@ def assemble(project, kind, cancel=None):
         raise ProjectError('no scenes')
     w, h = FILM_SIZES[project['aspect']] if kind == 'film' else project['size']
     plan = cut_plan(project, used_takes, kind)      # inputs frozen before ffmpeg runs
-    fps = 48 if kind == 'film' else 24
+    fps = FILM_FPS if kind == 'film' else PREVIEW_FPS
     n_scenes, cards = len(clips), None
     trans = [s.get('transition', 'cut') for s in project['scenes']]
     if project.get('title_card') or project.get('end_card'):
@@ -1110,7 +1117,7 @@ def assemble(project, kind, cancel=None):
         if project.get('end_card'):
             clips.append(_make_card(project['end_card'], w, h, fps, cards.name, 'end'))
             trans.append('cut')
-    cmd, parts, dur = ['ffmpeg', '-v', 'error', '-y'], [], []
+    cmd, parts, dur = [FFMPEG, '-v', 'error', '-y'], [], []
     for i, clip in enumerate(clips):
         cmd += ['-i', str(clip)]
         d = _duration(clip)
@@ -1156,7 +1163,7 @@ def assemble(project, kind, cancel=None):
         parts.append(f'[{acur}]loudnorm={LOUDNORM}[aout]')
     out = path(project['slug'], f'{kind}-{time.strftime("%Y%m%d-%H%M%S")}.mp4')
     cmd += ['-filter_complex', ';'.join(parts), '-map', f'[{vcur}]', '-map', '[aout]',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '16' if kind == 'film' else '20', '-pix_fmt', 'yuv420p',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', str(FILM_CRF) if kind == 'film' else str(PREVIEW_CRF), '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', str(out)]
     if cancel and cancel():
         if cards:

@@ -10,6 +10,7 @@ import argparse, base64, json, os, re, socket, struct, subprocess, threading, ti
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import config
 import director
 import jobs_db
 import library
@@ -19,14 +20,12 @@ import enhance
 import project as projects
 
 HERE = Path(__file__).resolve().parent
-COMFY = enhance.COMFY                          # COMFY_URL overrides; enhance.py reads the same env
+COMFY = enhance.COMFY                           # config: comfy_url (--comfy-url / COMFY_URL); enhance reads the same
 COMFY_OUTPUT = enhance.COMFY_ROOT / 'output'
-CLIENT_ID = 'freevideo-director'
+CLIENT_ID = config.value('comfy_client_id')
+FFMPEG = config.value('ffmpeg')
 
-PRESETS = {
-    'draft': {'label': 'Draft', 'two_pass': True, 'finish': False},
-    'final': {'label': 'Final', 'two_pass': False, 'finish': True},
-}
+PRESETS = config.value('presets')
 STAGES = {
     'render': 'Render',
     'upscale': 'Upscale to 1080p',
@@ -213,13 +212,21 @@ def render_result(prompt_id):
 PROGRESS = {}   # prompt_id -> {'node': str, 'value': int, 'max': int}
 
 
+def ws_target():
+    """(host, port) for ComfyUI's /ws, derived from the live COMFY so a swapped ComfyUI
+    address (tests, --comfy-url, COMFY_URL) also moves the websocket."""
+    sp = urllib.parse.urlsplit(COMFY)
+    return sp.hostname, sp.port or (443 if sp.scheme == 'https' else 80)
+
+
 def ws_listen():
     """Minimal RFC 6455 client: keep PROGRESS updated from ComfyUI's /ws for our client id."""
     while True:
         try:
-            s = socket.create_connection(('127.0.0.1', 8190), timeout=None)
+            host, port = ws_target()
+            s = socket.create_connection((host, port), timeout=None)
             key = base64.b64encode(os.urandom(16)).decode()
-            s.sendall((f'GET /ws?clientId={CLIENT_ID} HTTP/1.1\r\nHost: 127.0.0.1:8190\r\nUpgrade: websocket\r\n'
+            s.sendall((f'GET /ws?clientId={CLIENT_ID} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n'
                        f'Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n').encode())
             buf = b''
             while b'\r\n\r\n' not in buf:
@@ -275,8 +282,8 @@ def ws_listen():
 # A job reaches a terminal state (`TERMINAL`) whatever its worker does, including raising
 # before the first stage activates. Legal moves only -- see TRANSITIONS.
 
-JOB_TIMEOUT = float(os.environ.get('JOB_TIMEOUT') or 4 * 3600)   # wall-clock cap per job
-POLL_SECONDS = float(os.environ.get('POLL_SECONDS') or 1.5)   # worker poll sleep
+JOB_TIMEOUT = config.value('job_timeout')        # wall-clock cap per job
+POLL_SECONDS = config.value('poll_seconds')      # worker poll sleep
 
 TERMINAL = ('finished', 'failed', 'cancelled', 'unknown')
 TRANSITIONS = {'queued': {'preparing', 'failed', 'cancelled', 'unknown'},
@@ -761,7 +768,7 @@ def enhance_job(job, run, on_final=None, keys=()):
 
 # ---------------------------------------------------------------- resolving unknown jobs
 
-RECONCILE_SECONDS = float(os.environ.get('RECONCILE_SECONDS') or 15)   # background ask-again interval
+RECONCILE_SECONDS = config.value('reconcile_seconds')   # background ask-again interval
 
 
 def comfy_history_detail(pid):
@@ -1917,7 +1924,7 @@ def poster_view(slug, take_ref):
     out = projects.path(slug, 'frames', f'{safe}-poster.jpg')
     if not out.is_file():
         out.parent.mkdir(parents=True, exist_ok=True)
-        r = subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', '1', '-i', str(video),
+        r = subprocess.run([FFMPEG, '-v', 'error', '-y', '-ss', '1', '-i', str(video),
                             '-frames:v', '1', '-vf', 'scale=320:-1', '-q:v', '6', str(out)])
         if r.returncode != 0 or not out.is_file():
             raise RuntimeError(f'ffmpeg poster frame failed for {video.name}')
@@ -2107,6 +2114,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (HERE / 'project-classic.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/api/queue':
             return self.reply(200, queue_view())
+        if self.path == '/api/config':
+            return self.reply(200, config.api_view())
         if self.path == '/queue':
             return self.reply(200, (HERE / 'queue.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/api/loras':
@@ -2446,12 +2455,13 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--host', default='127.0.0.1')
-    p.add_argument('--port', type=int, default=8192)
+    p.add_argument('--host', default=config.value('ui_host'))
+    p.add_argument('--port', type=int, default=config.value('ui_port'))
     p.add_argument('--allow-host', action='append', default=[], metavar='NAME',
                    help='extra host name to admit (repeatable)')
+    config.add_service_args(p)
     a = p.parse_args()
-    Handler.extra_hosts = set(a.allow_host)
+    Handler.extra_hosts = set(a.allow_host) | set(config.value('ui_allow_hosts'))
     projects.recover_interrupted()
     jobs_db.init()                       # the durable job bookkeeping, pruned to its retention
     jobs_db.prune()
@@ -2459,5 +2469,5 @@ if __name__ == '__main__':
     recover_jobs()      # re-check ComfyUI for every unfinished job before new work can start
     threading.Thread(target=reconcile_loop, daemon=True).start()
     threading.Thread(target=ws_listen, daemon=True).start()
-    print(f'FreeVideo director UI: http://{a.host}:{a.port}')
+    print(f'FreeVideo director: {config.summary()}')
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()

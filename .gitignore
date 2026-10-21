@@ -12,3 +12,6 @@ stats.json
 jobs.db
 jobs.db-wal
 jobs.db-shm
+
+# local settings overrides (config.py); user data, like stats.json
+config.json

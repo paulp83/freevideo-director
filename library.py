@@ -8,8 +8,10 @@ Stdlib only.
 import json, re, shutil, time
 from pathlib import Path
 
+import config
+
 HERE = Path(__file__).resolve().parent
-ROOT = HERE / 'library'
+ROOT = config.value('library_root')   # --library-root / LIBRARY_ROOT / config.json
 
 SLUG = re.compile(r'[a-z0-9-]+')
 MAX_IMAGE = 8 * 1024 * 1024

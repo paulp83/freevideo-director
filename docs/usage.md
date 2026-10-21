@@ -5,14 +5,16 @@ Full reference for the web UI, film projects, and the command line. For quick re
 
 ## Configuration
 
-| Variable | Effect |
-|---|---|
-| `DIRECTOR_URL` | Full chat-completions URL of the director model. Skips the backend search. |
-| `DIRECTOR_MODEL` | Served model name to send (used with `DIRECTOR_URL`; default `default`). |
-| `DIRECTOR_NOTIFY_URL` | Optional. A finished job POSTs its message here (ntfy style). `notify-send` is used too when available. |
+All service addresses, paths and defaults live in `config.py`; see
+[docs/configuration.md](configuration.md) for the full table (every setting with its default,
+environment variable, CLI flag and `config.json` key). Precedence: CLI flag > environment
+variable > `config.json` (optional, next to the modules, gitignored) > built-in default.
+Startup prints one line with the effective addresses, and `GET /api/config` returns the whole
+effective configuration with the source of each value (secrets masked).
 
-Without `DIRECTOR_URL`, the tool tries `127.0.0.1:8144` (`qwen3.8-27b`) then `127.0.0.1:8078`
-(`qwen3.6-35b-a3b`) and uses the first that answers.
+Without a pinned director model (`--director-url` / `DIRECTOR_URL` / config.json), the tool tries
+`127.0.0.1:8144` (`qwen3.8-27b`) then `127.0.0.1:8078` (`qwen3.6-35b-a3b`) and uses the first that
+answers.
 
 ## Web UI
 

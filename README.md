@@ -42,6 +42,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 | | |
 |---|---|
 | [Usage](docs/usage.md) | Every UI control, film-project steps, all CLI flags, finishing takes, configuration |
+| [Configuration](docs/configuration.md) | Every setting: defaults, environment variables, CLI flags, `config.json` |
 | [Best practices](docs/best-practices.md) | Writing better prompts, choosing a director model, iterating cheaply, film workflow |
 | [Troubleshooting](docs/troubleshooting.md) | Common errors, out-of-memory fixes, playback problems |
 | [Multi-scene design](MULTISCENE-PLAN.md) | Design notes and planned work for film projects |
@@ -51,6 +52,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 | Path | Purpose |
 |---|---|
 | `director.py` | Prompt writer and CLI |
+| `config.py` | Service addresses, paths and defaults (env / flags / `config.json`) |
 | `web.py` | Browser UI and job runner (port 8192) |
 | `project.py`, `project.html` | Multi-scene film projects (the workspace page; `/project/classic` keeps the old single-column page as `project-classic.html`) |
 | `enhance.py` | SeedVR2 upscale, RIFE 48 fps, H.264 encode |

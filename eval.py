@@ -8,11 +8,12 @@ Writes eval/<label>/<case>-<run>.txt and eval/<label>/results.json.
 import argparse, json, re, time
 from pathlib import Path
 
+import config
 import director, h3check
 
 HERE = Path(__file__).resolve().parent
 GROUP = str(Path('~/Pictures/group.jpg').expanduser())
-RANGE = str(HERE.parent / 'ComfyUI/input/freevideo/a2fcc1dac3784520adc9e4880939acaf/rangels.jpg')
+RANGE = str(config.value('comfy_root') / 'input/freevideo/a2fcc1dac3784520adc9e4880939acaf/rangels.jpg')
 
 CASES = [
     dict(id='C1-t2va-boat', seconds=6, idea='a paper boat drifts down a rain gutter into a puddle',

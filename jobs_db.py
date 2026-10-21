@@ -22,10 +22,12 @@ functions here raise JobDbError on a real database failure; the caller decides w
 continue -- everything in the live job path does, EXCEPT the pre-submit record_submit, which the
 web layer treats as "no durable record, no submit".
 """
-import json, os, sqlite3, threading, time
+import json, sqlite3, threading, time
 from pathlib import Path
 
-FILE = Path(os.environ.get('JOBS_DB') or Path(__file__).resolve().parent / 'jobs.db')
+import config
+
+FILE = config.value('jobs_db_file')   # --jobs-db / JOBS_DB / config.json
 VERSION = 3
 SUBMITTING = 'submitting'                     # persisted-only (see docstring)
 TERMINAL = ('finished', 'failed', 'cancelled', 'unknown')

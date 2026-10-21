@@ -8,13 +8,17 @@ what the code does not say.
 
 - **Standard library only.** Every module imports from the Python standard library; talk to
   ComfyUI and the director model over `urllib` and raw sockets. Shell out to `ffmpeg` for media work.
-- **One module per concern**, flat in the repo root: `director.py` (prompt + CLI), `web.py` (HTTP
-  server + jobs), `project.py` (films), `enhance.py` (finishing graph), `h3check.py` (format checks).
-  `web.py` is the top of the import graph: it imports `director`, `project`, `enhance` and the rest, and
-  nothing imports `web`.
+- **One module per concern**, flat in the repo root: `config.py` (every service address, path and
+  default), `director.py` (prompt + CLI), `web.py` (HTTP server + jobs), `project.py` (films),
+  `enhance.py` (finishing graph), `h3check.py` (format checks). `web.py` is the top of the import
+  graph: it imports `director`, `project`, `enhance` and the rest; only `config.py` sits below
+  everything and imports nothing from the project.
 - **Pages are single files.** `index.html`, `project.html`, `queue.html` carry their own CSS and JS
   and talk to `web.py` through `/api/...`.
 - **Bind `127.0.0.1`.** New servers and endpoints stay local unless the user passes `--host`.
+- **Settings come from `config.py`.** Never add a raw `os.environ` read or a hard-coded port: add
+  a setting there (docs/configuration.md has the table). Precedence flag > env > `config.json` >
+  default; `GET /api/config` shows the effective values and their sources.
 
 ## Verify
 
@@ -39,10 +43,10 @@ Check a change by running it:
 - **SeedVR2 limits.** `decode_tiled` stays `True` (untiled decode runs out of memory at 1080p on 32 GB);
   `batch_size` is `4n+1`.
 - **Takes live in ComfyUI's output folder**, not in `projects/`. A project stores references to them.
-- **Ignored on purpose:** `out/`, `library/`, `stats.json`, `projects/*/*.mp4`, `projects/*/frames/`.
-  Generated media stays out of git.
-- **Ports:** UI `8192`, ComfyUI `8190`, director models `8144` then `8078`. `DIRECTOR_URL` /
-  `DIRECTOR_MODEL` override discovery.
+- **Ignored on purpose:** `out/`, `library/`, `stats.json`, `jobs.db*`, `config.json`,
+  `projects/*/*.mp4`, `projects/*/frames/`. Generated media and local settings stay out of git.
+- **Ports:** UI `8192`, ComfyUI `8190`, director models `8144` then `8078` — the defaults in
+  `config.py`, overridable by flag / env (`DIRECTOR_URL` / `DIRECTOR_MODEL`) / `config.json`.
 
 ## Git
 
