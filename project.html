@@ -1974,6 +1974,8 @@ function queueRow(r) {
   kids.push(el('span', {class: 'qstate'}, qword(r.state) + (r.stage ? ' · ' + r.stage : '')));
   kids.push(el('span', {class: 'qtime', 'data-times': JSON.stringify([r.created, r.started, r.ended])}));
   if (r.error) kids.push(el('span', {class: 'qerr'}, r.error));
+  if (r.resolved) kids.push(el('span', {class: 'qresolved'}, 'Resolved: ' + (r.resolved.verdict || 'dismissed') +
+    (r.resolved.verdict === 'dismissed' ? ' (no proof; the prompt may still be running)' : '')));
   if (r.state === 'unknown' && !r.resolved) {
     kids.push(el('span', {}, 'ComfyUI may still be executing' +
       (r.prompt_ids && r.prompt_ids.length ? ` (prompt ids ${r.prompt_ids.join(', ')})` : '')));
