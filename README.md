@@ -52,7 +52,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 |---|---|
 | `director.py` | Prompt writer and CLI |
 | `web.py` | Browser UI and job runner (port 8192) |
-| `project.py`, `project.html` | Multi-scene film projects |
+| `project.py`, `project.html` | Multi-scene film projects (the workspace page; `/project/classic` keeps the old single-column page as `project-classic.html`) |
 | `enhance.py` | SeedVR2 upscale, RIFE 48 fps, H.264 encode |
 | `h3check.py` | H3 format checks used by the retry loop and `eval.py` |
 | `skill/` | Pinned MiniMax-H3 prompt-writing skill |

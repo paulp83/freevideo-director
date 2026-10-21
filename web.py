@@ -1249,6 +1249,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (HERE / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path in ('/project', '/project.html') or self.path.startswith('/project?'):
             return self.reply(200, (HERE / 'project.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/project/classic' or self.path.startswith('/project/classic?'):
+            return self.reply(200, (HERE / 'project-classic.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/api/queue':
             return self.reply(200, queue_view())
         if self.path == '/queue':

@@ -131,7 +131,7 @@ def main():
             try: urllib.request.urlopen(f'http://127.0.0.1:{WEB_PORT}/api/projects', timeout=1); break
             except Exception: time.sleep(0.2)
         d = Driver()
-        url = lambda slug: f'http://127.0.0.1:{WEB_PORT}/project?p={slug}'
+        url = lambda slug: f'http://127.0.0.1:{WEB_PORT}/project/classic?p={slug}'
 
         # 1. typing while a save is delayed: the edit made during the request must not be lost
         d.go(url(alpha)); d.wait("document.getElementById('pBible')")

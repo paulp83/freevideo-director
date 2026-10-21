@@ -16,29 +16,27 @@
           --s-none: #44403c; --s-prompt: #1d4ed8; --s-draft: #b45309; --s-final: #15803d; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 80px; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+       overflow: hidden; }
 a { color: var(--accent); }
-h1 { font-size: 20px; margin: 0; }
-.top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
-.top .spacer { flex: 1; }
-section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+h1 { font-size: 19px; margin: 0; font-weight: 700; }
+h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
 textarea, input[type=text], input[type=number], select {
   width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
-  padding: 8px 10px; font: inherit; }
+  padding: 7px 9px; font: inherit; min-height: 32px; }
 textarea { resize: vertical; }
-.mono { font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
-.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+button { min-height: 32px; }
+.mono { font: 14px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
-.btn { border: 0; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: 8px;
+.btn { border: 0; background: var(--accent); color: var(--accent-ink); padding: 6px 12px; border-radius: 8px;
        font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
-.btn.small { padding: 4px 10px; font-size: 13px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .status { color: var(--muted); font-size: 14px; }
 .err { color: var(--err); }
-.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.hint { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { border: 0; background: transparent; color: var(--ink); padding: 6px 12px; font: inherit; cursor: pointer; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
@@ -46,38 +44,7 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 .slot { border: 1.5px dashed var(--line); border-radius: 10px; min-height: 110px; display: flex; align-items: center;
         justify-content: center; color: var(--muted); cursor: pointer; position: relative; overflow: hidden; padding: 6px; text-align: center; }
 .slot img { max-width: 100%; max-height: 150px; border-radius: 6px; }
-
-/* stepper */
-.steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
-.step { border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
-.step .n { font-size: 12px; color: var(--muted); }
-.step b { font-size: 15px; }
-.step .count { font-size: 13px; color: var(--muted); min-height: 20px; }
-.step.done { border-color: var(--ok); }
-.step.done .n { color: var(--ok); }
-.step.next { border-color: var(--accent); background: var(--soft); }
-.step .btn { margin-top: auto; }
-.batch { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 14px; display: none; }
-.batch.show { display: block; }
-.bar { height: 4px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 6px; }
-.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
-
-/* timeline */
-.timeline { display: flex; gap: 3px; height: 36px; margin-top: 4px; }
-.tl { border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; overflow: hidden;
-      white-space: nowrap; padding: 0 6px; color: var(--ink); cursor: pointer; min-width: 28px; }
-.tl.none { background: var(--s-none); } .tl.prompt { background: var(--s-prompt); }
-.tl.draft { background: var(--s-draft); } .tl.final { background: var(--s-final); }
-.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
-
-/* scenes */
-.scene { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 12px; background: var(--bg); }
-.scene-head { display: grid; grid-template-columns: auto 1fr 90px 150px 130px auto; gap: 8px; align-items: center; }
-.scene-head .num { font-weight: 700; color: var(--muted); }
-.scene details { margin-top: 8px; }
-.scene summary { cursor: pointer; color: var(--muted); font-size: 13px; }
-.badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.badge { font-size: 14px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .badge.final { border-color: var(--ok); color: var(--ok); }
 .badge.accent { border-color: var(--accent); color: var(--accent); }
 .badge.err { border-color: var(--err); color: var(--err); }
@@ -85,150 +52,319 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 .badge.soft { border-style: dashed; }
 .flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .flags:empty { display: none; }
-.takes { display: flex; gap: 10px; overflow-x: auto; margin-top: 10px; padding-bottom: 4px; }
-.take { flex: 0 0 220px; border: 1.5px solid var(--line); border-radius: 10px; padding: 6px; }
+
+/* header */
+#hdr { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px 6px; }
+#hdr .spacer { flex: 1; }
+#nameTitle { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#saveStatus, #backend { font-size: 14px; color: var(--muted); }
+#backend { max-width: 26ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#backend.err { color: var(--err); }
+#stages { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 8px; align-items: stretch; }
+.stage { display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--line); border-radius: 99px;
+         padding: 4px 6px 4px 12px; font-size: 14px; background: var(--panel); }
+.stage .count { color: var(--muted); }
+.stage.done { border-color: var(--ok); }
+.stage.next { border-color: var(--accent); background: var(--soft); }
+.stage .btn { font-size: 14px; }
+.batch { display: none; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--soft); font-size: 14px;
+         align-items: center; gap: 10px; flex-wrap: wrap; }
+.batch.show { display: flex; }
+.bar { flex: 1 1 120px; height: 4px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+
+/* workspace grid: navigator / viewer / inspector */
+main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10px; padding: 0 12px 12px;
+       height: calc(100% - var(--hdrh, 0px)); min-height: 0; }
+#navigator { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+#center { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+#inspector { min-height: 0; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+#center > * { flex: 0 0 auto; }
+#viewerBox { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center;
+             background: #000; border-radius: 12px; overflow: hidden; }
+#viewer { width: 100%; height: 100%; object-fit: contain; background: #000; }
+#viewerInfo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--muted); padding: 6px 2px; }
+.navitem { display: flex; gap: 8px; align-items: center; text-align: left; border: 1.5px solid var(--line); border-radius: 10px;
+           background: var(--panel); cursor: pointer; padding: 6px; font: inherit; color: var(--ink); }
+.navitem[aria-current="true"] { border-color: var(--accent); background: var(--soft); }
+.navitem .navimg { flex: 0 0 56px; width: 56px; height: 32px; border-radius: 6px; background: #000; object-fit: cover; }
+.navitem .navtxt { min-width: 0; flex: 1; }
+.navitem b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.navitem .navstate { font-size: 14px; color: var(--muted); }
+.navitem .navwarn { font-size: 14px; color: var(--warn); }
+
+/* take strip */
+#takeStrip { display: flex; gap: 10px; overflow-x: auto; padding: 6px 2px; }
+.take { flex: 0 0 240px; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px; background: var(--panel); cursor: pointer; }
 .take.chosen { border-color: var(--accent); }
-.take video { width: 100%; border-radius: 6px; background: #000; display: block; }
-.take .meta { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
-.take-details { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; font-size: 12.5px; }
-.take-details .trow { display: flex; gap: 6px; align-items: baseline; }
-.take-details .trow b { color: var(--muted); font-weight: 600; min-width: 84px; flex: 0 0 auto; }
-.take-details .trow span { overflow-wrap: anywhere; }
-.job { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.take.preview { box-shadow: 0 0 0 2px var(--accent); }
+.take video { width: 100%; aspect-ratio: 16/9; border-radius: 6px; background: #000; display: block; }
+.take .meta { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+
+/* timeline */
+#timelineRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
+.timeline { display: flex; gap: 3px; height: 36px; flex: 1 1 240px; min-width: 0; }
+.tl { border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; overflow: hidden;
+      white-space: nowrap; padding: 0 6px; color: var(--ink); cursor: pointer; min-width: 28px; border: 0; font-family: inherit; }
+.tl.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tl.none { background: var(--s-none); } .tl.prompt { background: var(--s-prompt); }
+.tl.draft { background: var(--s-draft); } .tl.final { background: var(--s-final); }
+.legend { display: flex; gap: 14px; font-size: 14px; color: var(--muted); margin-top: 4px; flex-wrap: wrap; }
+
+/* the stage chips turn into a one-row scroller when they would wrap; this plus the
+   tighter strip keeps the viewer >= 40% of the viewport height down to 1100 px wide */
+@media (max-width: 1440px) {
+  #stages { gap: 4px; flex-wrap: nowrap; overflow-x: auto; }
+  .stage { padding: 4px 3px 4px 8px; gap: 4px; flex: 0 0 auto; }
+  .stage .btn { padding: 0 8px; }
+}
+@media (max-width: 1199px) {
+  .take { flex: 0 0 200px; }
+  .legend { gap: 6px; margin-top: 2px; }
+  #timelineRow { padding-top: 2px; }
+  .timeline { height: 32px; }
+  .take .btn { padding: 0 8px; }
+  #viewerInfo { padding: 2px 2px; }
+}
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+
+/* inspector */
+#inspTitle { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+#scStatus { font-size: 14px; }
+#scJob { font-size: 14px; color: var(--muted); margin-top: 6px; }
 .stagechips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-.chip { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
+.chip { font-size: 14px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
 .chip.active { border-color: var(--accent); color: var(--accent); }
 .chip.done { border-color: var(--ok); color: var(--ok); }
 .chip.error { border-color: var(--err); color: var(--err); }
-.outputs video { width: 100%; border-radius: 8px; background: #000; }
-@media (max-width: 860px) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .scene-head { grid-template-columns: auto 1fr; } }
+#inspector details { margin-top: 10px; }
+#inspector summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.trow { display: flex; gap: 6px; align-items: baseline; }
+.trow b { color: var(--muted); font-weight: 600; min-width: 90px; flex: 0 0 auto; }
+.trow span { overflow-wrap: anywhere; }
+#techBox { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; font-size: 14px; }
+
+/* settings drawer */
+dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(760px, 94vw); max-height: 88vh; color: var(--ink); background: var(--panel); }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+#settingsHead { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+                position: sticky; top: 0; background: var(--panel); }
+#settingsBody { padding: 14px 16px 20px; overflow-y: auto; }
+#settingsBody section { margin-bottom: 18px; }
+#pSizeText { font-size: 14px; color: var(--muted); }
+
+/* new film view */
+#newBox { height: 100%; overflow-y: auto; padding: 16px; }
+#projWrap[hidden] { display: none; }
+
+/* responsive: below 1100 px the workspace stacks; the navigator becomes a horizontal strip */
+@media (max-width: 1099px) {
+  body { overflow: auto; }
+  main { grid-template-columns: 1fr; height: auto; }
+  #navigator { flex-direction: row; overflow-x: auto; overflow-y: hidden; order: -1; }
+  .navitem { flex: 0 0 190px; }
+  #viewerBox { min-height: 320px; flex: 0 0 auto; }
+  #inspector { max-height: none; }
+}
+@media (max-width: 600px) {
+  #navigator { order: 9; }
+  button, .btn, input[type=text], input[type=number], select, textarea, .seg button, .navitem, .tl { min-height: 44px; }
+  .take { flex-basis: 260px; }
+  .grid2 { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
-<main>
-  <div class="top">
-    <h1>FreeVideo Film</h1>
-    <span class="status">multi-scene projects</span>
-    <span class="spacer"></span>
+<header>
+  <div id="hdr">
     <select id="picker" style="width:auto"></select>
     <button class="btn ghost" id="newBtn">+ New film</button>
+    <h1 id="nameTitle">FreeVideo Film</h1>
+    <span class="status" id="saveStatus"></span>
+    <span class="spacer"></span>
+    <span id="backend" class="status" role="status"></span>
+    <button class="btn ghost" id="openSettings" hidden>Project settings</button>
     <a href="/queue">Queue</a>
     <a href="/">Single shot →</a>
   </div>
+  <div id="stages" hidden></div>
+  <div class="batch" id="batch"><span id="batchText"></span><button class="btn ghost" id="batchCancel" hidden>Cancel</button><div class="bar"><i id="batchBar"></i></div></div>
+</header>
 
-  <!-- new project -->
-  <section id="newBox" hidden>
-    <h2>New film</h2>
-    <div class="grid2">
-      <div>
-        <label class="inline">Name</label>
-        <input type="text" id="nName" placeholder="Wranglers short">
-        <label class="inline" style="margin-top:10px">Logline</label>
-        <textarea id="nLogline" rows="4" placeholder="What happens, start to end, in two or three sentences."></textarea>
-        <div class="row">
-          <label class="inline">Length <input type="range" id="nSeconds" min="10" max="120" step="5" value="30"> <b id="nSecondsOut">30 s</b></label>
-          <span class="seg" id="nAspect"><button data-a="16:9" class="on">16:9</button><button data-a="9:16">9:16</button></span>
-        </div>
+<!-- new film (full view) -->
+<div id="newBox" hidden>
+  <h2>New film</h2>
+  <div class="grid2">
+    <div>
+      <label class="inline">Name</label>
+      <input type="text" id="nName" placeholder="Wranglers short">
+      <label class="inline" style="margin-top:10px">Logline</label>
+      <textarea id="nLogline" rows="4" placeholder="What happens, start to end, in two or three sentences."></textarea>
+      <div class="row">
+        <label class="inline">Length <input type="range" id="nSeconds" min="10" max="120" step="5" value="30"> <b id="nSecondsOut">30 s</b></label>
+        <span class="seg" id="nAspect"><button data-a="16:9" class="on">16:9</button><button data-a="9:16">9:16</button></span>
       </div>
-      <div>
-        <label class="inline">Reference pictures (optional, up to 4): people and places to reuse</label>
-        <div class="grid2" style="margin-top:6px">
-          <div class="slot" data-i="0">Picture 1</div>
-          <div class="slot" data-i="1">Picture 2</div>
-          <div class="slot" data-i="2">Picture 3</div>
-          <div class="slot" data-i="3">Picture 4</div>
-        </div>
+    </div>
+    <div>
+      <label class="inline">Reference pictures (optional, up to 4): people and places to reuse</label>
+      <div class="grid2" style="margin-top:6px">
+        <div class="slot" data-i="0">Picture 1</div>
+        <div class="slot" data-i="1">Picture 2</div>
+        <div class="slot" data-i="2">Picture 3</div>
+        <div class="slot" data-i="3">Picture 4</div>
       </div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn" id="createBtn">Create &amp; storyboard</button>
+    <span class="status" id="createStatus"></span>
+  </div>
+  <p class="hint">The director plans the scenes (4–15 s each), a style bible for consistent characters, and a music brief. About 20 s. Everything stays editable.</p>
+  <div class="grid2" style="margin-top:10px">
+    <div>
+      <label class="inline">Characters from your library (each picture takes one of the 4 picture slots)</label>
+      <div id="nCharacters"></div>
+    </div>
+    <div>
+      <label class="inline">Add a character</label>
+      <input type="text" id="nLibName" maxlength="60" placeholder="Name">
+      <textarea id="nLibDesc" rows="3" maxlength="1500" placeholder="Exact look: age, build, hair, face, clothing colours"></textarea>
+      <div class="row">
+        <button class="btn ghost" id="nLibPick">Choose picture…</button>
+        <span class="hint" id="nLibPicName"></span>
+      </div>
+      <div class="row">
+        <button class="btn" id="nLibAdd">Add to library</button>
+        <span class="status" id="nLibStatus"></span>
+      </div>
+    </div>
+  </div>
+  <div id="nLibList"></div>
+</div>
+
+<!-- project workspace -->
+<main id="projWrap" hidden>
+  <nav id="navigator" aria-label="Scenes"></nav>
+  <div id="center">
+    <div id="viewerBox">
+      <span id="viewerEmpty" class="status" style="color:#bbb">No cut or take selected. Pick a scene on the left.</span>
+      <video id="viewer" controls preload="metadata" hidden></video>
+    </div>
+    <div id="viewerInfo"></div>
+    <div id="takeStrip" aria-label="Takes of the selected scene"></div>
+    <div id="timelineRow">
+      <div class="timeline" id="timeline"></div>
+      <button class="btn ghost" id="bPreviewFilm" title="Animatic: the in-use takes joined at the project size, 24 fps, CRF-20">Preview film</button>
+      <button class="btn" id="bExportFilm" title="Film: enhanced takes joined at 1920×1080, 48 fps, CRF-16; music ducked under dialogue and loudness-normalised">Export film</button>
+    </div>
+    <div class="legend"><span><i style="background:var(--s-none)"></i>no prompt</span><span><i style="background:var(--s-prompt)"></i>prompt ready</span>
+      <span><i style="background:var(--s-draft)"></i>draft take</span><span><i style="background:var(--s-final)"></i>final ready</span><span>↪ continues from previous scene</span></div>
+  </div>
+  <aside id="inspector">
+    <h2 id="inspTitle">Scene</h2>
+    <div class="status" id="scStatus"></div>
+    <div class="flags" id="scFlags"></div>
+    <div id="scJob"></div>
+    <div class="row">
+      <button class="btn" data-k="bCreatePrompt" id="bCreatePrompt" title="Ask the director to write this scene's H3 prompt from the style bible and action">Create prompt</button>
+      <button class="btn ghost" data-k="bPreview" id="bPreview" title="Two-pass FreeVideo render at the project size (1344×768 for 16:9), 24 fps — no finishing">Generate preview</button>
+      <button class="btn ghost" data-k="bAnother" id="bAnother" title="New seed, then a fresh preview render">Generate another take</button>
     </div>
     <div class="row">
-      <button class="btn" id="createBtn">Create &amp; storyboard</button>
-      <span class="status" id="createStatus"></span>
+      <button class="btn ghost" data-k="bUseTake" id="bUseTake" title="Pin the take in the viewer for the animatic, finals and continue scenes">Use this take</button>
+      <button class="btn ghost" data-k="bAuto" id="bAuto" hidden title="Stop pinning; the scene follows its latest take again">Release to auto</button>
+      <button class="btn ghost" data-k="bEnhanceSel" id="bEnhanceSel" title="Finishing only on the in-use take: SeedVR2 upscale to 1920×1080, RIFE interpolation ×2 to 48 fps, CRF-16 encode">Enhance selected take</button>
+      <button class="btn ghost" data-k="bCompare" id="bCompare" disabled title="Stage B: side-by-side take comparison is the next M3 step">Compare takes</button>
+      <span class="hint" id="compareWhy">Stage B</span>
     </div>
-    <p class="hint">The director plans the scenes (4–15 s each), a style bible for consistent characters, and a music brief. About 20 s. Everything stays editable.</p>
-    <div class="grid2" style="margin-top:10px">
-      <div>
-        <label class="inline">Characters from your library (each picture takes one of the 4 picture slots)</label>
-        <div id="nCharacters"></div>
-      </div>
-      <div>
-        <label class="inline">Add a character</label>
-        <input type="text" id="libName" maxlength="60" placeholder="Name">
-        <textarea id="libDesc" rows="3" maxlength="1500" placeholder="Exact look: age, build, hair, face, clothing colours"></textarea>
-        <div class="row">
-          <button class="btn ghost small" id="libPick">Choose picture…</button>
-          <span class="hint" id="libPicName"></span>
-        </div>
-        <div class="row">
-          <button class="btn small" id="libAdd">Add to library</button>
-          <span class="status" id="libStatus"></span>
-        </div>
-      </div>
+    <div class="row">
+      <select id="vCount" title="How many variants" style="width:auto">
+        <option value="2">×2</option><option value="3" selected>×3</option><option value="4">×4</option><option value="5">×5</option><option value="6">×6</option>
+      </select>
+      <button class="btn ghost" data-k="bVariants" id="bVariants" title="Several preview renders with new seeds">Generate variants</button>
+      <button class="btn ghost" data-k="bFinal" id="bFinal" title="One render straight to finished: render, SeedVR2 upscale to 1920×1080, RIFE ×2 to 48 fps, CRF-16 encode">Generate final</button>
     </div>
-    <div id="libList"></div>
-  </section>
+    <h2 style="margin-top:14px">Scene settings</h2>
+    <div class="row" style="margin-top:0">
+      <input type="text" data-k="title" id="scTitle" aria-label="Scene title">
+      <input type="number" data-k="seconds" id="scSeconds" min="4" max="15" aria-label="Scene seconds" style="width:74px">
+    </div>
+    <div class="row">
+      <select data-k="connect" id="scConnect" aria-label="Connection">
+        <option value="cut">Cut (new shot)</option><option value="continue">↪ Continue</option></select>
+      <select data-k="transition" id="scTransition" aria-label="Transition">
+        <option value="cut">Cut</option><option value="crossfade">Crossfade</option><option value="dip">Dip to black</option></select>
+    </div>
+    <div class="row">
+      <button class="btn ghost" data-k="bMoveUp" id="bMoveUp" title="Move scene earlier">Move up</button>
+      <button class="btn ghost" data-k="bMoveDown" id="bMoveDown" title="Move scene later">Move down</button>
+      <button class="btn ghost" data-k="bDeleteScene" id="bDeleteScene" title="Remove this scene from the film">Delete scene</button>
+      <button class="btn ghost" data-k="bAddScene" id="bAddScene">+ Add scene</button>
+    </div>
+    <textarea data-k="action" id="scAction" rows="3" placeholder="What happens in this scene (shot, action, sound, dialogue)…"></textarea>
+    <details id="promptBox" data-k="details">
+      <summary>H3 prompt <span class="badge" data-k="mode" id="scMode"></span> <span class="badge" data-k="check" id="scCheck"></span></summary>
+      <textarea data-k="prompt" id="scPrompt" rows="10" class="mono" placeholder="Click &quot;Create prompt&quot;, or paste your own."></textarea>
+    </details>
+    <details id="hist" data-k="hist"><summary data-k="histSum" id="histSum"></summary><div data-k="histList" id="histList"></div></details>
+    <div style="margin-top:10px">
+      <button class="btn ghost" data-k="bTech" id="bTech" aria-expanded="false"
+              title="Show exactly what this take was generated with">Technical details</button>
+    </div>
+    <div id="techBox" hidden></div>
+  </aside>
+</main>
 
-  <!-- project -->
-  <div id="projBox" hidden>
+<!-- project settings drawer -->
+<dialog id="settings">
+  <div id="settingsHead">
+    <b style="flex:1">Project settings</b>
+    <button class="btn ghost" id="closeSettings">Close</button>
+  </div>
+  <div id="settingsBody">
     <section>
-      <div class="row" style="margin-top:0">
-        <div style="flex:1;min-width:240px">
-          <input type="text" id="pTitle" style="font-size:18px;font-weight:700">
-          <div class="hint" id="pMeta"></div>
-        </div>
-      </div>
-      <div class="steps" id="steps" style="margin-top:14px"></div>
-      <div class="batch" id="batch"><span id="batchText"></span> <button class="btn ghost small" id="batchCancel" hidden>Cancel</button><div class="bar"><i id="batchBar"></i></div></div>
-      <p class="hint">Iterate with Drafts (★ the take you like per scene), check the Animatic, then Enhance only the ★ takes for the Film.</p>
+      <h2>Film</h2>
+      <input type="text" id="pTitle" aria-label="Film title">
+      <p class="hint" id="pMeta"></p>
+      <p class="hint" id="pSizeText"></p>
+      <div class="row"><button class="btn ghost" id="freeSpace" title="Move unchosen takes to a trash folder">Free space…</button></div>
     </section>
-
-    <section class="outputs" id="outBox" hidden>
-      <h2>Cuts</h2>
-      <div class="grid2">
-        <div id="animaticBox" hidden><b>Animatic</b> <span class="badge">drafts · 24 fps</span><video id="animatic" controls></video><div class="hint" id="animaticInfo"></div></div>
-        <div id="filmBox" hidden><b>Film</b> <span class="badge final">finals · 1080p · 48 fps</span><video id="film" controls></video><div class="hint" id="filmInfo"></div></div>
-      </div>
-    </section>
-
     <section>
-      <h2>Timeline</h2>
-      <div class="timeline" id="timeline"></div>
-      <div class="legend"><span><i style="background:var(--s-none)"></i>no prompt</span><span><i style="background:var(--s-prompt)"></i>prompt ready</span>
-        <span><i style="background:var(--s-draft)"></i>draft take</span><span><i style="background:var(--s-final)"></i>final ready</span><span>↪ continues from previous scene</span></div>
+      <h2>Style bible</h2>
+      <textarea id="pBible" rows="8" class="mono"></textarea>
+      <p class="hint">Every scene prompt is written from this. Keep characters' looks here, not in scenes.</p>
+      <h2 style="margin-top:14px">Director's notes</h2>
+      <textarea id="pNotes" rows="3" maxlength="1000" placeholder="Director's notes: e.g. no text on screen, always handheld"></textarea>
+      <p class="hint">Rules for the whole film. Added to every scene prompt.</p>
     </section>
-
     <section>
-      <div class="grid2">
-        <div>
-          <h2>Style bible</h2>
-          <textarea id="pBible" rows="9" class="mono"></textarea>
-          <p class="hint">Every scene prompt is written from this. Keep characters' looks here, not in scenes.</p>
-          <h2 style="margin-top:14px">Director's notes</h2>
-          <textarea id="pNotes" rows="3" maxlength="1000" placeholder="Director's notes: e.g. no text on screen, always handheld"></textarea>
-          <p class="hint">Rules for the whole film. Added to every scene prompt.</p>
-          <h2 style="margin-top:14px">Characters</h2>
-          <div id="pChars"></div>
-          <div class="row"><button class="btn ghost" id="pCharsApply">Apply characters</button><span id="pCharsStatus" class="hint"></span></div>
-          <p class="hint">From your character library. Pictures become reference pictures (4 in total with uploads). Scene prompts already written are not changed: use Rewrite prompt on those scenes.</p>
-          <h2 style="margin-top:14px">LoRAs</h2>
-          <div id="loras"></div>
-          <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
-          <p class="hint" id="loraHint">Loading LoRAs…</p>
-        </div>
-        <div>
-          <h2>Music bed</h2>
-          <textarea id="pMusicBrief" rows="3"></textarea>
-          <p class="hint">The director's brief for the score. Scenes are rendered without music; the film gets one continuous track, ducked under dialogue.</p>
-          <div class="row">
-            <button class="btn ghost" id="musicBtn">Add music file…</button>
-            <span class="status" id="musicName">No track: the film keeps the scenes' own sound.</span>
-            <button class="btn ghost small" id="musicRemove" hidden>Remove</button>
-          </div>
-        </div>
+      <h2>Characters</h2>
+      <div id="pChars"></div>
+      <div class="row"><button class="btn ghost" id="pCharsApply">Apply characters</button><span id="pCharsStatus" class="hint"></span></div>
+      <p class="hint">From your character library. Pictures become reference pictures (4 in total with uploads). Scene prompts already written are not changed: use Create prompt on those scenes.</p>
+      <h2 style="margin-top:14px">Character library</h2>
+      <input type="text" id="libName" maxlength="60" placeholder="Name">
+      <textarea id="libDesc" rows="3" maxlength="1500" placeholder="Exact look: age, build, hair, face, clothing colours"></textarea>
+      <div class="row">
+        <button class="btn ghost" id="libPick">Choose picture…</button>
+        <span class="hint" id="libPicName"></span>
+      </div>
+      <div class="row">
+        <button class="btn" id="libAdd">Add to library</button>
+        <span class="status" id="libStatus"></span>
+      </div>
+      <div id="libList"></div>
+    </section>
+    <section>
+      <h2>Music bed</h2>
+      <textarea id="pMusicBrief" rows="3"></textarea>
+      <p class="hint">The director's brief for the score. Scenes are rendered without music; the film gets one continuous track, ducked under dialogue.</p>
+      <div class="row">
+        <button class="btn ghost" id="musicBtn">Add music file…</button>
+        <span class="status" id="musicName">No track: the film keeps the scenes' own sound.</span>
+        <button class="btn ghost" id="musicRemove" hidden>Remove</button>
       </div>
     </section>
-
     <section>
       <h2>Title and end cards</h2>
       <div class="grid2">
@@ -247,16 +383,15 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
       </div>
       <p class="hint">Black cards with centred white text, faded in and out, hard-cut to the film. Empty text = no card.</p>
     </section>
-
     <section>
-      <div class="row" style="margin-top:0"><h2 style="margin:0;flex:1">Scenes</h2>
-        <span class="status" id="saveStatus"></span>
-        <button class="btn ghost small" id="freeSpace" title="Move unchosen takes to a trash folder">Free space…</button>
-        <button class="btn ghost small" id="addScene">+ Add scene</button></div>
-      <div id="scenes"></div>
+      <h2>LoRAs</h2>
+      <div id="loras"></div>
+      <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
+      <p class="hint" id="loraHint">Loading LoRAs…</p>
     </section>
   </div>
-</main>
+</dialog>
+
 <script>
 const $ = id => document.getElementById(id);
 let slug = new URLSearchParams(location.search).get('p');
@@ -352,6 +487,7 @@ function asResolveConflict(st, keepMine) {
 
 let st = autosaveState(slug);
 let saveTimer = null, saveBusy = null, saveAgain = false, viewToken = 0;
+let selId = null, previewRef = null, viewMode = 'scene';   // selected scene, take previewed in the viewer, viewer mode
 
 /* ---------- helpers ---------- */
 async function api(path, body) {
@@ -385,12 +521,15 @@ async function loadList() {
   const p = $('picker'); p.replaceChildren(el('option', {value: ''}, list.length ? 'Open a film…' : 'No films yet'));
   for (const x of list) p.append(el('option', {value: x.slug}, `${x.title || x.name} · ${x.seconds}s · ${x.scenes} scenes`));
   p.value = slug || '';
-  if (!slug) { $('newBox').hidden = false; $('projBox').hidden = true; }
+  if (!slug) showNew();
 }
+function showNew() { $('newBox').hidden = false; $('projWrap').hidden = true; }
+function showProj() { $('newBox').hidden = true; $('projWrap').hidden = false; }
 $('picker').onchange = () => { if ($('picker').value) open($('picker').value); };
-$('newBtn').onclick = () => { slug = null; history.replaceState(null, '', '/project'); $('newBox').hidden = false; $('projBox').hidden = true; $('picker').value = ''; };
+$('newBtn').onclick = () => { slug = null; history.replaceState(null, '', '/project'); showNew(); showProjHide(); $('picker').value = ''; };
+function showProjHide() { $('projWrap').hidden = true; $('stages').hidden = true; $('batch').classList.remove('show'); }
 
-/* ---------- new project ---------- */
+/* ---------- new film ---------- */
 $('nSeconds').oninput = () => $('nSecondsOut').textContent = $('nSeconds').value + ' s';
 document.querySelectorAll('#nAspect button').forEach(b => b.onclick = () => {
   aspect = b.dataset.a; document.querySelectorAll('#nAspect button').forEach(x => x.classList.toggle('on', x === b)); });
@@ -418,13 +557,58 @@ $('createBtn').onclick = async () => {
   $('createBtn').disabled = false;
 };
 
+/* ---------- character library (shared by the New film view and the settings drawer) ---------- */
 let library = [];
-let libImage = null;
-async function loadLibrary() { library = await api('/api/library'); renderLibrary(); renderProjChars(); }
+const libImages = {n: null, d: null};
+async function loadLibrary() { library = await api('/api/library'); renderNewChars(); renderLibList('n'); renderLibList('d'); renderProjChars(); }
+function renderNewChars() {
+  const box = $('nCharacters');
+  const checked = new Set([...box.querySelectorAll('input')].filter(x => x.checked).map(x => x.value));
+  box.replaceChildren();
+  for (const c of library) {
+    const cb = el('input', {type: 'checkbox', value: c.slug});
+    cb.checked = checked.has(c.slug);
+    box.append(el('label', {class: 'inline'}, cb, ' ' + c.name + (c.image_url ? ' · picture' : '')));
+  }
+  if (!library.length) box.textContent = 'No characters yet: add one below or in Project settings.';
+}
+function renderLibList(prefix) {           // the same library, listed for management in both places
+  const box = $(prefix === 'n' ? 'nLibList' : 'libList'); box.replaceChildren();
+  for (const c of library) {
+    const row = el('div', {class: 'row'});
+    if (c.image_url) row.append(el('img', {src: c.image_url, style: 'width:48px;height:48px;object-fit:cover;border-radius:6px'}));
+    row.append(el('b', {}, c.name), el('span', {style: 'flex:1'}, c.description));
+    row.append(el('button', {class: 'btn ghost', onclick: async () => {
+      if (!confirm('Delete ' + c.name + ' from the library?')) return;
+      try { await api('/api/library/' + c.slug + '/delete', {}); await loadLibrary(); }
+      catch (e) { const sb = $(prefix === 'n' ? 'nLibStatus' : 'libStatus'); sb.textContent = e.message; sb.classList.add('err'); }
+    }}, 'Delete'));
+    box.append(row);
+  }
+  box.hidden = !library.length;
+}
+const LIBFORM = {n: {name: 'nLibName', desc: 'nLibDesc', pic: 'nLibPicName', status: 'nLibStatus'},
+                 d: {name: 'libName', desc: 'libDesc', pic: 'libPicName', status: 'libStatus'}};
+$('nLibPick').onclick = $('libPick').onclick = async (ev) => {
+  const k = ev.target.id === 'libPick' ? 'd' : 'n', f = LIBFORM[k];
+  const file = await pick('image/*'); if (file) { libImages[k] = await readFile(file); $(f.pic).textContent = file.name; }
+};
+$('nLibAdd').onclick = $('libAdd').onclick = async (ev) => {
+  const k = ev.target.id === 'libAdd' ? 'd' : 'n', f = LIBFORM[k], stat = $(f.status);
+  ev.target.disabled = true;
+  try {
+    await api('/api/library', {name: $(f.name).value, description: $(f.desc).value, image: libImages[k]});
+    $(f.name).value = ''; $(f.desc).value = ''; libImages[k] = null;
+    $(f.pic).textContent = ''; stat.textContent = ''; stat.classList.remove('err');
+    await loadLibrary();
+  } catch (e) { stat.textContent = e.message; stat.classList.add('err'); }
+  ev.target.disabled = false;
+};
+
 // Characters of the open film: checkboxes from the library; kept while the user is choosing
 let charSig = '';
 function renderProjChars() {
-  if (typeof proj === 'undefined' || !proj || !$('pChars')) return;
+  if (!proj || !$('pChars')) return;
   const sig = JSON.stringify([proj.slug, proj.characters || [], library.map(c => c.slug)]);
   if (sig === charSig) return;
   charSig = sig; $('pChars').replaceChildren();
@@ -433,7 +617,7 @@ function renderProjChars() {
     cb.checked = (proj.characters || []).includes(c.slug);
     $('pChars').append(el('label', {class: 'inline'}, cb, ' ' + c.name + (c.image_url ? ' · picture' : '')));
   }
-  if (!library.length) $('pChars').textContent = 'No characters yet: add some in the library on the New film screen.';
+  if (!library.length) $('pChars').textContent = 'No characters yet: add some to the library below.';
 }
 $('pCharsApply').onclick = async () => {
   const stat = $('pCharsStatus'); stat.classList.remove('err');
@@ -443,36 +627,6 @@ $('pCharsApply').onclick = async () => {
         if (asStale(st, requestSlug)) return;
         viewToken++; stat.textContent = 'Applied'; charSig = ''; await refresh(true); }
   catch (e) { stat.textContent = e.message; stat.classList.add('err'); }
-};
-function renderLibrary() {
-  const box = $('nCharacters');
-  const checked = new Set([...box.querySelectorAll('input')].filter(x => x.checked).map(x => x.value));
-  box.replaceChildren(); $('libList').replaceChildren();
-  for (const c of library) {
-    const cb = el('input', {type: 'checkbox', value: c.slug});
-    cb.checked = checked.has(c.slug);
-    box.append(el('label', {class: 'inline'}, cb, ' ' + c.name + (c.image_url ? ' · picture' : '')));
-    const row = el('div', {class: 'row'});
-    if (c.image_url) row.append(el('img', {src: c.image_url, style: 'width:48px;height:48px;object-fit:cover;border-radius:6px'}));
-    row.append(el('b', {}, c.name), el('span', {style: 'flex:1'}, c.description));
-    row.append(el('button', {class: 'btn ghost small', onclick: async () => {
-      if (!confirm('Delete ' + c.name + ' from the library?')) return;
-      try { await api('/api/library/' + c.slug + '/delete', {}); await loadLibrary(); }
-      catch (e) { $('libStatus').textContent = e.message; $('libStatus').classList.add('err'); }
-    }}, 'Delete'));
-    $('libList').append(row);
-  }
-  $('libList').hidden = !library.length;
-}
-$('libPick').onclick = async () => { const f = await pick('image/*'); if (f) { libImage = await readFile(f); $('libPicName').textContent = f.name; } };
-$('libAdd').onclick = async () => {
-  $('libAdd').disabled = true;
-  try {
-    await api('/api/library', {name: $('libName').value, description: $('libDesc').value, image: libImage});
-    $('libName').value = ''; $('libDesc').value = ''; libImage = null; $('libPicName').textContent = ''; $('libStatus').textContent = ''; $('libStatus').classList.remove('err');
-    await loadLibrary();
-  } catch (e) { $('libStatus').textContent = e.message; $('libStatus').classList.add('err'); }
-  $('libAdd').disabled = false;
 };
 
 /* ---------- open + poll ---------- */
@@ -485,8 +639,9 @@ async function open(s) {
   }
   slug = s; history.replaceState(null, '', '/project?p=' + s);
   st = autosaveState(s); viewToken++;   // the old draft is dropped; in-flight responses fail asStale
-  $('newBox').hidden = true; $('projBox').hidden = false; $('picker').value = s;
-  $('scenes').replaceChildren(); $('scenes').dataset.ids = '';
+  selId = null; previewRef = null; viewMode = 'scene';
+  showProj(); $('picker').value = s; $('openSettings').hidden = false; $('stages').hidden = false;
+  $('nameTitle').textContent = s;
   takeOpen.clear(); takeData.clear();   // open Details panels and fetched provenance belong to the film being left
   await refresh(true);
   if (proj && typeof proj.rev === 'number') st.rev = proj.rev;
@@ -501,6 +656,7 @@ async function refresh(force) {
   } catch (e) { flash(e.message, true); }
 }
 setInterval(() => refresh(false), 3000);
+setInterval(() => { if (slug) loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)), true); }, 15000);
 
 /* ---------- draw ---------- */
 function sceneState(s) {
@@ -510,9 +666,12 @@ function sceneState(s) {
   return s.prompt ? 'prompt' : 'none';
 }
 function busy() { return proj.batch && !proj.batch.done; }
+function selScene() { return proj ? proj.scenes.find(s => s.id === selId) || null : null; }
+function sceneIndex(s) { return proj.scenes.findIndex(x => x.id === s.id); }
 
 function draw(force) {
   const p = proj;
+  $('nameTitle').textContent = p.title || p.name;
   setIfIdle($('pTitle'), p.title || p.name, 'title');
   setIfIdle($('pBible'), p.bible, 'bible');
   setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
@@ -527,33 +686,71 @@ function draw(force) {
   setIfIdle($('pEndCardSecs'), p.end_card ? p.end_card.seconds : 3, 'end_card');
   $('freeSpace').disabled = busy();
   const total = p.scenes.reduce((a, s) => a + s.seconds, 0);
-  $('pMeta').textContent = `${p.logline}  ·  ${p.scenes.length} scenes · ${total} s of ${p.seconds} s · ${p.aspect}`;
+  $('pMeta').textContent = `${p.logline}  ·  ${p.scenes.length} scenes · ${total} s of ${p.seconds} s`;
+  const size = p.aspect === '16:9' ? '1344×768 (film cuts 1920×1080)' : '768×1344 (film cuts 1080×1920)';
+  $('pSizeText').textContent = `Aspect ${p.aspect} · renders at ${size}`;
   $('musicName').textContent = p.music_file ? `Track: ${p.music_file}` : 'No track: the film keeps the scenes\' own sound.';
   $('musicRemove').hidden = !p.music_file;
 
-  // stepper
+  if (selId && !p.scenes.some(s => s.id === selId)) { selId = null; previewRef = null; }
+  if (!selId && p.scenes.length) selId = p.scenes[0].id;
+
+  drawStages(p);
+  drawBatch(p);
+  drawNavigator(p, force);
+  drawTimeline(p);
+  drawInspector(p);
+  drawStrip(p);
+  drawViewer(p);
+  drawNext(p);
+}
+
+/* stage chips: the old six workflow steps, compact; clicking one runs its action */
+function stageSteps(p) {
   const n = p.scenes.length;
   const prompts = p.scenes.filter(s => s.prompt).length;
   const drafted = p.scenes.filter(s => s.takes.length).length;
   const finals = p.scenes.filter(s => sceneState(s) === 'final').length;
-  const steps = [
+  return [
     {t: 'Storyboard', c: `${n} scenes`, done: n > 0, act: 'Re-plan…', fn: replan},
-    {t: 'Prompts', c: `${prompts}/${n} written`, done: n && prompts === n, act: 'Write missing', fn: () => run('prompts', {only_missing: true})},
-    {t: 'Drafts', c: `${drafted}/${n} scenes`, done: n && drafted === n, act: 'Draft missing', fn: () => run('draft-all', {only_missing: true})},
-    {t: 'Animatic', c: p.outputs.animatic ? `${p.outputs.animatic.seconds} s cut` : 'rough cut of drafts', done: !!p.outputs.animatic, act: 'Assemble', fn: () => run('assemble', {kind: 'animatic'})},
-    {t: 'Finals', c: `${finals}/${n} ★ enhanced`, done: n && finals === n, act: 'Enhance ★ takes', fn: () => run('enhance-starred', {})},
-    {t: 'Film', c: p.outputs.film ? `${p.outputs.film.seconds} s · 1080p48` : 'final cut + music', done: !!p.outputs.film, act: 'Assemble film', fn: () => run('assemble', {kind: 'film'})},
+    {t: 'Prompts', c: `${prompts}/${n}`, done: n && prompts === n, act: 'Write missing', fn: () => run('prompts', {only_missing: true})},
+    {t: 'Previews', c: `${drafted}/${n}`, done: n && drafted === n, act: 'Draft missing', fn: () => run('draft-all', {only_missing: true})},
+    {t: 'Animatic', c: p.outputs.animatic ? `${p.outputs.animatic.seconds} s` : 'rough cut', done: !!p.outputs.animatic, act: 'Assemble', fn: () => run('assemble', {kind: 'animatic'})},
+    {t: 'Enhanced', c: `${finals}/${n}`, done: n && finals === n, act: 'Enhance ★ takes', fn: () => run('enhance-starred', {})},
+    {t: 'Film', c: p.outputs.film ? `${p.outputs.film.seconds} s` : 'final cut', done: !!p.outputs.film, act: 'Assemble film', fn: () => run('assemble', {kind: 'film'})},
   ];
-  const next = steps.findIndex(s => !s.done);
-  const box = $('steps'); box.replaceChildren();
+}
+function drawStages(p) {
+  const steps = stageSteps(p), next = steps.findIndex(s => !s.done);
+  const drafted = p.scenes.filter(s => s.takes.length).length, n = p.scenes.length;
+  const box = $('stages'); box.replaceChildren();
   steps.forEach((s, i) => {
-    const b = el('button', {class: 'btn small' + (i === next ? '' : ' ghost'), onclick: s.fn}, s.act);
+    const b = el('button', {class: 'btn' + (i === next ? '' : ' ghost'), onclick: s.fn, title: s.t}, s.act);
     b.disabled = busy() || (i === 3 && drafted < n) || (i === 5 && drafted < n);
-    box.append(el('div', {class: 'step' + (s.done ? ' done' : '') + (i === next ? ' next' : '')},
-      el('span', {class: 'n'}, s.done ? `✓ step ${i + 1}` : `step ${i + 1}`), el('b', {}, s.t), el('span', {class: 'count'}, s.c), b));
+    box.append(el('span', {class: 'stage' + (s.done ? ' done' : '') + (i === next ? ' next' : '')},
+      el('span', {}, (s.done ? '✓ ' : '') + s.t), el('span', {class: 'count'}, s.c), b));
   });
+}
+function drawNext(p) {
+  // The single most useful next move, from real counts and records only.
+  let label, fn;
+  const noPrompt = p.scenes.findIndex(s => !s.prompt);
+  const noTake = p.scenes.findIndex(s => !s.takes.length);
+  const autoMany = p.scenes.findIndex(s => s.takes.length > 1 && s.selection !== 'explicit');
+  const noFinal = p.scenes.findIndex(s => s.takes.length && sceneState(s) !== 'final');
+  if (noPrompt >= 0) { label = `Next: Create prompt — scene ${noPrompt + 1}`; fn = () => selectScene(p.scenes[noPrompt].id); }
+  else if (noTake >= 0) { label = `Next: Generate preview — scene ${noTake + 1}`; fn = () => selectScene(p.scenes[noTake].id); }
+  else if (autoMany >= 0) { label = `Next: Use this take — pick one in scene ${autoMany + 1}`; fn = () => selectScene(p.scenes[autoMany].id); }
+  else if (!p.outputs.animatic) { label = 'Next: Preview film'; fn = () => run('assemble', {kind: 'animatic'}); }
+  else if (noFinal >= 0) { label = `Next: Enhance selected take — scene ${noFinal + 1}`; fn = () => selectScene(p.scenes[noFinal].id); }
+  else if (!p.outputs.film) { label = 'Next: Export film'; fn = () => run('assemble', {kind: 'film'}); }
+  else { label = 'Every stage has a result — iterate freely'; fn = () => {}; }
+  const box = $('stages');
+  const b = el('button', {class: 'stage', style: 'font-weight:600', onclick: fn}, label);
+  box.append(b);
+}
 
-  // batch bar
+function drawBatch(p) {
   const bt = p.batch, bx = $('batch');
   if (bt && (!bt.done || bt.error)) {
     bx.classList.add('show');
@@ -565,49 +762,131 @@ function draw(force) {
     $('batchText').textContent = txt; $('batchText').classList.toggle('err', !!bt.error);
     $('batchBar').style.width = (bt.of ? Math.round(100 * Math.max(0, bt.step - (bt.done ? 0 : 1)) / bt.of) : 0) + '%';
   } else bx.classList.remove('show');
+}
 
-  // outputs
-  const out = p.outputs || {};
-  $('outBox').hidden = !out.animatic && !out.film;
-  for (const k of ['animatic', 'film']) {
-    $(k + 'Box').hidden = !out[k];
-    if (out[k]) {
-      const src = `/files/${p.slug}/${out[k].file}`;
-      if (!$(k).src.endsWith(src)) $(k).src = src;
-      $(k + 'Info').textContent = `${out[k].file} · ${out[k].scenes} scenes · ${out[k].seconds} s` +
-        (out[k].not_final && out[k].not_final.length ? ` · scenes ${out[k].not_final.join(', ')} used drafts` : '') +
-        (out[k].outdated ? ` · outdated: a new cut would change ${out[k].changes.join(', ')}` :
-         out[k].fingerprint === 'unknown_legacy' ? ' · predates cut fingerprints' : '');
-    }
-  }
+/* ---------- navigator ---------- */
+function drawNavigator(p, force) {
+  const box = $('navigator');
+  const sig = p.scenes.map(s => {
+    const t = (s.takes || []).find(t => t.run === s.chosen);
+    return [s.id, s.title, sceneState(s), (s.status && s.status.outdated.length) ? 'w' : '', t && t.thumb_url || ''].join('');
+  }).join('');
+  if (!force && box.dataset.sig === sig) { highlightNav(); return; }
+  box.dataset.sig = sig; box.replaceChildren();
+  const refs0 = p.refs && p.refs.length ? `/files/${p.slug}/refs/${p.refs[0]}` : null;
+  p.scenes.forEach((s, i) => {
+    const t = (s.takes || []).find(t => t.run === s.chosen);
+    const thumb = (t && t.thumb_url) || refs0;
+    const item = el('button', {class: 'navitem', 'data-scene': s.id, onclick: () => selectScene(s.id)},
+      thumb ? el('img', {class: 'navimg', src: thumb, alt: ''}) : el('span', {class: 'navimg'}),
+      el('span', {class: 'navtxt'},
+        el('b', {title: `${i + 1}. ${s.title || 'Scene'}`}, `${i + 1}. ${s.title || 'Scene'}`),
+        el('span', {class: 'navstate'},
+          s.status && s.status.outdated.length ? el('span', {class: 'navwarn', title: (s.status.flags[s.status.outdated[0]] || {}).text || ''}, '! ') : null,
+          ({none: 'no prompt', prompt: 'prompt ready', draft: 'draft take', final: 'enhanced take'})[sceneState(s)])));
+    box.append(item);
+  });
+  highlightNav();
+}
+function highlightNav() {
+  document.querySelectorAll('#navigator .navitem').forEach(b => b.setAttribute('aria-current', String(b.dataset.scene === selId)));
+}
 
-  // timeline
+/* ---------- timeline ---------- */
+function drawTimeline(p) {
   const tl = $('timeline'); tl.replaceChildren();
-  p.scenes.forEach((s, i) => tl.append(el('div', {class: 'tl ' + sceneState(s), style: `flex:${s.seconds}`, title: s.title,
-    onclick: () => document.getElementById('scene-' + s.id)?.scrollIntoView({behavior: 'smooth', block: 'center'})},
+  p.scenes.forEach((s, i) => tl.append(el('button', {class: 'tl ' + sceneState(s) + (s.id === selId ? ' sel' : ''),
+    style: `flex:${s.seconds}`, title: s.title, onclick: () => selectScene(s.id)},
     `${s.connect === 'continue' ? '↪ ' : ''}${i + 1} · ${s.seconds}s`)));
-
-  // scenes: rebuild only when the set/order changes — and never on a poll while a structural
-  // save is pending, or a response still carrying the old order would shuffle the cards back
-  const ids = p.scenes.map(s => s.id).join(',');
-  if (force || (st.structure === null && ids !== $('scenes').dataset.ids)) rebuildScenes(p.scenes);
-  p.scenes.forEach((s, i) => updateScene(s, i));
-}
-function rebuildScenes(list) {   // rebuild without losing typing focus or the caret
-  const a = document.activeElement;
-  let focus = null;
-  try {
-    if (a && a.closest && a.closest('#scenes') && a.dataset.k)
-      focus = {card: a.closest('.scene').id, k: a.dataset.k, start: a.selectionStart, end: a.selectionEnd};
-  } catch (e) { focus = null; }
-  $('scenes').dataset.ids = list.map(s => s.id).join(',');
-  $('scenes').replaceChildren(...list.map(buildScene));
-  if (focus && focus.start != null) {
-    const n = document.querySelector('#' + CSS.escape(focus.card) + ' [data-k="' + focus.k + '"]');
-    if (n) { n.focus(); try { n.setSelectionRange(focus.start, focus.end); } catch (e) {} }
-  }
+  const drafted = p.scenes.filter(s => s.takes.length).length;
+  $('bPreviewFilm').disabled = busy() || drafted < p.scenes.length;
+  $('bExportFilm').disabled = busy() || drafted < p.scenes.length;
 }
 
+/* ---------- selection + viewer ---------- */
+function selectScene(id) {
+  if (selId === id) return;
+  selId = id; previewRef = null; viewMode = 'scene';
+  highlightNav(); drawTimeline(proj); drawInspector(proj); drawStrip(proj); drawViewer(proj);
+}
+function previewTake(s, t) {
+  previewRef = t.id || t.run; viewMode = 'scene';
+  drawStrip(proj); drawViewer(proj); drawTech();
+}
+function viewerTarget(p) {
+  const refPoster = (p.refs && p.refs.length) ? `/files/${p.slug}/refs/${p.refs[0]}` : '';
+  if (viewMode === 'animatic' && p.outputs.animatic) return {src: `/files/${p.slug}/${p.outputs.animatic.file}`, poster: refPoster,
+    info: `Animatic · ${p.outputs.animatic.file} · ${p.outputs.animatic.scenes} scenes · ${p.outputs.animatic.seconds} s` +
+      (p.outputs.animatic.not_final && p.outputs.animatic.not_final.length ? ` · scenes ${p.outputs.animatic.not_final.join(', ')} used drafts` : '')};
+  if (viewMode === 'film' && p.outputs.film) return {src: `/files/${p.slug}/${p.outputs.film.file}`, poster: refPoster,
+    info: `Film · ${p.outputs.film.file} · ${p.outputs.film.scenes} scenes · ${p.outputs.film.seconds} s` +
+      (p.outputs.film.not_final && p.outputs.film.not_final.length ? ` · scenes ${p.outputs.film.not_final.join(', ')} used drafts` : '') +
+      (p.outputs.film.outdated ? ' · outdated: a new cut would change ' + p.outputs.film.changes.join(', ') :
+       p.outputs.film.fingerprint === 'unknown_legacy' ? ' · predates cut fingerprints' : '')};
+  const s = selScene(); if (!s) return null;
+  const takes = s.takes || [];
+  const t = (previewRef && takes.find(t => (t.id || t.run) === previewRef)) || takes.find(t => t.run === s.chosen) || null;
+  if (!t || !(t.final_url || t.url)) return {src: null, info: `Scene ${(sceneIndex(s) || 0) + 1} · ${s.title || 'Scene'} · no take yet`};
+  const pos = takes.indexOf(t) + 1;
+  return {src: t.final_url || t.url, poster: t.thumb_url || refPoster, info: `Scene ${sceneIndex(s) + 1} · ${s.title || 'Scene'} · take ${pos}/${takes.length} · ` +
+    (t.final ? 'enhanced (1920×1080 · 48 fps · CRF-16)' : `${t.preset} (${p.aspect === '16:9' ? '1344×768' : '768×1344'} · 24 fps)`) +
+    ` · seed ${t.seed}`};
+}
+function drawViewer() {
+  const v = $('viewer');
+  if ((viewMode === 'animatic' && !proj.outputs.animatic) || (viewMode === 'film' && !proj.outputs.film)) viewMode = 'scene';
+  const tgt = viewerTarget(proj);
+  if (!tgt || !tgt.src) { v.hidden = true; $('viewerEmpty').hidden = false; $('viewerInfo').replaceChildren(); return; }
+  v.hidden = false; $('viewerEmpty').hidden = true;
+  if (!v.src.endsWith(tgt.src)) { v.poster = tgt.poster || ''; v.src = tgt.src; }
+  const seg = (m, label) => el('button', {'data-view': m, class: m === viewMode ? 'on' : '',
+    onclick: () => { if (m === 'scene' || proj.outputs[m]) { viewMode = m; drawViewer(); } }}, label);
+  $('viewerInfo').replaceChildren(el('span', {}, tgt.info),
+    el('span', {class: 'seg', id: 'viewerMode'}, seg('scene', 'Scene'), seg('animatic', 'Animatic'), seg('film', 'Film')));
+}
+function drawTech() {
+  const s = selScene(); if (!s) return;
+  const t = takeInScene(s, previewRef) || (s.takes || []).find(t => t.run === s.chosen);
+  const ref = t && (t.id || t.run);
+  const box = $('techBox'), btn = $('bTech');
+  if (!ref || !takeOpen.has(ref)) { box.hidden = true; btn.setAttribute('aria-expanded', 'false'); return; }
+  box.hidden = false; btn.setAttribute('aria-expanded', 'true');
+  loadTakeDetails(box, ref);
+}
+function takeInScene(s, ref) { return ref ? (s.takes || []).find(t => (t.id || t.run) === ref) : null; }
+
+/* ---------- take strip ---------- */
+function drawStrip(p) {
+  const s = selScene(); const box = $('takeStrip');
+  if (!s) { box.replaceChildren(); return; }
+  const sig = [s.id, s.selection, s.chosen, s.takes.map(t => (t.id || t.run) + (t.final ? 'F' : '') + (t.thumb_url ? 'T' : '')).join('|')].join('');
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig; box.replaceChildren();
+  [...s.takes].slice().reverse().forEach(t => box.append(buildTakeCard(t, s)));
+}
+function buildTakeCard(t, s) {
+  const ref = t.id || t.run, chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
+  const poster = t.thumb_url || (proj.refs && proj.refs.length ? `/files/${proj.slug}/refs/${proj.refs[0]}` : null);
+  const card = el('div', {class: 'take' + (chosen ? ' chosen' : '') + (previewRef === ref ? ' preview' : ''), 'data-t': ref,
+    title: 'Preview in the viewer',
+    onclick: (ev) => { if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'VIDEO') return; previewTake(s, t); }});
+  card.append(el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'none', ...(poster ? {poster} : {})}));
+  card.append(el('div', {class: 'meta'},
+    el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'enhanced 1080p48' : t.preset),
+    el('span', {class: 'badge'}, 'seed ' + t.seed),
+    ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
+    ...(chosen ? [el('span', {class: 'badge'}, explicit ? '★ in use (pinned)' : 'in use (latest, auto)')] : []),
+    el('button', {'data-k': 'bUse', 'data-t': ref, class: 'btn ' + (chosen && explicit ? 'ghost' : ''),
+      title: 'Use this take for the animatic, finals and continue scenes',
+      onclick: () => { previewTake(s, t); sceneAct('star', {scene: s.id, take: ref}); }},
+      chosen && explicit ? 'In use' : 'Use this take'),
+    el('button', {'data-k': 'bDetails', 'data-t': ref, class: 'btn ghost', title: 'Show exactly what this take was generated with',
+      onclick: () => { previewTake(s, t); const ref2 = t.id || t.run;
+        takeOpen.has(ref2) ? takeOpen.delete(ref2) : takeOpen.add(ref2); drawTech(); }}, 'Details')));
+  return card;
+}
+
+/* ---------- inspector ---------- */
 function setIfIdle(input, value, key, sceneId) {
   const d = sceneId ? (st.pendingScene[sceneId] || {}) : st.pendingTop;   // skip fields with an unacknowledged draft
   if (document.activeElement === input || key in d) return;               // and the field being typed in
@@ -617,8 +896,188 @@ function markDirty(sceneId, key, value) {
   asMark(st, sceneId, key, value);
   clearTimeout(saveTimer); flash('Unsaved…'); saveTimer = setTimeout(pump, 700);
 }
-// LoRAs: rows of {name, strength, enabled}; names come from ComfyUI via /api/loras
+
+const FLAG_LABEL = {prompt_changed: 'prompt changed', refs_changed: 'references changed',
+                    settings_changed: 'settings changed', continuity_outdated: 'continuity outdated',
+                    instructions_changed: 'instructions changed'};
+
+function drawInspector(p) {
+  const s = selScene();
+  ['bCreatePrompt', 'bPreview', 'bAnother', 'bUseTake', 'bAuto', 'bEnhanceSel', 'bVariants', 'vCount', 'bFinal',
+   'bMoveUp', 'bMoveDown', 'bDeleteScene'].forEach(k => $(k).disabled = !s || busy() || (s && s.job && !s.job.done));
+  if (!s) { $('inspTitle').textContent = 'No scene selected'; ['scTitle','scSeconds','scConnect','scTransition','scAction','scPrompt'].forEach(id => $(id).disabled = true);
+    $('scStatus').textContent = ''; $('scFlags').replaceChildren(); $('scJob').replaceChildren(); return; }
+  ['scTitle','scSeconds','scConnect','scTransition','scAction','scPrompt'].forEach(id => $(id).disabled = false);
+  const i = sceneIndex(s);
+  $('inspTitle').textContent = `Scene ${i + 1} of ${p.scenes.length}`;
+  setIfIdle($('scTitle'), s.title, 'title', s.id);
+  setIfIdle($('scSeconds'), s.seconds, 'seconds', s.id);
+  setIfIdle($('scConnect'), s.connect, 'connect', s.id);
+  $('scConnect').disabled = i === 0;
+  setIfIdle($('scTransition'), s.transition, 'transition', s.id);
+  $('scTransition').disabled = i === 0;
+  setIfIdle($('scAction'), s.action, 'action', s.id);
+  setIfIdle($('scPrompt'), s.prompt, 'prompt', s.id);
+  $('scMode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
+  const ck = $('scCheck'); ck.textContent = checkLabel(s.prompt_check); ck.hidden = !s.prompt_check;
+  ck.classList.toggle('err', !!(s.prompt_check && s.prompt_check.final_failures.length));
+  ck.title = s.prompt_check && s.prompt_check.first_failures.length ? 'first reply failed: ' + s.prompt_check.first_failures.join(', ') : '';
+  const hs = s.history || []; $('hist').hidden = !hs.length; $('histSum').textContent = historyTitle(hs.length);
+  const hl = $('histList'), hsig = hs.map(x => x.time).join('|');
+  if (hl.dataset.sig !== hsig) {
+    hl.dataset.sig = hsig; hl.replaceChildren();
+    historyRows(hs).forEach(row => hl.append(el('div', {class: 'row'}, el('span', {class: 'badge'}, row.source),
+      el('span', {style: 'flex:1'}, row.text),
+      el('button', {class: 'btn ghost', onclick: () => sceneAct('restore_prompt', {scene: s.id, index: row.index})}, 'Restore'))));
+  }
+  updateStatus(s, i);
+  updateJob(s);
+  // Use this take applies to the take in the viewer; Release to auto when pinned
+  const t = takeInScene(s, previewRef) || (s.takes || []).find(t => t.run === s.chosen);
+  const explicit = s.selection === 'explicit';
+  $('bUseTake').hidden = $('bEnhanceSel').hidden = !s.takes.length;
+  $('bCompare').disabled = true;
+  $('bAuto').hidden = !(s.takes.length && explicit);
+  $('bUseTake').onclick = () => { if (t) { const ref = t.id || t.run; if (!(explicit && t.run === s.chosen)) sceneAct('star', {scene: s.id, take: ref}); } };
+  $('bAuto').onclick = () => sceneAct('star', {scene: s.id, auto: true});
+  $('bUseTake').textContent = (t && explicit && t.run === s.chosen) ? 'In use (pinned)' : 'Use this take';
+  drawTech();
+}
+function updateStatus(s, i) {
+  const p = proj, prev = i > 0 && s.connect === 'continue' ? p.scenes[i - 1] : null;
+  const job = s.job, running = job && !job.done;
+  const t = (s.takes || []).find(t => t.run === s.chosen);
+  const bits = [];
+  if (running) bits.push('Running');
+  else if (job && job.error) bits.push('Failed');
+  else if (t) bits.push('Ready');
+  else bits.push('Nothing generated yet');
+  if (t) bits.push(`in use: ${t.final ? 'enhanced take' : 'draft take'} seed ${t.seed}` +
+                   (s.selection === 'explicit' ? ' (pinned)' : ' (latest, auto)'));
+  $('scStatus').textContent = bits.join(' · ') + (job && job.error ? '' : '');
+  const box = $('scFlags');
+  const dtext = prev && prev.status ? (prev.status.downstream_of.find(d => d.id === s.id) || {}).text : null;
+  const sig = JSON.stringify([s.status && s.status.provenance, s.status && s.status.outdated,
+    s.status && s.status.outdated.map(f => (s.status.flags[f] || {}).reason || ''),
+    prev ? (prev.title || prev.id) + ' ' + (dtext || '') : '', running, job && job.error || '']);
+  if (box.dataset.sig === sig) return;   // a poll with identical data touches nothing
+  box.dataset.sig = sig; box.replaceChildren();
+  if (job && job.error) box.append(el('span', {class: 'badge err', title: job.error}, 'Failed: ' + job.error));
+  for (const f of (s.status || {}).outdated || []) {
+    const fl = s.status.flags[f] || {};
+    box.append(el('span', {class: 'badge stale', title: (fl.text || '') + (fl.reason ? ' — ' + fl.reason : '')},
+                  FLAG_LABEL[f] || f));
+  }
+  if (s.status && s.status.provenance === 'legacy')
+    box.append(el('span', {class: 'badge soft',
+      title: 'This take predates generation records: what it was generated with was never saved, so it can be neither shown nor checked. Nothing was invented to fill the gap.'},
+      'legacy - provenance unavailable'));
+  if (prev)
+    box.append(el('span', {class: 'badge soft',
+      title: dtext || `This scene starts from a frame of "${prev.title || prev.id}". Nothing is wrong with this scene unless its own badges say so.`},
+      `would be affected if ${prev.title || prev.id} is regenerated`));
+}
+function updateJob(s) {
+  const jb = $('scJob'); jb.replaceChildren();
+  const job = s.job;
+  if (job && ((job && !job.done) || job.error)) {
+    const chips = el('div', {class: 'stagechips'});
+    job.stages.forEach(stg => chips.append(el('span', {class: 'chip ' + stg.state},
+      `${stg.label}${stg.state === 'active' && stg.max ? ` ${stg.value}/${stg.max}` : ''}${stg.seconds != null ? ` · ${fmt(stg.seconds)}` : ''}`)));
+    jb.append(chips);
+  }
+}
+function historyTitle(n) { return 'History (' + n + ')'; }
+function historyText(h) { const flat = h.prompt.replace(/\s+/g, ' ').trim(); return h.source + ' · ' + new Date(h.time * 1000).toLocaleTimeString() + ' · ' + (flat.length > 80 ? flat.slice(0, 80) + '…' : flat); }
+function historyRows(hs) { return hs.map((h, i) => ({index: i, source: h.source, text: historyText(h)})).reverse(); }
+function checkLabel(c) { if (!c) return ''; if (c.final_failures && c.final_failures.length) return 'still failing: ' + c.final_failures.join(', '); return c.retried ? 'fixed on retry' : 'checked'; }
+
+/* ---------- take Details: fetched lazily, once per take; open state and payload live outside the DOM ---------- */
+let takeOpen = new Set(), takeData = new Map();
+$('bTech').onclick = () => {
+  const s = selScene(); if (!s) return;
+  const t = takeInScene(s, previewRef) || (s.takes || []).find(t => t.run === s.chosen);
+  if (!t) return;
+  const ref = t.id || t.run;
+  takeOpen.has(ref) ? takeOpen.delete(ref) : takeOpen.add(ref);
+  drawTech();
+};
+async function loadTakeDetails(box, ref) {
+  if (takeData.has(ref)) return renderTakeDetails(box, takeData.get(ref));
+  if (box.dataset.loading) return;
+  box.dataset.loading = '1'; box.textContent = 'Loading…';
+  const requestSlug = slug;
+  try {
+    const d = await api(`/api/p/${requestSlug}/take?id=${encodeURIComponent(ref)}`);
+    if (slug !== requestSlug) return;                        // the film was switched while it was out
+    takeData.set(ref, d);
+    renderTakeDetails(box, d);
+  } catch (e) { if (slug === requestSlug) box.textContent = 'Details unavailable: ' + e.message; }
+  finally { if (slug === requestSlug) delete box.dataset.loading; }
+}
+function renderTakeDetails(box, d) {
+  box.replaceChildren();
+  const t = d.take, sn = d.snapshot || {}, rows = [];
+  const row = (k, v) => { if (v !== null && v !== undefined && v !== '') rows.push(el('div', {class: 'trow'}, el('b', {}, k), el('span', {}, String(v)))); };
+  if (d.provenance === 'legacy') {
+    box.append(el('div', {class: 'hint'}, 'Legacy: provenance unavailable — this take predates generation records, so what it was made with was never saved. Only what its own record holds is shown; nothing is invented.'));
+    row('run', t.run);
+    row('made', new Date(t.created * 1000).toLocaleString());
+    row('preset', t.preset); row('seed', t.seed);
+    if (t.source_take) row('from take', sourceTakeText(t.source_take));
+    row('video', t.path); row('enhanced', t.final);
+    box.append(...rows);
+    return;
+  }
+  row('provenance', 'recorded');
+  row('take id', t.id || sn.take_id); row('job id', t.job || sn.id); row('run', t.run);
+  row('preset', t.preset || sn.preset); row('mode', sn.mode);
+  row('seed', sn.seed ?? t.seed);                            // seed 0 renders as 0, never dropped
+  row('size', sn.width != null ? `${sn.width}x${sn.height}` : '');
+  row('seconds', sn.seconds);
+  row('two-pass', sn.two_pass ? 'on' : 'off');
+  const refs = [...(sn.refs || [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  refs.forEach((r, n) => row(`ref ${n + 1}`, `${r.name} sha ${String(r.sha256).slice(0, 12)}`));
+  if (sn.first) row('start frame', `${sn.first.name} sha ${String(sn.first.sha256).slice(0, 12)}`);
+  if (t.source_take) row('source take', sourceTakeText(t.source_take));
+  row('loras', (sn.loras || []).map(l => `${l.name} ×${l.strength}${l.enabled ? '' : ' (off)'}`).join(', ') || 'none');
+  row('finishing', sn.finishing ? Object.entries(sn.finishing).map(([k, v]) => `${k}=${v}`).join(' · ') : 'none');
+  if (sn.director && (sn.director.model || sn.director.skill_revision))
+    row('director', `${sn.director.model || '?'} · skill ${sn.director.skill_revision || '?'}`);
+  row('prompt', sn.prompt);
+  row('video', t.path); row('enhanced', t.final);
+  box.append(...rows);
+}
+function sourceTakeText(stx) {
+  return `take ${stx.take || '?'} (scene ${stx.scene || '?'}, run ${stx.run || '?'})` +
+         (stx.frame_sha256 ? `, frame sha ${String(stx.frame_sha256).slice(0, 12)}` : '');
+}
+
+/* ---------- backend readiness (the only probe the server offers: the ComfyUI LoRA list) ---------- */
 let loraNames = null, loraList = [];
+async function loadLoras(onChange, probeOnly) {
+  try {
+    const r = await fetch('/api/loras');
+    if (!r.ok) {   // the server replies 502 with the ComfyUI URL when the renderer is down
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.error || `renderer probe failed (HTTP ${r.status})`);
+    }
+    loraNames = (await r.json()).loras || [];
+    setBackend(true);
+  } catch (e) { loraNames = loraNames || []; setBackend(false, e.message); }
+  if (probeOnly) return;
+  document.getElementById('addLora').onclick = () => {
+    loraList.push({name: loraNames[0], strength: 1, enabled: true}); loraRows(onChange); onChange();
+  };
+  loraRows(onChange);
+}
+function setBackend(ok, msg) {
+  const b = $('backend');
+  b.classList.toggle('err', !ok);
+  const text = ok ? 'Renderer reachable' : 'Renderer unavailable — ' + (msg || 'cannot reach the server');
+  b.textContent = text;
+  b.title = text;                                // the full probe message, shown on hover
+}
 function loraRows(onChange) {
   const box = document.getElementById('loras'); box.replaceChildren();
   const make = (tag, props = {}) => Object.assign(document.createElement(tag), props);
@@ -641,14 +1100,8 @@ function loraRows(onChange) {
   document.getElementById('loraHint').textContent = loraNames === null ? 'Loading LoRAs…'
     : loraNames.length ? '' : 'No LoRA files found in ComfyUI/models/loras.';
 }
-async function loadLoras(onChange) {
-  try { loraNames = (await (await fetch('/api/loras')).json()).loras || []; } catch (e) { loraNames = []; }
-  document.getElementById('addLora').onclick = () => {
-    loraList.push({name: loraNames[0], strength: 1, enabled: true}); loraRows(onChange); onChange();
-  };
-  loraRows(onChange);
-}
-loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)));
+
+/* ---------- save ---------- */
 function save(structure) {        // immediate kick; structure = the new scene list after move/add/delete
   clearTimeout(saveTimer);
   if (structure) st.structure = structure;
@@ -706,6 +1159,8 @@ async function flushEdits() {   // dependent actions await this; it rejects unle
   if (st.conflict) throw new Error('not saved: the film changed while you were editing — pick Reload or Keep mine first');
   if (asHasPending(st)) throw new Error('not saved: ' + (st.error ? st.error.message : 'the save failed') + ' — your draft is still here; fix it and retry');
 }
+
+/* ---------- editor fields ---------- */
 $('pTitle').oninput = e => markDirty(null, 'title', e.target.value);
 $('pBible').oninput = e => markDirty(null, 'bible', e.target.value);
 $('pMusicBrief').oninput = e => markDirty(null, 'music_brief', e.target.value);
@@ -715,210 +1170,15 @@ $('pEndCardText').oninput = $('pEndCardSecs').oninput = () => cardChanged('end_c
 function cardChanged(which) {
   const text = which === 'title_card' ? $('pTitleCardText') : $('pEndCardText');
   const secs = which === 'title_card' ? $('pTitleCardSecs') : $('pEndCardSecs');
-  if (which === 'title_card') markDirty(null, 'title_card', cardValue(text, secs)); else markDirty(null, 'end_card', cardValue(text, secs));
+  markDirty(null, which, cardValue(text, secs));
 }
 function cardValue(text, secs) { return text.value ? {text: text.value, seconds: +secs.value || 3} : null; }
-
-function buildScene(s) {
-  const id = s.id;
-  const input = (key, attrs, tag = 'input') => {
-    const x = el(tag, {...attrs, 'data-k': key});
-    x.oninput = () => markDirty(id, key, key === 'seconds' ? +x.value : x.value);
-    if (tag === 'select') x.onchange = x.oninput;
-    return x;
-  };
-  const connect = input('connect', {}, 'select');
-  connect.append(el('option', {value: 'cut'}, 'Cut (new shot)'), el('option', {value: 'continue'}, '↪ Continue'));
-  const transition = input('transition', {}, 'select');
-  transition.append(el('option', {value: 'cut'}, 'Cut'), el('option', {value: 'crossfade'}, 'Crossfade'), el('option', {value: 'dip'}, 'Dip to black'));
-  const card = el('div', {class: 'scene', id: 'scene-' + id},
-    el('div', {class: 'scene-head'},
-      el('span', {class: 'num', 'data-k': 'num'}),
-      input('title', {type: 'text'}),
-      input('seconds', {type: 'number', min: 4, max: 15}),
-      connect,
-      transition,
-      el('span', {},
-        el('button', {class: 'btn ghost small', title: 'Move up', onclick: () => move(id, -1)}, '↑'), ' ',
-        el('button', {class: 'btn ghost small', title: 'Move down', onclick: () => move(id, 1)}, '↓'), ' ',
-        el('button', {class: 'btn ghost small', title: 'Delete scene', onclick: () => remove(id)}, '✕'))),
-    el('div', {style: 'margin-top:8px'}, input('action', {rows: 3, placeholder: 'What happens in this scene (shot, action, sound, dialogue)…'}, 'textarea')),
-    el('div', {class: 'flags', 'data-k': 'flags'}),   // validity badges; execution state stays in [data-k=job]
-    el('details', {'data-k': 'details'},
-      el('summary', {}, 'H3 prompt ', el('span', {class: 'badge', 'data-k': 'mode'}), ' ', el('span', {class: 'badge', 'data-k': 'check'})),
-      input('prompt', {rows: 12, class: 'mono', placeholder: 'Click "Write prompt", or paste your own.'}, 'textarea')),
-    el('details', {'data-k': 'hist'}, el('summary', {'data-k': 'histSum'}), el('div', {'data-k': 'histList'})),
-    el('div', {class: 'row'},
-      el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
-      el('button', {class: 'btn small', 'data-k': 'bDraft', onclick: () => sceneAct('render', {scene: id, preset: 'draft'})}, 'Draft'),
-      el('button', {class: 'btn ghost small', 'data-k': 'bReroll', onclick: () => sceneReroll(id)}, '🎲 Re-roll'),
-      el('select', {'data-k': 'vCount', title: 'How many variants', style: 'width:auto'}, el('option', {value: '2'}, '×2'), el('option', {value: '3', selected: ''}, '×3'), el('option', {value: '4'}, '×4'), el('option', {value: '5'}, '×5'), el('option', {value: '6'}, '×6')),
-      el('button', {class: 'btn ghost small', 'data-k': 'bVariants', title: 'Render several Drafts with new seeds', onclick: () => sceneAct('variants', {scene: id, n: +card.querySelector('[data-k=vCount]').value})}, 'Draft variants'),
-      el('button', {class: 'btn ghost small', 'data-k': 'bFinal', onclick: () => sceneAct('render', {scene: id, preset: 'final'})}, 'Final'),
-      el('button', {class: 'btn ghost small', 'data-k': 'bEnhance', onclick: () => sceneAct('enhance', {scene: id})}, '✨ Enhance ★'),
-      el('span', {class: 'status', 'data-k': 'sStatus'})),
-    el('div', {class: 'job', 'data-k': 'job'}),
-    el('div', {class: 'takes', 'data-k': 'takes'}));
-  return card;
-}
-function q(card, k) { return card.querySelector(`[data-k="${k}"]`); }
-function historyTitle(n) { return 'History (' + n + ')'; }
-function historyText(h) { const flat = h.prompt.replace(/\s+/g, ' ').trim(); return h.source + ' · ' + new Date(h.time * 1000).toLocaleTimeString() + ' · ' + (flat.length > 80 ? flat.slice(0, 80) + '…' : flat); }
-function historyRows(hs) { return hs.map((h, i) => ({index: i, source: h.source, text: historyText(h)})).reverse(); }
-function checkLabel(c) { if (!c) return ''; if (c.final_failures && c.final_failures.length) return 'still failing: ' + c.final_failures.join(', '); return c.retried ? 'fixed on retry' : 'checked'; }
-function updateScene(s, i) {
-  const card = document.getElementById('scene-' + s.id); if (!card) return;
-  q(card, 'num').textContent = `${i + 1}`;
-  setIfIdle(q(card, 'title'), s.title, 'title', s.id);
-  setIfIdle(q(card, 'seconds'), s.seconds, 'seconds', s.id);
-  setIfIdle(q(card, 'connect'), s.connect, 'connect', s.id);
-  q(card, 'connect').disabled = i === 0;
-  setIfIdle(q(card, 'transition'), s.transition, 'transition', s.id);
-  q(card, 'transition').disabled = i === 0;
-  setIfIdle(q(card, 'action'), s.action, 'action', s.id);
-  setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
-  q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
-  const ck = q(card, 'check'); ck.textContent = checkLabel(s.prompt_check); ck.hidden = !s.prompt_check; ck.classList.toggle('err', !!(s.prompt_check && s.prompt_check.final_failures.length)); ck.title = s.prompt_check && s.prompt_check.first_failures.length ? 'first reply failed: ' + s.prompt_check.first_failures.join(', ') : '';
-  const hs = s.history || []; q(card, 'hist').hidden = !hs.length; q(card, 'histSum').textContent = historyTitle(hs.length); const hl = q(card, 'histList'), hsig = hs.map(x => x.time).join('|'); if (hl.dataset.sig !== hsig) { hl.dataset.sig = hsig; hl.replaceChildren(); historyRows(hs).forEach(row => hl.append(el('div', {class: 'row'}, el('span', {class: 'badge'}, row.source), el('span', {style: 'flex:1'}, row.text), el('button', {class: 'btn ghost small', onclick: () => sceneAct('restore_prompt', {scene: s.id, index: row.index})}, 'Restore')))); }
-  updateFlags(card, s, i);   // redrawn only when the derived validity data changed (see FLAG_LABEL)
-  const job = s.job, running = job && !job.done;
-  ['bPrompt', 'bDraft', 'bReroll', 'bVariants', 'vCount', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
-  q(card, 'bEnhance').hidden = !s.takes.length;
-  // job progress
-  const jb = q(card, 'job'); jb.replaceChildren();
-  if (job && (running || job.error)) {
-    const chips = el('div', {class: 'stagechips'});
-    job.stages.forEach(st => chips.append(el('span', {class: 'chip ' + st.state},
-      `${st.label}${st.state === 'active' && st.max ? ` ${st.value}/${st.max}` : ''}${st.seconds != null ? ` · ${fmt(st.seconds)}` : ''}`)));
-    jb.append(chips);
-    if (job.error) jb.append(el('div', {class: 'err'}, job.error));
-  }
-  // takes: rebuild only when the take set or the resolved choice moves. An open Details panel,
-  // its fetched provenance and any playback survive polls whose signature is unchanged; a rebuild
-  // restores the panel from takeOpen/takeData instead of refetching it.
-  const tk = q(card, 'takes');
-  const sig = s.takes.map(t => t.run + (t.final ? 'F' : '') +
-              (t.run === s.chosen ? (s.selection === 'explicit' ? '*' : 'a') : '')).join('|');
-  if (tk.dataset.sig !== sig) {
-    tk.dataset.sig = sig; tk.replaceChildren();
-    [...s.takes].reverse().forEach(t => tk.append(buildTake(t, s)));
-  }
-}
-
-// Validity badges, straight from the derived scene.status (project.py scene_status): each flag
-// reading 'changed' is a DIRECTLY outdated scene and gets a text badge; a continuation also carries
-// a de-emphasised "would be affected" badge for its upstream scene, which claims nothing is wrong
-// yet. Execution state (running/failed/...) is job state and lives apart, in [data-k=job].
-const FLAG_LABEL = {prompt_changed: 'prompt changed', refs_changed: 'references changed',
-                    settings_changed: 'settings changed', continuity_outdated: 'continuity outdated',
-                    instructions_changed: 'instructions changed'};
-function updateFlags(card, s, i) {
-  const box = q(card, 'flags'); if (!box || !s.status) return;
-  const prev = i > 0 && s.connect === 'continue' ? proj.scenes[i - 1] : null;
-  const dtext = prev && prev.status ? (prev.status.downstream_of.find(d => d.id === s.id) || {}).text : null;
-  const sig = JSON.stringify([s.status.provenance, s.status.outdated,
-                              s.status.outdated.map(f => (s.status.flags[f] || {}).reason || ''),
-                              prev ? (prev.title || prev.id) + '\u0000' + (dtext || '') : '']);
-  if (box.dataset.sig === sig) return;   // a poll with identical data touches nothing
-  box.dataset.sig = sig; box.replaceChildren();
-  for (const f of s.status.outdated) {
-    const fl = s.status.flags[f] || {};
-    box.append(el('span', {class: 'badge stale', title: (fl.text || '') + (fl.reason ? ' — ' + fl.reason : '')},
-                  FLAG_LABEL[f] || f));
-  }
-  if (s.status.provenance === 'legacy')
-    box.append(el('span', {class: 'badge soft',
-      title: 'This take predates generation records: what it was generated with was never saved, so it can be neither shown nor checked. Nothing was invented to fill the gap.'},
-      'legacy - provenance unavailable'));
-  if (prev)
-    box.append(el('span', {class: 'badge soft',
-      title: dtext || `This scene starts from a frame of "${prev.title || prev.id}". Nothing is wrong with this scene unless its own badges say so.`,
-      }, `would be affected if ${prev.title || prev.id} is regenerated`));
-}
-// Take Details: fetched lazily (GET /api/p/<slug>/take?id=...) the first time a panel opens, once
-// per take. Open state and the payload live outside the DOM so a take-strip rebuild restores them
-// without a new request.
-let takeOpen = new Set(), takeData = new Map();
-function buildTake(t, s) {
-  const chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
-  const ref = t.id || t.run;
-  const box = el('div', {class: 'take-details', 'data-k': 'tDetails'});
-  const btn = el('button', {class: 'btn ghost small', 'data-k': 'bDetails', 'data-t': ref,
-    'aria-expanded': String(takeOpen.has(ref)), title: 'Show exactly what this take was generated with',
-    onclick: () => {
-      takeOpen.has(ref) ? takeOpen.delete(ref) : takeOpen.add(ref);
-      btn.setAttribute('aria-expanded', String(takeOpen.has(ref)));
-      box.hidden = !takeOpen.has(ref);
-      if (takeOpen.has(ref)) loadTakeDetails(box, ref);
-    }}, 'Details');
-  box.hidden = !takeOpen.has(ref);
-  if (takeOpen.has(ref)) loadTakeDetails(box, ref);   // strip rebuilt while open: restore from cache
-  return el('div', {class: 'take' + (chosen ? ' chosen' : '')},
-    el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'none'}),  // nothing preloaded eagerly (M3 tunes this)
-    el('div', {class: 'meta'},
-      el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'final 1080p48' : t.preset),
-      el('span', {class: 'badge'}, 'seed ' + t.seed),
-      ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
-      ...(chosen ? [el('span', {class: 'badge'}, explicit ? '★ chosen' : 'latest (auto)')] : []),
-      el('button', {'data-k': 'bChoose', 'data-t': ref, class: 'btn small ' + (chosen && explicit ? '' : 'ghost'),
-        title: 'Use this take for the animatic, Finals and Continue scenes',
-        onclick: () => sceneAct('star', {scene: s.id, take: ref})},
-        chosen && explicit ? '★ chosen' : '☆ choose'),
-      ...(chosen && explicit ? [el('button', {'data-k': 'bAuto', class: 'btn ghost small',
-        title: 'Stop pinning this take; the scene follows its latest take again',
-        onclick: () => sceneAct('star', {scene: s.id, auto: true})}, 'auto')] : [])),
-    btn, box);
-}
-async function loadTakeDetails(box, ref) {
-  if (takeData.has(ref)) return renderTakeDetails(box, takeData.get(ref));
-  if (box.dataset.loading) return;
-  box.dataset.loading = '1'; box.textContent = 'Loading…';
-  const requestSlug = slug;
-  try {
-    const d = await api(`/api/p/${requestSlug}/take?id=${encodeURIComponent(ref)}`);
-    if (slug !== requestSlug) return;                        // the film was switched while it was out
-    takeData.set(ref, d);
-    renderTakeDetails(box, d);
-  } catch (e) { if (slug === requestSlug) box.textContent = 'Details unavailable: ' + e.message; }
-  finally { if (slug === requestSlug) delete box.dataset.loading; }
-}
-function renderTakeDetails(box, d) {
-  box.replaceChildren();
-  const t = d.take, sn = d.snapshot || {}, rows = [];
-  const row = (k, v) => { if (v !== null && v !== undefined && v !== '') rows.push(el('div', {class: 'trow'}, el('b', {}, k), el('span', {}, String(v)))); };
-  if (d.provenance === 'legacy') {
-    box.append(el('div', {class: 'hint'}, 'Legacy: provenance unavailable — this take predates generation records, so what it was made with was never saved. Only what its own record holds is shown; nothing is invented.'));
-    row('run', t.run);
-    row('made', new Date(t.created * 1000).toLocaleString());
-    row('preset', t.preset); row('seed', t.seed);
-    if (t.source_take) row('from take', sourceTakeText(t.source_take));
-    row('video', t.path); row('enhanced', t.final);
-    box.append(...rows);
-    return;
-  }
-  row('provenance', 'recorded');
-  row('take id', t.id || sn.take_id); row('job id', t.job || sn.id); row('run', t.run);
-  row('preset', t.preset || sn.preset); row('mode', sn.mode);
-  row('seed', sn.seed ?? t.seed);                            // seed 0 renders as 0, never dropped
-  row('size', sn.width != null ? `${sn.width}x${sn.height}` : '');
-  row('seconds', sn.seconds);
-  row('two-pass', sn.two_pass ? 'on' : 'off');
-  const refs = [...(sn.refs || [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-  refs.forEach((r, n) => row(`ref ${n + 1}`, `${r.name} sha ${String(r.sha256).slice(0, 12)}`));
-  if (sn.first) row('start frame', `${sn.first.name} sha ${String(sn.first.sha256).slice(0, 12)}`);
-  if (t.source_take) row('source take', sourceTakeText(t.source_take));
-  row('loras', (sn.loras || []).map(l => `${l.name} ×${l.strength}${l.enabled ? '' : ' (off)'}`).join(', ') || 'none');
-  row('finishing', sn.finishing ? Object.entries(sn.finishing).map(([k, v]) => `${k}=${v}`).join(' · ') : 'none');
-  if (sn.director && (sn.director.model || sn.director.skill_revision))
-    row('director', `${sn.director.model || '?'} · skill ${sn.director.skill_revision || '?'}`);
-  row('prompt', sn.prompt);
-  row('video', t.path); row('enhanced', t.final);
-  box.append(...rows);
-}
-function sourceTakeText(st) {
-  return `take ${st.take || '?'} (scene ${st.scene || '?'}, run ${st.run || '?'})` +
-         (st.frame_sha256 ? `, frame sha ${String(st.frame_sha256).slice(0, 12)}` : '');
-}
+$('scTitle').oninput = e => selScene() && markDirty(selId, 'title', e.target.value);
+$('scAction').oninput = e => selScene() && markDirty(selId, 'action', e.target.value);
+$('scPrompt').oninput = e => selScene() && markDirty(selId, 'prompt', e.target.value);
+$('scSeconds').oninput = e => selScene() && markDirty(selId, 'seconds', +e.target.value);
+$('scConnect').onchange = e => selScene() && markDirty(selId, 'connect', e.target.value);
+$('scTransition').onchange = e => selScene() && markDirty(selId, 'transition', e.target.value);
 
 /* ---------- actions ---------- */
 async function run(action, body) {   // every action that reads the film: saved state must be current first
@@ -937,9 +1197,22 @@ async function runNow(action, body) {  // bookkeeping that never reads the edito
   catch (e) { flash(e.message, true); }
 }
 async function sceneAct(action, body) { await run(action, body); }
+$('bCreatePrompt').onclick = () => scenePrompt(selId);
+$('bPreview').onclick = () => selScene() && sceneAct('render', {scene: selId, preset: 'draft'});
+$('bAnother').onclick = () => selScene() && sceneReroll(selId);
+$('bVariants').onclick = () => selScene() && sceneAct('variants', {scene: selId, n: +$('vCount').value});
+$('bFinal').onclick = () => selScene() && sceneAct('render', {scene: selId, preset: 'final'});
+$('bEnhanceSel').onclick = () => selScene() && sceneAct('enhance', {scene: selId});
+$('bMoveUp').onclick = () => selScene() && move(selId, -1);
+$('bMoveDown').onclick = () => selScene() && move(selId, 1);
+$('bDeleteScene').onclick = () => selScene() && remove(selId);
+$('bAddScene').onclick = () => save([...(st.structure || proj.scenes), {id: 'new-' + Date.now()}]);
+$('bPreviewFilm').onclick = () => run('assemble', {kind: 'animatic'});
+$('bExportFilm').onclick = () => run('assemble', {kind: 'film'});
 async function sceneReroll(id) { await run('reroll', {scene: id}); await run('render', {scene: id, preset: 'draft'}); }
 async function scenePrompt(id) {
-  const card = document.getElementById('scene-' + id), stat = q(card, 'sStatus'), t0 = Date.now();
+  if (!id) return;
+  const stat = $('scStatus'), t0 = Date.now();
   const tick = setInterval(() => stat.textContent = `Directing… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
   const requestSlug = slug;
   try {
@@ -950,9 +1223,9 @@ async function scenePrompt(id) {
     if (asStale(st, requestSlug)) return;
     if (draft && (st.pendingScene[id] || {}).prompt && st.pendingScene[id].prompt.gen === draft.gen)
       delete st.pendingScene[id].prompt;                    // typing during the call itself stays pending
-    proj = p; viewToken++; stat.textContent = ''; q(card, 'details').open = true; draw();
+    proj = p; viewToken++; stat.textContent = ''; $('promptBox').open = true; draw();
   }
-  catch (e) { clearInterval(tick); stat.textContent = e.message; stat.classList.add('err'); }
+  catch (e) { clearInterval(tick); stat.textContent = e.message; }
 }
 async function replan() {
   const logline = prompt('Re-plan the storyboard from this logline. This REPLACES all scenes, prompts and takes in the project.', proj.logline);
@@ -973,6 +1246,7 @@ function remove(id) {
   const s = (st.structure || proj.scenes).find(x => x.id === id);
   if (!confirm(`Delete scene "${s.title}"? Its takes stay on disk but leave the project.`)) return;
   delete st.pendingScene[id];                                // the scene is gone; its unsaved fields are moot
+  selId = null; previewRef = null;
   save((st.structure || proj.scenes).filter(x => x.id !== id));
 }
 $('freeSpace').onclick = async () => {
@@ -991,8 +1265,6 @@ $('freeSpace').onclick = async () => {
   } catch (e) { flash(e.message, true); }
   finally { btn.disabled = busy(); }
 };
-
-$('addScene').onclick = () => save([...(st.structure || proj.scenes), {id: 'new-' + Date.now()}]);
 $('musicBtn').onclick = async () => {
   const f = await pick('audio/*'); if (!f) return;
   flash('Uploading music…');
@@ -1009,8 +1281,18 @@ $('musicRemove').onclick = async () => {
         proj = p; viewToken++; draw(); } catch (e) { flash(e.message, true); }
 };
 
+/* ---------- settings drawer: native dialog, Esc + focus return built in ---------- */
+$('openSettings').onclick = () => $('settings').showModal();
+$('closeSettings').onclick = () => $('settings').close();
+
+/* keep the main grid height in step with the (wrapping) header */
+function fitGrid() { document.documentElement.style.setProperty('--hdrh', (document.querySelector('header').offsetHeight + 4) + 'px'); }
+new ResizeObserver(fitGrid).observe(document.querySelector('header'));
+window.addEventListener('resize', fitGrid);
+
 loadList().then(() => { if (slug) open(slug); });
 loadLibrary().catch(() => {});
+loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)));
 </script>
 </body>
 </html>

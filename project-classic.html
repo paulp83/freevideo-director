@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeVideo Film</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b6862; --line: #e3e0da;
+  --accent: #7c3aed; --accent-ink: #ffffff; --soft: #f1edfb; --ok: #15803d; --warn: #b45309; --err: #b42318;
+  --s-none: #d6d3cd; --s-prompt: #93c5fd; --s-draft: #fbbf24; --s-final: #4ade80;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141312; --panel: #1d1c1a; --ink: #ecebe8; --muted: #a29e97; --line: #33312d;
+          --accent: #a78bfa; --accent-ink: #141312; --soft: #26213a; --ok: #4ade80; --warn: #fbbf24; --err: #f97066;
+          --s-none: #44403c; --s-prompt: #1d4ed8; --s-draft: #b45309; --s-final: #15803d; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 80px; }
+a { color: var(--accent); }
+h1 { font-size: 20px; margin: 0; }
+.top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.top .spacer { flex: 1; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+textarea, input[type=text], input[type=number], select {
+  width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; font: inherit; }
+textarea { resize: vertical; }
+.mono { font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.btn { border: 0; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: 8px;
+       font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.status { color: var(--muted); font-size: 14px; }
+.err { color: var(--err); }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--ink); padding: 6px 12px; font: inherit; cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.slot { border: 1.5px dashed var(--line); border-radius: 10px; min-height: 110px; display: flex; align-items: center;
+        justify-content: center; color: var(--muted); cursor: pointer; position: relative; overflow: hidden; padding: 6px; text-align: center; }
+.slot img { max-width: 100%; max-height: 150px; border-radius: 6px; }
+
+/* stepper */
+.steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.step { border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+.step .n { font-size: 12px; color: var(--muted); }
+.step b { font-size: 15px; }
+.step .count { font-size: 13px; color: var(--muted); min-height: 20px; }
+.step.done { border-color: var(--ok); }
+.step.done .n { color: var(--ok); }
+.step.next { border-color: var(--accent); background: var(--soft); }
+.step .btn { margin-top: auto; }
+.batch { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 14px; display: none; }
+.batch.show { display: block; }
+.bar { height: 4px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+
+/* timeline */
+.timeline { display: flex; gap: 3px; height: 36px; margin-top: 4px; }
+.tl { border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; overflow: hidden;
+      white-space: nowrap; padding: 0 6px; color: var(--ink); cursor: pointer; min-width: 28px; }
+.tl.none { background: var(--s-none); } .tl.prompt { background: var(--s-prompt); }
+.tl.draft { background: var(--s-draft); } .tl.final { background: var(--s-final); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+
+/* scenes */
+.scene { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 12px; background: var(--bg); }
+.scene-head { display: grid; grid-template-columns: auto 1fr 90px 150px 130px auto; gap: 8px; align-items: center; }
+.scene-head .num { font-weight: 700; color: var(--muted); }
+.scene details { margin-top: 8px; }
+.scene summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.badge.final { border-color: var(--ok); color: var(--ok); }
+.badge.accent { border-color: var(--accent); color: var(--accent); }
+.badge.err { border-color: var(--err); color: var(--err); }
+.badge.stale { border-color: var(--warn); color: var(--warn); }
+.badge.soft { border-style: dashed; }
+.flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.flags:empty { display: none; }
+.takes { display: flex; gap: 10px; overflow-x: auto; margin-top: 10px; padding-bottom: 4px; }
+.take { flex: 0 0 220px; border: 1.5px solid var(--line); border-radius: 10px; padding: 6px; }
+.take.chosen { border-color: var(--accent); }
+.take video { width: 100%; border-radius: 6px; background: #000; display: block; }
+.take .meta { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+.take-details { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; font-size: 12.5px; }
+.take-details .trow { display: flex; gap: 6px; align-items: baseline; }
+.take-details .trow b { color: var(--muted); font-weight: 600; min-width: 84px; flex: 0 0 auto; }
+.take-details .trow span { overflow-wrap: anywhere; }
+.job { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.stagechips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
+.chip.active { border-color: var(--accent); color: var(--accent); }
+.chip.done { border-color: var(--ok); color: var(--ok); }
+.chip.error { border-color: var(--err); color: var(--err); }
+.outputs video { width: 100%; border-radius: 8px; background: #000; }
+@media (max-width: 860px) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scene-head { grid-template-columns: auto 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>FreeVideo Film</h1>
+    <span class="status">multi-scene projects</span>
+    <span class="spacer"></span>
+    <select id="picker" style="width:auto"></select>
+    <button class="btn ghost" id="newBtn">+ New film</button>
+    <a href="/queue">Queue</a>
+    <a href="/">Single shot →</a>
+  </div>
+
+  <!-- new project -->
+  <section id="newBox" hidden>
+    <h2>New film</h2>
+    <div class="grid2">
+      <div>
+        <label class="inline">Name</label>
+        <input type="text" id="nName" placeholder="Wranglers short">
+        <label class="inline" style="margin-top:10px">Logline</label>
+        <textarea id="nLogline" rows="4" placeholder="What happens, start to end, in two or three sentences."></textarea>
+        <div class="row">
+          <label class="inline">Length <input type="range" id="nSeconds" min="10" max="120" step="5" value="30"> <b id="nSecondsOut">30 s</b></label>
+          <span class="seg" id="nAspect"><button data-a="16:9" class="on">16:9</button><button data-a="9:16">9:16</button></span>
+        </div>
+      </div>
+      <div>
+        <label class="inline">Reference pictures (optional, up to 4): people and places to reuse</label>
+        <div class="grid2" style="margin-top:6px">
+          <div class="slot" data-i="0">Picture 1</div>
+          <div class="slot" data-i="1">Picture 2</div>
+          <div class="slot" data-i="2">Picture 3</div>
+          <div class="slot" data-i="3">Picture 4</div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn" id="createBtn">Create &amp; storyboard</button>
+      <span class="status" id="createStatus"></span>
+    </div>
+    <p class="hint">The director plans the scenes (4–15 s each), a style bible for consistent characters, and a music brief. About 20 s. Everything stays editable.</p>
+    <div class="grid2" style="margin-top:10px">
+      <div>
+        <label class="inline">Characters from your library (each picture takes one of the 4 picture slots)</label>
+        <div id="nCharacters"></div>
+      </div>
+      <div>
+        <label class="inline">Add a character</label>
+        <input type="text" id="libName" maxlength="60" placeholder="Name">
+        <textarea id="libDesc" rows="3" maxlength="1500" placeholder="Exact look: age, build, hair, face, clothing colours"></textarea>
+        <div class="row">
+          <button class="btn ghost small" id="libPick">Choose picture…</button>
+          <span class="hint" id="libPicName"></span>
+        </div>
+        <div class="row">
+          <button class="btn small" id="libAdd">Add to library</button>
+          <span class="status" id="libStatus"></span>
+        </div>
+      </div>
+    </div>
+    <div id="libList"></div>
+  </section>
+
+  <!-- project -->
+  <div id="projBox" hidden>
+    <section>
+      <div class="row" style="margin-top:0">
+        <div style="flex:1;min-width:240px">
+          <input type="text" id="pTitle" style="font-size:18px;font-weight:700">
+          <div class="hint" id="pMeta"></div>
+        </div>
+      </div>
+      <div class="steps" id="steps" style="margin-top:14px"></div>
+      <div class="batch" id="batch"><span id="batchText"></span> <button class="btn ghost small" id="batchCancel" hidden>Cancel</button><div class="bar"><i id="batchBar"></i></div></div>
+      <p class="hint">Iterate with Drafts (★ the take you like per scene), check the Animatic, then Enhance only the ★ takes for the Film.</p>
+    </section>
+
+    <section class="outputs" id="outBox" hidden>
+      <h2>Cuts</h2>
+      <div class="grid2">
+        <div id="animaticBox" hidden><b>Animatic</b> <span class="badge">drafts · 24 fps</span><video id="animatic" controls></video><div class="hint" id="animaticInfo"></div></div>
+        <div id="filmBox" hidden><b>Film</b> <span class="badge final">finals · 1080p · 48 fps</span><video id="film" controls></video><div class="hint" id="filmInfo"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Timeline</h2>
+      <div class="timeline" id="timeline"></div>
+      <div class="legend"><span><i style="background:var(--s-none)"></i>no prompt</span><span><i style="background:var(--s-prompt)"></i>prompt ready</span>
+        <span><i style="background:var(--s-draft)"></i>draft take</span><span><i style="background:var(--s-final)"></i>final ready</span><span>↪ continues from previous scene</span></div>
+    </section>
+
+    <section>
+      <div class="grid2">
+        <div>
+          <h2>Style bible</h2>
+          <textarea id="pBible" rows="9" class="mono"></textarea>
+          <p class="hint">Every scene prompt is written from this. Keep characters' looks here, not in scenes.</p>
+          <h2 style="margin-top:14px">Director's notes</h2>
+          <textarea id="pNotes" rows="3" maxlength="1000" placeholder="Director's notes: e.g. no text on screen, always handheld"></textarea>
+          <p class="hint">Rules for the whole film. Added to every scene prompt.</p>
+          <h2 style="margin-top:14px">Characters</h2>
+          <div id="pChars"></div>
+          <div class="row"><button class="btn ghost" id="pCharsApply">Apply characters</button><span id="pCharsStatus" class="hint"></span></div>
+          <p class="hint">From your character library. Pictures become reference pictures (4 in total with uploads). Scene prompts already written are not changed: use Rewrite prompt on those scenes.</p>
+          <h2 style="margin-top:14px">LoRAs</h2>
+          <div id="loras"></div>
+          <button class="btn ghost" id="addLora" disabled>+ Add LoRA</button>
+          <p class="hint" id="loraHint">Loading LoRAs…</p>
+        </div>
+        <div>
+          <h2>Music bed</h2>
+          <textarea id="pMusicBrief" rows="3"></textarea>
+          <p class="hint">The director's brief for the score. Scenes are rendered without music; the film gets one continuous track, ducked under dialogue.</p>
+          <div class="row">
+            <button class="btn ghost" id="musicBtn">Add music file…</button>
+            <span class="status" id="musicName">No track: the film keeps the scenes' own sound.</span>
+            <button class="btn ghost small" id="musicRemove" hidden>Remove</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Title and end cards</h2>
+      <div class="grid2">
+        <div>
+          <label class="inline">Title card</label>
+          <input type="text" id="pTitleCardText" maxlength="80" placeholder="Title card text (empty = none)">
+          <label class="inline" style="margin-top:10px">Seconds</label>
+          <input type="number" id="pTitleCardSecs" min="1" max="10" step="0.5" value="3">
+        </div>
+        <div>
+          <label class="inline">End card</label>
+          <input type="text" id="pEndCardText" maxlength="80" placeholder="End card text (empty = none)">
+          <label class="inline" style="margin-top:10px">Seconds</label>
+          <input type="number" id="pEndCardSecs" min="1" max="10" step="0.5" value="3">
+        </div>
+      </div>
+      <p class="hint">Black cards with centred white text, faded in and out, hard-cut to the film. Empty text = no card.</p>
+    </section>
+
+    <section>
+      <div class="row" style="margin-top:0"><h2 style="margin:0;flex:1">Scenes</h2>
+        <span class="status" id="saveStatus"></span>
+        <button class="btn ghost small" id="freeSpace" title="Move unchosen takes to a trash folder">Free space…</button>
+        <button class="btn ghost small" id="addScene">+ Add scene</button></div>
+      <div id="scenes"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let slug = new URLSearchParams(location.search).get('p');
+let proj = null, aspect = '16:9';
+const newRefs = [null, null];
+/* Pure autosave state: DOM-free and fetch-free. tests/autosave_check.js lifts the
+   block between the AUTOSAVE markers and runs it under node, so keep it dependency-free.
+   Every editable field carries a generation counter; while an edit is unacknowledged it
+   lives in pendingTop / pendingScene as {value, gen}. A save snapshots {value, gen}; the
+   ack clears a field only while its generation still matches, so typing during a request
+   keeps the field dirty and a follow-up save carries it. A 409 never touches the draft:
+   only Reload does. */
+/* ==AUTOSAVE-CORE-BEGIN== */
+function autosaveState(slug) {
+  return {slug: slug || null, rev: 0,               // revision the next save is based on
+          genTop: {}, genScene: {},                 // per-field generation counters
+          pendingTop: {}, pendingScene: {},         // field -> {value, gen} not yet acknowledged
+          structure: null,                          // pending scene list (move/add/delete), else null
+          conflict: null,                           // {fields, rev} while "changed elsewhere" is unresolved
+          error: null};                             // last save failure, cleared on success
+}
+function asMark(st, sceneId, key, value) {          // one edit: bump the field's generation, keep the draft
+  if (sceneId === null || sceneId === undefined) {
+    st.genTop[key] = (st.genTop[key] || 0) + 1;
+    st.pendingTop[key] = {value: value, gen: st.genTop[key]};
+  } else {
+    const gen = st.genScene[sceneId] ||= {}, pen = st.pendingScene[sceneId] ||= {};
+    gen[key] = (gen[key] || 0) + 1;
+    pen[key] = {value: value, gen: gen[key]};
+  }
+}
+function asSnapshot(st) {   // what one request sends: values plus the generations they were tagged with
+  const snap = {rev: st.rev, structure: st.structure, top: {}, scenes: {}};
+  for (const [k, r] of Object.entries(st.pendingTop)) snap.top[k] = {value: r.value, gen: r.gen};
+  for (const [sid, fields] of Object.entries(st.pendingScene)) {
+    const out = {};
+    for (const [k, r] of Object.entries(fields)) out[k] = {value: r.value, gen: r.gen};
+    snap.scenes[sid] = out;
+  }
+  return snap;
+}
+function asBody(snap, sceneList) {                  // the JSON patch for one save request
+  const body = {};
+  for (const [k, r] of Object.entries(snap.top)) body[k] = r.value;
+  if (snap.structure) {                             // reorder/add/delete: the complete list decides
+    body.scenes = sceneList.map(s => {
+      const patch = {id: s.id};
+      for (const [k, r] of Object.entries(snap.scenes[s.id] || {})) patch[k] = r.value;
+      return patch;
+    });
+  } else {                                          // field edits only: send just the dirty scenes, so a
+    const dirty = [];                               // take recorded server-side is never silently overwritten
+    for (const [sid, fields] of Object.entries(snap.scenes)) {
+      const patch = {id: sid};
+      for (const [k, r] of Object.entries(fields)) patch[k] = r.value;
+      dirty.push(patch);
+    }
+    if (dirty.length) { body.scenes = dirty; body.scenes_delta = true; }
+  }
+  body.base_rev = snap.rev;
+  return body;
+}
+function asAck(st, snap) {   // clear only fields whose generation still matches what was sent
+  for (const [k, r] of Object.entries(snap.top))
+    if (st.pendingTop[k] && st.pendingTop[k].gen === r.gen) delete st.pendingTop[k];
+  for (const [sid, fields] of Object.entries(snap.scenes)) {
+    const cur = st.pendingScene[sid];
+    if (!cur) continue;                             // the scene was deleted while the save was out
+    for (const [k, r] of Object.entries(fields))
+      if (cur[k] && cur[k].gen === r.gen) delete cur[k];
+    if (!Object.keys(cur).length) delete st.pendingScene[sid];
+  }
+  if (st.structure && snap.structure === st.structure) st.structure = null;
+}
+function asHasPending(st) {
+  return Object.keys(st.pendingTop).length > 0 || st.structure !== null ||
+         Object.values(st.pendingScene).some(f => Object.keys(f).length > 0);
+}
+function asStale(st, requestSlug) { return requestSlug !== st.slug; }  // response for a project we left
+function asConflict(st, fields, projectRev) {       // 409: the draft stays pending, untouched
+  st.conflict = {fields: fields || [], rev: projectRev};
+}
+function asResolveConflict(st, keepMine) {
+  if (!st.conflict) return null;
+  const rev = st.conflict.rev;
+  st.conflict = null;
+  if (keepMine) return rev;                         // Keep mine: resend the draft on this rev
+  st.pendingTop = {}; st.pendingScene = {}; st.structure = null;   // Reload: drop the draft
+  st.rev = rev;                                     // and adopt the server revision
+  return null;
+}
+/* ==AUTOSAVE-CORE-END== */
+
+let st = autosaveState(slug);
+let saveTimer = null, saveBusy = null, saveAgain = false, viewToken = 0;
+
+/* ---------- helpers ---------- */
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok) { const e = new Error(j.error || r.statusText); e.status = r.status; e.payload = j; throw e; }
+  return j;
+}
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== undefined && v !== null) e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k !== null && k !== undefined) e.append(k);
+  return e;
+}
+function fmt(s) { return s == null ? '' : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; }
+function readFile(file) { return new Promise(res => { const r = new FileReader(); r.onload = () => res({name: file.name, data: r.result}); r.readAsDataURL(file); }); }
+function pick(accept) { return new Promise(res => { const f = el('input', {type: 'file', accept}); f.onchange = () => res(f.files[0]); f.click(); }); }
+function formatBytes(n) {
+  const u = ['B', 'KB', 'MB', 'GB']; let i = 0, v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (i ? v.toFixed(1) : String(v)) + ' ' + u[i];
+}
+
+function flash(msg, isErr) { $('saveStatus').textContent = msg; $('saveStatus').classList.toggle('err', !!isErr); }
+
+/* ---------- project list ---------- */
+async function loadList() {
+  const list = await api('/api/projects');
+  const p = $('picker'); p.replaceChildren(el('option', {value: ''}, list.length ? 'Open a film…' : 'No films yet'));
+  for (const x of list) p.append(el('option', {value: x.slug}, `${x.title || x.name} · ${x.seconds}s · ${x.scenes} scenes`));
+  p.value = slug || '';
+  if (!slug) { $('newBox').hidden = false; $('projBox').hidden = true; }
+}
+$('picker').onchange = () => { if ($('picker').value) open($('picker').value); };
+$('newBtn').onclick = () => { slug = null; history.replaceState(null, '', '/project'); $('newBox').hidden = false; $('projBox').hidden = true; $('picker').value = ''; };
+
+/* ---------- new project ---------- */
+$('nSeconds').oninput = () => $('nSecondsOut').textContent = $('nSeconds').value + ' s';
+document.querySelectorAll('#nAspect button').forEach(b => b.onclick = () => {
+  aspect = b.dataset.a; document.querySelectorAll('#nAspect button').forEach(x => x.classList.toggle('on', x === b)); });
+document.querySelectorAll('#newBox .slot').forEach(slot => {
+  const i = +slot.dataset.i;
+  const show = () => { slot.replaceChildren(newRefs[i] ? el('img', {src: newRefs[i].data}) : `Picture ${i + 1}: drop or click`); };
+  slot.onclick = async () => { const f = await pick('image/*'); if (f) { newRefs[i] = await readFile(f); show(); } };
+  slot.ondragover = e => e.preventDefault();
+  slot.ondrop = async e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { newRefs[i] = await readFile(f); show(); } };
+  show();
+});
+$('createBtn').onclick = async () => {
+  const stat = $('createStatus'), t0 = Date.now();
+  const chosen = [...document.querySelectorAll('#nCharacters input:checked')].map(x => x.value);
+  const pics = chosen.filter(s => (library.find(c => c.slug === s) || {}).image_url).length + newRefs.filter(Boolean).length;
+  if (pics > 4) { stat.textContent = 'Pick at most 4 pictures in total (uploads plus characters with a picture).'; stat.classList.add('err'); return; }
+  $('createBtn').disabled = true;
+  const tick = setInterval(() => stat.textContent = `Storyboarding… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
+  try {
+    const p = await api('/api/projects', {name: $('nName').value, logline: $('nLogline').value, seconds: +$('nSeconds').value,
+                                          aspect, refs: newRefs.filter(Boolean), characters: chosen});
+    clearInterval(tick); stat.textContent = '';
+    await loadList(); open(p.slug);
+  } catch (e) { clearInterval(tick); stat.textContent = e.message; stat.classList.add('err'); }
+  $('createBtn').disabled = false;
+};
+
+let library = [];
+let libImage = null;
+async function loadLibrary() { library = await api('/api/library'); renderLibrary(); renderProjChars(); }
+// Characters of the open film: checkboxes from the library; kept while the user is choosing
+let charSig = '';
+function renderProjChars() {
+  if (typeof proj === 'undefined' || !proj || !$('pChars')) return;
+  const sig = JSON.stringify([proj.slug, proj.characters || [], library.map(c => c.slug)]);
+  if (sig === charSig) return;
+  charSig = sig; $('pChars').replaceChildren();
+  for (const c of library) {
+    const cb = el('input', {type: 'checkbox', value: c.slug});
+    cb.checked = (proj.characters || []).includes(c.slug);
+    $('pChars').append(el('label', {class: 'inline'}, cb, ' ' + c.name + (c.image_url ? ' · picture' : '')));
+  }
+  if (!library.length) $('pChars').textContent = 'No characters yet: add some in the library on the New film screen.';
+}
+$('pCharsApply').onclick = async () => {
+  const stat = $('pCharsStatus'); stat.classList.remove('err');
+  const chosen = [...document.querySelectorAll('#pChars input:checked')].map(x => x.value);
+  const requestSlug = slug;
+  try { await api(`/api/p/${requestSlug}/characters`, {characters: chosen});
+        if (asStale(st, requestSlug)) return;
+        viewToken++; stat.textContent = 'Applied'; charSig = ''; await refresh(true); }
+  catch (e) { stat.textContent = e.message; stat.classList.add('err'); }
+};
+function renderLibrary() {
+  const box = $('nCharacters');
+  const checked = new Set([...box.querySelectorAll('input')].filter(x => x.checked).map(x => x.value));
+  box.replaceChildren(); $('libList').replaceChildren();
+  for (const c of library) {
+    const cb = el('input', {type: 'checkbox', value: c.slug});
+    cb.checked = checked.has(c.slug);
+    box.append(el('label', {class: 'inline'}, cb, ' ' + c.name + (c.image_url ? ' · picture' : '')));
+    const row = el('div', {class: 'row'});
+    if (c.image_url) row.append(el('img', {src: c.image_url, style: 'width:48px;height:48px;object-fit:cover;border-radius:6px'}));
+    row.append(el('b', {}, c.name), el('span', {style: 'flex:1'}, c.description));
+    row.append(el('button', {class: 'btn ghost small', onclick: async () => {
+      if (!confirm('Delete ' + c.name + ' from the library?')) return;
+      try { await api('/api/library/' + c.slug + '/delete', {}); await loadLibrary(); }
+      catch (e) { $('libStatus').textContent = e.message; $('libStatus').classList.add('err'); }
+    }}, 'Delete'));
+    $('libList').append(row);
+  }
+  $('libList').hidden = !library.length;
+}
+$('libPick').onclick = async () => { const f = await pick('image/*'); if (f) { libImage = await readFile(f); $('libPicName').textContent = f.name; } };
+$('libAdd').onclick = async () => {
+  $('libAdd').disabled = true;
+  try {
+    await api('/api/library', {name: $('libName').value, description: $('libDesc').value, image: libImage});
+    $('libName').value = ''; $('libDesc').value = ''; libImage = null; $('libPicName').textContent = ''; $('libStatus').textContent = ''; $('libStatus').classList.remove('err');
+    await loadLibrary();
+  } catch (e) { $('libStatus').textContent = e.message; $('libStatus').classList.add('err'); }
+  $('libAdd').disabled = false;
+};
+
+/* ---------- open + poll ---------- */
+async function open(s) {
+  if (slug && slug !== s && st && asHasPending(st)) {   // edits still waiting for their save belong to the film being left
+    try { await flushEdits(); }
+    catch (e) {
+      if (!confirm(e.message + '\n\nSwitch anyway and lose those edits?')) { $('picker').value = slug; return; }
+    }
+  }
+  slug = s; history.replaceState(null, '', '/project?p=' + s);
+  st = autosaveState(s); viewToken++;   // the old draft is dropped; in-flight responses fail asStale
+  $('newBox').hidden = true; $('projBox').hidden = false; $('picker').value = s;
+  $('scenes').replaceChildren(); $('scenes').dataset.ids = '';
+  takeOpen.clear(); takeData.clear();   // open Details panels and fetched provenance belong to the film being left
+  await refresh(true);
+  if (proj && typeof proj.rev === 'number') st.rev = proj.rev;
+}
+async function refresh(force) {
+  if (!slug) return;
+  const requestSlug = slug, token = viewToken;
+  try {
+    const p = await api('/api/p/' + requestSlug);
+    if (asStale(st, requestSlug) || token !== viewToken) return;   // project switched or a newer view applied
+    proj = p; draw(force);
+  } catch (e) { flash(e.message, true); }
+}
+setInterval(() => refresh(false), 3000);
+
+/* ---------- draw ---------- */
+function sceneState(s) {
+  const t = (s.takes || []).find(t => t.run === s.chosen);
+  if (t && t.final) return 'final';
+  if (t) return 'draft';
+  return s.prompt ? 'prompt' : 'none';
+}
+function busy() { return proj.batch && !proj.batch.done; }
+
+function draw(force) {
+  const p = proj;
+  setIfIdle($('pTitle'), p.title || p.name, 'title');
+  setIfIdle($('pBible'), p.bible, 'bible');
+  setIfIdle($('pMusicBrief'), p.music_brief, 'music_brief');
+  setIfIdle($('pNotes'), p.notes || '', 'notes');
+  renderProjChars();
+  if (!('loras' in st.pendingTop) && JSON.stringify(loraList) !== JSON.stringify(p.loras || [])) {
+    loraList = structuredClone(p.loras || []); if (loraNames) loraRows(() => markDirty(null, 'loras', structuredClone(loraList)));
+  }
+  setIfIdle($('pTitleCardText'), p.title_card ? p.title_card.text : '', 'title_card');
+  setIfIdle($('pTitleCardSecs'), p.title_card ? p.title_card.seconds : 3, 'title_card');
+  setIfIdle($('pEndCardText'), p.end_card ? p.end_card.text : '', 'end_card');
+  setIfIdle($('pEndCardSecs'), p.end_card ? p.end_card.seconds : 3, 'end_card');
+  $('freeSpace').disabled = busy();
+  const total = p.scenes.reduce((a, s) => a + s.seconds, 0);
+  $('pMeta').textContent = `${p.logline}  ·  ${p.scenes.length} scenes · ${total} s of ${p.seconds} s · ${p.aspect}`;
+  $('musicName').textContent = p.music_file ? `Track: ${p.music_file}` : 'No track: the film keeps the scenes\' own sound.';
+  $('musicRemove').hidden = !p.music_file;
+
+  // stepper
+  const n = p.scenes.length;
+  const prompts = p.scenes.filter(s => s.prompt).length;
+  const drafted = p.scenes.filter(s => s.takes.length).length;
+  const finals = p.scenes.filter(s => sceneState(s) === 'final').length;
+  const steps = [
+    {t: 'Storyboard', c: `${n} scenes`, done: n > 0, act: 'Re-plan…', fn: replan},
+    {t: 'Prompts', c: `${prompts}/${n} written`, done: n && prompts === n, act: 'Write missing', fn: () => run('prompts', {only_missing: true})},
+    {t: 'Drafts', c: `${drafted}/${n} scenes`, done: n && drafted === n, act: 'Draft missing', fn: () => run('draft-all', {only_missing: true})},
+    {t: 'Animatic', c: p.outputs.animatic ? `${p.outputs.animatic.seconds} s cut` : 'rough cut of drafts', done: !!p.outputs.animatic, act: 'Assemble', fn: () => run('assemble', {kind: 'animatic'})},
+    {t: 'Finals', c: `${finals}/${n} ★ enhanced`, done: n && finals === n, act: 'Enhance ★ takes', fn: () => run('enhance-starred', {})},
+    {t: 'Film', c: p.outputs.film ? `${p.outputs.film.seconds} s · 1080p48` : 'final cut + music', done: !!p.outputs.film, act: 'Assemble film', fn: () => run('assemble', {kind: 'film'})},
+  ];
+  const next = steps.findIndex(s => !s.done);
+  const box = $('steps'); box.replaceChildren();
+  steps.forEach((s, i) => {
+    const b = el('button', {class: 'btn small' + (i === next ? '' : ' ghost'), onclick: s.fn}, s.act);
+    b.disabled = busy() || (i === 3 && drafted < n) || (i === 5 && drafted < n);
+    box.append(el('div', {class: 'step' + (s.done ? ' done' : '') + (i === next ? ' next' : '')},
+      el('span', {class: 'n'}, s.done ? `✓ step ${i + 1}` : `step ${i + 1}`), el('b', {}, s.t), el('span', {class: 'count'}, s.c), b));
+  });
+
+  // batch bar
+  const bt = p.batch, bx = $('batch');
+  if (bt && (!bt.done || bt.error)) {
+    bx.classList.add('show');
+    const scene = bt.scene ? p.scenes.findIndex(s => s.id === bt.scene) + 1 : 0;
+    let txt = bt.error ? `${bt.label} failed: ${bt.error}` : `${bt.label} · ${bt.step}/${bt.of || '?'}${scene ? ` · scene ${scene}` : ''} · ${fmt(bt.seconds)}`;
+    const jb = p.batch_job;
+    if (jb && !bt.done) { const a = jb.stages.find(s => s.state === 'active'); if (a) txt += ` · ${a.label}${a.max ? ` ${a.value}/${a.max}` : ''}`; }
+    $('batchCancel').hidden = !!bt.done;
+    $('batchText').textContent = txt; $('batchText').classList.toggle('err', !!bt.error);
+    $('batchBar').style.width = (bt.of ? Math.round(100 * Math.max(0, bt.step - (bt.done ? 0 : 1)) / bt.of) : 0) + '%';
+  } else bx.classList.remove('show');
+
+  // outputs
+  const out = p.outputs || {};
+  $('outBox').hidden = !out.animatic && !out.film;
+  for (const k of ['animatic', 'film']) {
+    $(k + 'Box').hidden = !out[k];
+    if (out[k]) {
+      const src = `/files/${p.slug}/${out[k].file}`;
+      if (!$(k).src.endsWith(src)) $(k).src = src;
+      $(k + 'Info').textContent = `${out[k].file} · ${out[k].scenes} scenes · ${out[k].seconds} s` +
+        (out[k].not_final && out[k].not_final.length ? ` · scenes ${out[k].not_final.join(', ')} used drafts` : '') +
+        (out[k].outdated ? ` · outdated: a new cut would change ${out[k].changes.join(', ')}` :
+         out[k].fingerprint === 'unknown_legacy' ? ' · predates cut fingerprints' : '');
+    }
+  }
+
+  // timeline
+  const tl = $('timeline'); tl.replaceChildren();
+  p.scenes.forEach((s, i) => tl.append(el('div', {class: 'tl ' + sceneState(s), style: `flex:${s.seconds}`, title: s.title,
+    onclick: () => document.getElementById('scene-' + s.id)?.scrollIntoView({behavior: 'smooth', block: 'center'})},
+    `${s.connect === 'continue' ? '↪ ' : ''}${i + 1} · ${s.seconds}s`)));
+
+  // scenes: rebuild only when the set/order changes — and never on a poll while a structural
+  // save is pending, or a response still carrying the old order would shuffle the cards back
+  const ids = p.scenes.map(s => s.id).join(',');
+  if (force || (st.structure === null && ids !== $('scenes').dataset.ids)) rebuildScenes(p.scenes);
+  p.scenes.forEach((s, i) => updateScene(s, i));
+}
+function rebuildScenes(list) {   // rebuild without losing typing focus or the caret
+  const a = document.activeElement;
+  let focus = null;
+  try {
+    if (a && a.closest && a.closest('#scenes') && a.dataset.k)
+      focus = {card: a.closest('.scene').id, k: a.dataset.k, start: a.selectionStart, end: a.selectionEnd};
+  } catch (e) { focus = null; }
+  $('scenes').dataset.ids = list.map(s => s.id).join(',');
+  $('scenes').replaceChildren(...list.map(buildScene));
+  if (focus && focus.start != null) {
+    const n = document.querySelector('#' + CSS.escape(focus.card) + ' [data-k="' + focus.k + '"]');
+    if (n) { n.focus(); try { n.setSelectionRange(focus.start, focus.end); } catch (e) {} }
+  }
+}
+
+function setIfIdle(input, value, key, sceneId) {
+  const d = sceneId ? (st.pendingScene[sceneId] || {}) : st.pendingTop;   // skip fields with an unacknowledged draft
+  if (document.activeElement === input || key in d) return;               // and the field being typed in
+  if (input.value !== String(value ?? '')) input.value = value ?? '';
+}
+function markDirty(sceneId, key, value) {
+  asMark(st, sceneId, key, value);
+  clearTimeout(saveTimer); flash('Unsaved…'); saveTimer = setTimeout(pump, 700);
+}
+// LoRAs: rows of {name, strength, enabled}; names come from ComfyUI via /api/loras
+let loraNames = null, loraList = [];
+function loraRows(onChange) {
+  const box = document.getElementById('loras'); box.replaceChildren();
+  const make = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+  loraList.forEach((item, i) => {
+    const row = make('div'); row.className = 'row';
+    const sel = make('select');
+    for (const n of new Set([item.name, ...(loraNames || [])])) sel.append(make('option', {value: n, textContent: n, selected: n === item.name}));
+    sel.onchange = () => { item.name = sel.value; onChange(); };
+    const str = make('input', {type: 'number', step: 0.05, min: -2, max: 2, value: item.strength, title: 'strength'});
+    str.style.width = '80px';
+    str.oninput = () => { item.strength = Math.max(-2, Math.min(2, +str.value || 0)); onChange(); };
+    const on = make('input', {type: 'checkbox', checked: item.enabled, title: 'enabled'});
+    on.onchange = () => { item.enabled = on.checked; onChange(); };
+    const rm = make('button', {className: 'btn ghost', textContent: 'Remove'});
+    rm.onclick = () => { loraList.splice(i, 1); loraRows(onChange); onChange(); };
+    row.append(sel, str, on, rm); box.append(row);
+  });
+  const add = document.getElementById('addLora');
+  add.disabled = loraList.length >= 8 || !(loraNames && loraNames.length);
+  document.getElementById('loraHint').textContent = loraNames === null ? 'Loading LoRAs…'
+    : loraNames.length ? '' : 'No LoRA files found in ComfyUI/models/loras.';
+}
+async function loadLoras(onChange) {
+  try { loraNames = (await (await fetch('/api/loras')).json()).loras || []; } catch (e) { loraNames = []; }
+  document.getElementById('addLora').onclick = () => {
+    loraList.push({name: loraNames[0], strength: 1, enabled: true}); loraRows(onChange); onChange();
+  };
+  loraRows(onChange);
+}
+loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)));
+function save(structure) {        // immediate kick; structure = the new scene list after move/add/delete
+  clearTimeout(saveTimer);
+  if (structure) st.structure = structure;
+  return pump();
+}
+function pump() {                 // drain the pending drafts; never more than one request in flight
+  if (saveBusy) { saveAgain = true; return saveBusy; }
+  saveBusy = (async () => {
+    while (slug && !st.conflict && asHasPending(st)) {
+      saveAgain = false;
+      await doSave();
+      if (st.error && !saveAgain) break;      // failed save: hand back; the draft stays put until the next edit
+    }
+  })();
+  saveBusy.finally(() => { saveBusy = null; });
+  return saveBusy;
+}
+async function doSave() {
+  const requestSlug = slug;
+  const snap = asSnapshot(st);
+  st.error = null;
+  let updated;
+  try { updated = await api(`/api/p/${requestSlug}/save`, asBody(snap, snap.structure || proj.scenes)); }
+  catch (e) {
+    if (asStale(st, requestSlug)) return;
+    if (e.status === 409 && e.payload && e.payload.project) {
+      asConflict(st, e.payload.fields, e.payload.project.rev);
+      const fields = (e.payload.fields || []).join(', ');
+      const mine = confirm('The film changed while you were editing' + (fields ? ' (' + fields + ')' : '') +
+        '. Your draft is kept. OK keeps your draft and overwrites the server copy; Cancel discards your draft and reloads the server copy.');
+      if (asStale(st, requestSlug)) return;
+      const rev = asResolveConflict(st, mine);
+      if (rev !== null) st.rev = rev;                       // Keep mine: the loop below resends on the new rev
+      else { proj = e.payload.project; viewToken++; document.activeElement.blur(); draw(true); flash('Reloaded the saved copy'); }  // the draft is gone: repaint the field the user typed in
+      return;
+    }
+    st.error = e;
+    flash('Not saved: ' + e.message, true);
+    return;
+  }
+  if (asStale(st, requestSlug)) return;
+  asAck(st, snap);
+  if (typeof updated.rev === 'number') st.rev = updated.rev;
+  flash(asHasPending(st) ? 'Saving…' : 'Saved');
+  viewToken++;                                             // this acked view beats any poll still in flight
+  await refresh(!!snap.structure);
+}
+async function flushEdits() {   // dependent actions await this; it rejects unless every edit landed
+  clearTimeout(saveTimer);
+  for (;;) {
+    if (saveBusy) { await saveBusy; continue; }
+    if (st.conflict || !asHasPending(st) || st.error) break;   // a failed save is the caller's decision, not a retry storm
+    await pump();
+  }
+  if (st.conflict) throw new Error('not saved: the film changed while you were editing — pick Reload or Keep mine first');
+  if (asHasPending(st)) throw new Error('not saved: ' + (st.error ? st.error.message : 'the save failed') + ' — your draft is still here; fix it and retry');
+}
+$('pTitle').oninput = e => markDirty(null, 'title', e.target.value);
+$('pBible').oninput = e => markDirty(null, 'bible', e.target.value);
+$('pMusicBrief').oninput = e => markDirty(null, 'music_brief', e.target.value);
+$('pNotes').oninput = e => markDirty(null, 'notes', e.target.value);
+$('pTitleCardText').oninput = $('pTitleCardSecs').oninput = () => cardChanged('title_card');
+$('pEndCardText').oninput = $('pEndCardSecs').oninput = () => cardChanged('end_card');
+function cardChanged(which) {
+  const text = which === 'title_card' ? $('pTitleCardText') : $('pEndCardText');
+  const secs = which === 'title_card' ? $('pTitleCardSecs') : $('pEndCardSecs');
+  if (which === 'title_card') markDirty(null, 'title_card', cardValue(text, secs)); else markDirty(null, 'end_card', cardValue(text, secs));
+}
+function cardValue(text, secs) { return text.value ? {text: text.value, seconds: +secs.value || 3} : null; }
+
+function buildScene(s) {
+  const id = s.id;
+  const input = (key, attrs, tag = 'input') => {
+    const x = el(tag, {...attrs, 'data-k': key});
+    x.oninput = () => markDirty(id, key, key === 'seconds' ? +x.value : x.value);
+    if (tag === 'select') x.onchange = x.oninput;
+    return x;
+  };
+  const connect = input('connect', {}, 'select');
+  connect.append(el('option', {value: 'cut'}, 'Cut (new shot)'), el('option', {value: 'continue'}, '↪ Continue'));
+  const transition = input('transition', {}, 'select');
+  transition.append(el('option', {value: 'cut'}, 'Cut'), el('option', {value: 'crossfade'}, 'Crossfade'), el('option', {value: 'dip'}, 'Dip to black'));
+  const card = el('div', {class: 'scene', id: 'scene-' + id},
+    el('div', {class: 'scene-head'},
+      el('span', {class: 'num', 'data-k': 'num'}),
+      input('title', {type: 'text'}),
+      input('seconds', {type: 'number', min: 4, max: 15}),
+      connect,
+      transition,
+      el('span', {},
+        el('button', {class: 'btn ghost small', title: 'Move up', onclick: () => move(id, -1)}, '↑'), ' ',
+        el('button', {class: 'btn ghost small', title: 'Move down', onclick: () => move(id, 1)}, '↓'), ' ',
+        el('button', {class: 'btn ghost small', title: 'Delete scene', onclick: () => remove(id)}, '✕'))),
+    el('div', {style: 'margin-top:8px'}, input('action', {rows: 3, placeholder: 'What happens in this scene (shot, action, sound, dialogue)…'}, 'textarea')),
+    el('div', {class: 'flags', 'data-k': 'flags'}),   // validity badges; execution state stays in [data-k=job]
+    el('details', {'data-k': 'details'},
+      el('summary', {}, 'H3 prompt ', el('span', {class: 'badge', 'data-k': 'mode'}), ' ', el('span', {class: 'badge', 'data-k': 'check'})),
+      input('prompt', {rows: 12, class: 'mono', placeholder: 'Click "Write prompt", or paste your own.'}, 'textarea')),
+    el('details', {'data-k': 'hist'}, el('summary', {'data-k': 'histSum'}), el('div', {'data-k': 'histList'})),
+    el('div', {class: 'row'},
+      el('button', {class: 'btn ghost small', 'data-k': 'bPrompt', onclick: () => scenePrompt(id)}, 'Write prompt'),
+      el('button', {class: 'btn small', 'data-k': 'bDraft', onclick: () => sceneAct('render', {scene: id, preset: 'draft'})}, 'Draft'),
+      el('button', {class: 'btn ghost small', 'data-k': 'bReroll', onclick: () => sceneReroll(id)}, '🎲 Re-roll'),
+      el('select', {'data-k': 'vCount', title: 'How many variants', style: 'width:auto'}, el('option', {value: '2'}, '×2'), el('option', {value: '3', selected: ''}, '×3'), el('option', {value: '4'}, '×4'), el('option', {value: '5'}, '×5'), el('option', {value: '6'}, '×6')),
+      el('button', {class: 'btn ghost small', 'data-k': 'bVariants', title: 'Render several Drafts with new seeds', onclick: () => sceneAct('variants', {scene: id, n: +card.querySelector('[data-k=vCount]').value})}, 'Draft variants'),
+      el('button', {class: 'btn ghost small', 'data-k': 'bFinal', onclick: () => sceneAct('render', {scene: id, preset: 'final'})}, 'Final'),
+      el('button', {class: 'btn ghost small', 'data-k': 'bEnhance', onclick: () => sceneAct('enhance', {scene: id})}, '✨ Enhance ★'),
+      el('span', {class: 'status', 'data-k': 'sStatus'})),
+    el('div', {class: 'job', 'data-k': 'job'}),
+    el('div', {class: 'takes', 'data-k': 'takes'}));
+  return card;
+}
+function q(card, k) { return card.querySelector(`[data-k="${k}"]`); }
+function historyTitle(n) { return 'History (' + n + ')'; }
+function historyText(h) { const flat = h.prompt.replace(/\s+/g, ' ').trim(); return h.source + ' · ' + new Date(h.time * 1000).toLocaleTimeString() + ' · ' + (flat.length > 80 ? flat.slice(0, 80) + '…' : flat); }
+function historyRows(hs) { return hs.map((h, i) => ({index: i, source: h.source, text: historyText(h)})).reverse(); }
+function checkLabel(c) { if (!c) return ''; if (c.final_failures && c.final_failures.length) return 'still failing: ' + c.final_failures.join(', '); return c.retried ? 'fixed on retry' : 'checked'; }
+function updateScene(s, i) {
+  const card = document.getElementById('scene-' + s.id); if (!card) return;
+  q(card, 'num').textContent = `${i + 1}`;
+  setIfIdle(q(card, 'title'), s.title, 'title', s.id);
+  setIfIdle(q(card, 'seconds'), s.seconds, 'seconds', s.id);
+  setIfIdle(q(card, 'connect'), s.connect, 'connect', s.id);
+  q(card, 'connect').disabled = i === 0;
+  setIfIdle(q(card, 'transition'), s.transition, 'transition', s.id);
+  q(card, 'transition').disabled = i === 0;
+  setIfIdle(q(card, 'action'), s.action, 'action', s.id);
+  setIfIdle(q(card, 'prompt'), s.prompt, 'prompt', s.id);
+  q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
+  const ck = q(card, 'check'); ck.textContent = checkLabel(s.prompt_check); ck.hidden = !s.prompt_check; ck.classList.toggle('err', !!(s.prompt_check && s.prompt_check.final_failures.length)); ck.title = s.prompt_check && s.prompt_check.first_failures.length ? 'first reply failed: ' + s.prompt_check.first_failures.join(', ') : '';
+  const hs = s.history || []; q(card, 'hist').hidden = !hs.length; q(card, 'histSum').textContent = historyTitle(hs.length); const hl = q(card, 'histList'), hsig = hs.map(x => x.time).join('|'); if (hl.dataset.sig !== hsig) { hl.dataset.sig = hsig; hl.replaceChildren(); historyRows(hs).forEach(row => hl.append(el('div', {class: 'row'}, el('span', {class: 'badge'}, row.source), el('span', {style: 'flex:1'}, row.text), el('button', {class: 'btn ghost small', onclick: () => sceneAct('restore_prompt', {scene: s.id, index: row.index})}, 'Restore')))); }
+  updateFlags(card, s, i);   // redrawn only when the derived validity data changed (see FLAG_LABEL)
+  const job = s.job, running = job && !job.done;
+  ['bPrompt', 'bDraft', 'bReroll', 'bVariants', 'vCount', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
+  q(card, 'bEnhance').hidden = !s.takes.length;
+  // job progress
+  const jb = q(card, 'job'); jb.replaceChildren();
+  if (job && (running || job.error)) {
+    const chips = el('div', {class: 'stagechips'});
+    job.stages.forEach(st => chips.append(el('span', {class: 'chip ' + st.state},
+      `${st.label}${st.state === 'active' && st.max ? ` ${st.value}/${st.max}` : ''}${st.seconds != null ? ` · ${fmt(st.seconds)}` : ''}`)));
+    jb.append(chips);
+    if (job.error) jb.append(el('div', {class: 'err'}, job.error));
+  }
+  // takes: rebuild only when the take set or the resolved choice moves. An open Details panel,
+  // its fetched provenance and any playback survive polls whose signature is unchanged; a rebuild
+  // restores the panel from takeOpen/takeData instead of refetching it.
+  const tk = q(card, 'takes');
+  const sig = s.takes.map(t => t.run + (t.final ? 'F' : '') +
+              (t.run === s.chosen ? (s.selection === 'explicit' ? '*' : 'a') : '')).join('|');
+  if (tk.dataset.sig !== sig) {
+    tk.dataset.sig = sig; tk.replaceChildren();
+    [...s.takes].reverse().forEach(t => tk.append(buildTake(t, s)));
+  }
+}
+
+// Validity badges, straight from the derived scene.status (project.py scene_status): each flag
+// reading 'changed' is a DIRECTLY outdated scene and gets a text badge; a continuation also carries
+// a de-emphasised "would be affected" badge for its upstream scene, which claims nothing is wrong
+// yet. Execution state (running/failed/...) is job state and lives apart, in [data-k=job].
+const FLAG_LABEL = {prompt_changed: 'prompt changed', refs_changed: 'references changed',
+                    settings_changed: 'settings changed', continuity_outdated: 'continuity outdated',
+                    instructions_changed: 'instructions changed'};
+function updateFlags(card, s, i) {
+  const box = q(card, 'flags'); if (!box || !s.status) return;
+  const prev = i > 0 && s.connect === 'continue' ? proj.scenes[i - 1] : null;
+  const dtext = prev && prev.status ? (prev.status.downstream_of.find(d => d.id === s.id) || {}).text : null;
+  const sig = JSON.stringify([s.status.provenance, s.status.outdated,
+                              s.status.outdated.map(f => (s.status.flags[f] || {}).reason || ''),
+                              prev ? (prev.title || prev.id) + '\u0000' + (dtext || '') : '']);
+  if (box.dataset.sig === sig) return;   // a poll with identical data touches nothing
+  box.dataset.sig = sig; box.replaceChildren();
+  for (const f of s.status.outdated) {
+    const fl = s.status.flags[f] || {};
+    box.append(el('span', {class: 'badge stale', title: (fl.text || '') + (fl.reason ? ' — ' + fl.reason : '')},
+                  FLAG_LABEL[f] || f));
+  }
+  if (s.status.provenance === 'legacy')
+    box.append(el('span', {class: 'badge soft',
+      title: 'This take predates generation records: what it was generated with was never saved, so it can be neither shown nor checked. Nothing was invented to fill the gap.'},
+      'legacy - provenance unavailable'));
+  if (prev)
+    box.append(el('span', {class: 'badge soft',
+      title: dtext || `This scene starts from a frame of "${prev.title || prev.id}". Nothing is wrong with this scene unless its own badges say so.`,
+      }, `would be affected if ${prev.title || prev.id} is regenerated`));
+}
+// Take Details: fetched lazily (GET /api/p/<slug>/take?id=...) the first time a panel opens, once
+// per take. Open state and the payload live outside the DOM so a take-strip rebuild restores them
+// without a new request.
+let takeOpen = new Set(), takeData = new Map();
+function buildTake(t, s) {
+  const chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
+  const ref = t.id || t.run;
+  const box = el('div', {class: 'take-details', 'data-k': 'tDetails'});
+  const btn = el('button', {class: 'btn ghost small', 'data-k': 'bDetails', 'data-t': ref,
+    'aria-expanded': String(takeOpen.has(ref)), title: 'Show exactly what this take was generated with',
+    onclick: () => {
+      takeOpen.has(ref) ? takeOpen.delete(ref) : takeOpen.add(ref);
+      btn.setAttribute('aria-expanded', String(takeOpen.has(ref)));
+      box.hidden = !takeOpen.has(ref);
+      if (takeOpen.has(ref)) loadTakeDetails(box, ref);
+    }}, 'Details');
+  box.hidden = !takeOpen.has(ref);
+  if (takeOpen.has(ref)) loadTakeDetails(box, ref);   // strip rebuilt while open: restore from cache
+  return el('div', {class: 'take' + (chosen ? ' chosen' : '')},
+    el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'none'}),  // nothing preloaded eagerly (M3 tunes this)
+    el('div', {class: 'meta'},
+      el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'final 1080p48' : t.preset),
+      el('span', {class: 'badge'}, 'seed ' + t.seed),
+      ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
+      ...(chosen ? [el('span', {class: 'badge'}, explicit ? '★ chosen' : 'latest (auto)')] : []),
+      el('button', {'data-k': 'bChoose', 'data-t': ref, class: 'btn small ' + (chosen && explicit ? '' : 'ghost'),
+        title: 'Use this take for the animatic, Finals and Continue scenes',
+        onclick: () => sceneAct('star', {scene: s.id, take: ref})},
+        chosen && explicit ? '★ chosen' : '☆ choose'),
+      ...(chosen && explicit ? [el('button', {'data-k': 'bAuto', class: 'btn ghost small',
+        title: 'Stop pinning this take; the scene follows its latest take again',
+        onclick: () => sceneAct('star', {scene: s.id, auto: true})}, 'auto')] : [])),
+    btn, box);
+}
+async function loadTakeDetails(box, ref) {
+  if (takeData.has(ref)) return renderTakeDetails(box, takeData.get(ref));
+  if (box.dataset.loading) return;
+  box.dataset.loading = '1'; box.textContent = 'Loading…';
+  const requestSlug = slug;
+  try {
+    const d = await api(`/api/p/${requestSlug}/take?id=${encodeURIComponent(ref)}`);
+    if (slug !== requestSlug) return;                        // the film was switched while it was out
+    takeData.set(ref, d);
+    renderTakeDetails(box, d);
+  } catch (e) { if (slug === requestSlug) box.textContent = 'Details unavailable: ' + e.message; }
+  finally { if (slug === requestSlug) delete box.dataset.loading; }
+}
+function renderTakeDetails(box, d) {
+  box.replaceChildren();
+  const t = d.take, sn = d.snapshot || {}, rows = [];
+  const row = (k, v) => { if (v !== null && v !== undefined && v !== '') rows.push(el('div', {class: 'trow'}, el('b', {}, k), el('span', {}, String(v)))); };
+  if (d.provenance === 'legacy') {
+    box.append(el('div', {class: 'hint'}, 'Legacy: provenance unavailable — this take predates generation records, so what it was made with was never saved. Only what its own record holds is shown; nothing is invented.'));
+    row('run', t.run);
+    row('made', new Date(t.created * 1000).toLocaleString());
+    row('preset', t.preset); row('seed', t.seed);
+    if (t.source_take) row('from take', sourceTakeText(t.source_take));
+    row('video', t.path); row('enhanced', t.final);
+    box.append(...rows);
+    return;
+  }
+  row('provenance', 'recorded');
+  row('take id', t.id || sn.take_id); row('job id', t.job || sn.id); row('run', t.run);
+  row('preset', t.preset || sn.preset); row('mode', sn.mode);
+  row('seed', sn.seed ?? t.seed);                            // seed 0 renders as 0, never dropped
+  row('size', sn.width != null ? `${sn.width}x${sn.height}` : '');
+  row('seconds', sn.seconds);
+  row('two-pass', sn.two_pass ? 'on' : 'off');
+  const refs = [...(sn.refs || [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  refs.forEach((r, n) => row(`ref ${n + 1}`, `${r.name} sha ${String(r.sha256).slice(0, 12)}`));
+  if (sn.first) row('start frame', `${sn.first.name} sha ${String(sn.first.sha256).slice(0, 12)}`);
+  if (t.source_take) row('source take', sourceTakeText(t.source_take));
+  row('loras', (sn.loras || []).map(l => `${l.name} ×${l.strength}${l.enabled ? '' : ' (off)'}`).join(', ') || 'none');
+  row('finishing', sn.finishing ? Object.entries(sn.finishing).map(([k, v]) => `${k}=${v}`).join(' · ') : 'none');
+  if (sn.director && (sn.director.model || sn.director.skill_revision))
+    row('director', `${sn.director.model || '?'} · skill ${sn.director.skill_revision || '?'}`);
+  row('prompt', sn.prompt);
+  row('video', t.path); row('enhanced', t.final);
+  box.append(...rows);
+}
+function sourceTakeText(st) {
+  return `take ${st.take || '?'} (scene ${st.scene || '?'}, run ${st.run || '?'})` +
+         (st.frame_sha256 ? `, frame sha ${String(st.frame_sha256).slice(0, 12)}` : '');
+}
+
+/* ---------- actions ---------- */
+async function run(action, body) {   // every action that reads the film: saved state must be current first
+  try { await flushEdits();
+        const requestSlug = slug;
+        const p = await api(`/api/p/${requestSlug}/${action}`, body);
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; draw(); }
+  catch (e) { flash(e.message, true); }
+}
+async function runNow(action, body) {  // bookkeeping that never reads the editor: no flush needed
+  try { const requestSlug = slug;
+        const p = await api(`/api/p/${requestSlug}/${action}`, body);
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; draw(); }
+  catch (e) { flash(e.message, true); }
+}
+async function sceneAct(action, body) { await run(action, body); }
+async function sceneReroll(id) { await run('reroll', {scene: id}); await run('render', {scene: id, preset: 'draft'}); }
+async function scenePrompt(id) {
+  const card = document.getElementById('scene-' + id), stat = q(card, 'sStatus'), t0 = Date.now();
+  const tick = setInterval(() => stat.textContent = `Directing… ${Math.round((Date.now() - t0) / 1000)} s`, 500);
+  const requestSlug = slug;
+  try {
+    await flushEdits();                                     // the director reads the saved title and action
+    const draft = (st.pendingScene[id] || {}).prompt;       // typed while the flush was in flight
+    const p = await api(`/api/p/${requestSlug}/prompt`, {scene: id});
+    clearInterval(tick);
+    if (asStale(st, requestSlug)) return;
+    if (draft && (st.pendingScene[id] || {}).prompt && st.pendingScene[id].prompt.gen === draft.gen)
+      delete st.pendingScene[id].prompt;                    // typing during the call itself stays pending
+    proj = p; viewToken++; stat.textContent = ''; q(card, 'details').open = true; draw();
+  }
+  catch (e) { clearInterval(tick); stat.textContent = e.message; stat.classList.add('err'); }
+}
+async function replan() {
+  const logline = prompt('Re-plan the storyboard from this logline. This REPLACES all scenes, prompts and takes in the project.', proj.logline);
+  if (logline === null) return;
+  try { await flushEdits(); } catch (e) { flash(e.message, true); return; }
+  flash('Re-planning… ~20 s');
+  const requestSlug = slug;
+  try { const p = await api(`/api/p/${requestSlug}/storyboard`, {logline});
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; flash('Re-planned'); draw(true); } catch (e) { flash(e.message, true); }
+}
+function move(id, dir) {
+  const list = [...(st.structure || proj.scenes)], i = list.findIndex(s => s.id === id), j = i + dir;
+  if (j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]]; save(list);
+}
+function remove(id) {
+  const s = (st.structure || proj.scenes).find(x => x.id === id);
+  if (!confirm(`Delete scene "${s.title}"? Its takes stay on disk but leave the project.`)) return;
+  delete st.pendingScene[id];                                // the scene is gone; its unsaved fields are moot
+  save((st.structure || proj.scenes).filter(x => x.id !== id));
+}
+$('freeSpace').onclick = async () => {
+  const btn = $('freeSpace');
+  btn.disabled = true;
+  try {
+    await flushEdits();                                      // prune acts on the saved star choices
+    const requestSlug = slug;
+    const plan = (await api(`/api/p/${requestSlug}/prune`, {apply: false})).prune;
+    if (!plan.candidates.length) { flash('Nothing to free.'); return; }
+    if (!confirm(`Move ${plan.candidates.length} unchosen take(s) (${formatBytes(plan.total_bytes)}) to the output folder's .director-trash? Files are moved, not deleted. Starred takes stay.`)) return;
+    const r = await api(`/api/p/${requestSlug}/prune`, {apply: true});
+    if (asStale(st, requestSlug)) return;
+    proj = r; viewToken++; draw();
+    flash(`Moved ${r.prune.moved} take(s) (${formatBytes(r.prune.bytes)}) to .director-trash`);
+  } catch (e) { flash(e.message, true); }
+  finally { btn.disabled = busy(); }
+};
+
+$('addScene').onclick = () => save([...(st.structure || proj.scenes), {id: 'new-' + Date.now()}]);
+$('musicBtn').onclick = async () => {
+  const f = await pick('audio/*'); if (!f) return;
+  flash('Uploading music…');
+  const requestSlug = slug;
+  try { const p = await api(`/api/p/${requestSlug}/music`, {file: await readFile(f)});
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; flash('Music added'); draw(); } catch (e) { flash(e.message, true); }
+};
+$('batchCancel').onclick = () => runNow('cancel', {});   // cancelling a job does not read the editor
+$('musicRemove').onclick = async () => {
+  const requestSlug = slug;
+  try { const p = await api(`/api/p/${requestSlug}/music`, {remove: true});
+        if (asStale(st, requestSlug)) return;
+        proj = p; viewToken++; draw(); } catch (e) { flash(e.message, true); }
+};
+
+loadList().then(() => { if (slug) open(slug); });
+loadLibrary().catch(() => {});
+</script>
+</body>
+</html>

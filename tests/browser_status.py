@@ -205,7 +205,7 @@ def main():
             try: urllib.request.urlopen(f'http://127.0.0.1:{WEB_PORT}/api/projects', timeout=1); break
             except Exception: time.sleep(0.2)
         d = Driver()
-        d.go(f'http://127.0.0.1:{WEB_PORT}/project?p={slug}')
+        d.go(f'http://127.0.0.1:{WEB_PORT}/project/classic?p={slug}')
         d.wait("document.querySelectorAll('#scenes .scene').length === 4")
         d.js(HOOK)
 
