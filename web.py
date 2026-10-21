@@ -5,8 +5,8 @@ Idea + images -> H3 prompt (director.direct) -> render on the FreeVideo ComfyUI 
 optional Final finishing (enhance.py: SeedVR2 upscale, RIFE 48 fps, CRF 16). Every render is a
 job with visible stages and live progress (ComfyUI websocket). Stdlib only.
 """
-import argparse, base64, json, os, re, socket, struct, threading, time, urllib.error, urllib.parse, \
-    urllib.request, uuid
+import argparse, base64, json, os, re, socket, struct, subprocess, threading, time, urllib.error, \
+    urllib.parse, urllib.request, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -1143,6 +1143,46 @@ def take_view(slug, take_ref):
                     'snapshot': snapshot, 'result': result}
     raise projects.ProjectError('no such take')
 
+def poster_view(slug, take_ref):
+    """GET /api/p/<slug>/poster?id=...: a poster frame (JPG) for a take, made on demand with ffmpeg
+    and cached under the project's frames/ (gitignored, like the continuity frames). Resolves the
+    take exactly like take_view (id or run dir), prefers the project's own media copy so a poster
+    works after the ComfyUI output folder has been pruned. Raises ProjectError when the take or a
+    source video is unknown, RuntimeError when ffmpeg cannot produce a frame."""
+    p = projects.load(slug)
+    take = None
+    for s in p['scenes']:
+        for t in s.get('takes') or []:
+            if take_ref in (t.get('id'), t.get('run')):
+                take = t
+                break
+        if take:
+            break
+    if not take:
+        raise projects.ProjectError('no such take')
+    candidates = []
+    for key in ('final_url', 'url'):                    # enhanced take first: its own frame
+        url = take.get(key)
+        if isinstance(url, str) and url.startswith('/files/'):
+            parts = urllib.parse.unquote(url[len('/files/'):]).split('/')
+            if len(parts) >= 2 and all(x and x not in ('.', '..') for x in parts):
+                candidates.append(projects.path(*parts))
+    for key in ('final', 'path'):                       # then the run-dir files themselves
+        if take.get(key):
+            candidates.append(Path(take[key]))
+    video = next((f for f in candidates if f.is_file()), None)
+    if video is None:
+        raise projects.ProjectError('take video unavailable')
+    safe = re.sub(r'[^A-Za-z0-9_.-]', '_', take.get('id') or Path(str(take['run']).rstrip('/')).name)
+    out = projects.path(slug, 'frames', f'{safe}-poster.jpg')
+    if not out.is_file():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', '1', '-i', str(video),
+                            '-frames:v', '1', '-vf', 'scale=320:-1', '-q:v', '6', str(out)])
+        if r.returncode != 0 or not out.is_file():
+            raise RuntimeError(f'ffmpeg poster frame failed for {video.name}')
+    return out
+
 def library_view(c):
     """Library reply row: the stored fields plus the URL for the character's picture."""
     return dict(c, image_url=f'/library-files/{c["slug"]}/{c["image"]}' if c.get('image') else None)
@@ -1286,6 +1326,12 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts) == 5 and parts[4] == 'take':
                     tid = (urllib.parse.parse_qs(query).get('id') or [''])[0]
                     return self.reply(200, take_view(parts[3], tid))
+                if len(parts) == 5 and parts[4] == 'poster':
+                    pid = (urllib.parse.parse_qs(query).get('id') or [''])[0]
+                    try:
+                        return serve_file(self, poster_view(parts[3], pid))
+                    except RuntimeError as e:                # ffmpeg could not make a frame
+                        return self.reply(502, {'error': str(e)})
                 return self.reply(404, {'error': 'not found'})
             if self.path.startswith('/files/'):
                 parts = urllib.parse.unquote(self.path[len('/files/'):]).split('/')
