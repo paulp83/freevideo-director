@@ -5,7 +5,7 @@ between build_graph and the POST /prompt changes none of them.
     python3 -m unittest discover tests      (from the repo root)
 
 ComfyUI is the local stub of tests/test_provenance.py; the swap happens inside a wrapped
-submit_prompt, i.e. in the exact window the claim is about.
+submit_tracked, i.e. in the exact window the claim is about.
 """
 import json, shutil, sys, tempfile, threading, unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -36,11 +36,12 @@ class StubComfy(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        raw = self.rfile.read(int(self.headers.get('Content-Length', 0)))
         if self.path == '/upload/image':
             return self._json(200, {'name': 'upload.png', 'subfolder': 'director'})
         if self.path == '/prompt':
-            return self._json(200, {'prompt_id': 'stub-1'})
+            sent = json.loads(raw or b'{}').get('prompt_id')   # echo it, like real ComfyUI
+            return self._json(200, {'prompt_id': sent or 'stub-1'})
         self._json(200, {})
 
     def do_GET(self):
@@ -67,7 +68,7 @@ class ImmutableInputs(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp(prefix='director-imm-'))
         self.saved = (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
                       web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS,
-                      web.submit_prompt, web.upload)
+                      web.submit_tracked, web.upload)
         projects.ROOT = self.root
         stats.FILE = self.root / 'stats.json'
         jobs_db.FILE = self.root / 'jobs.db'
@@ -89,7 +90,7 @@ class ImmutableInputs(unittest.TestCase):
     def tearDown(self):
         (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
          web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS,
-         web.submit_prompt, web.upload) = self.saved
+         web.submit_tracked, web.upload) = self.saved
         shutil.rmtree(self.root, ignore_errors=True)
 
     def test_every_input_freezes_before_the_submit(self):
@@ -100,16 +101,16 @@ class ImmutableInputs(unittest.TestCase):
             uploads.append((name, bytes(raw)))
             return real_upload(name, raw)
 
-        def spy_submit(payload):
+        def spy_submit(job, payload):
             # rewrite the film -- prompt, seconds, seed and the ref pictures on disk -- inside the
             # window between graph capture and the POST /prompt
             projects.mutate(self.slug, lambda p: p['scenes'][0].update(prompt=SWAP, seconds=13, seed=7654321))
             for f in (projects.ROOT / self.slug / 'refs').iterdir():
                 f.write_bytes(b'replaced')
             captured['body'] = json.dumps(payload)
-            return real_submit(payload)
+            return real_submit(job, payload)
 
-        web.upload, web.submit_prompt = spy_upload, spy_submit
+        web.upload, web.submit_tracked = spy_upload, spy_submit
         job = web.new_job('render-draft', web.scene_stage_keys('render-draft'), project=self.slug, scene=self.sid)
         web.run_job(job, web.render_job, self.slug, self.sid, 'draft')
         self.assertEqual(job['state'], 'finished', job['error'])

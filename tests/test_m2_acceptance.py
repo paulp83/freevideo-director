@@ -458,7 +458,7 @@ class Acceptance(unittest.TestCase):
             self.assertEqual(snap['refs'][n]['sha256'], hashlib.sha256(raw_bytes).hexdigest())
             self.assertEqual(snap['refs'][n]['bytes'], len(raw_bytes))
             self.assertEqual(projects.path(self.slug, snap['refs'][n]['store']).read_bytes(), raw_bytes)
-        self.assertEqual(result['prompt_ids'], [f'stub-{Runs.prompts.index(used["graph"]) + 1}'])
+        self.assertEqual(result['prompt_ids'], [used['graph']['prompt_id']])   # the id WE supplied came back
         self.assertEqual((result['run'], result['path'], result['take_id']), (run, str(Path(run) / 'take.mp4'), tid))
 
         code, raw = self.get(f'/api/p/{self.slug}/take?id={cont}')

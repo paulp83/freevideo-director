@@ -38,12 +38,13 @@ class StubComfy(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        raw = self.rfile.read(int(self.headers.get('Content-Length', 0)))
         if self.path == '/upload/image':
             return self._json(200, {'name': f'upload-{StubComfy.submits}.png', 'subfolder': 'director'})
         if self.path == '/prompt':
             StubComfy.submits += 1
-            return self._json(200, {'prompt_id': f'stub-{StubComfy.submits}'})
+            sent = json.loads(raw or b'{}').get('prompt_id')   # echo it, like real ComfyUI
+            return self._json(200, {'prompt_id': sent or f'stub-{StubComfy.submits}'})
         self._json(200, {})
 
     def do_GET(self):

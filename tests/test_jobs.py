@@ -21,10 +21,11 @@ import web
 
 
 class StubComfy(BaseHTTPRequestHandler):
-    mode = 'complete'      # complete | hang | drop | reject | gate (POST /prompt stalls) | gone | interrupted | failed
+    mode = 'complete'      # complete | hang | drop | reject | reject_prompt_id | mismatch | gate (POST /prompt stalls) | gone | interrupted | failed
     submits = 0
     pending, running_ids = [], []        # the stub's /queue model
     deletes, interrupts = [], 0
+    bodies, prompt_ids = [], []          # every POST /prompt body, and the ids the stub handed back
     honour_delete = True                 # False: /queue delete is ignored (cancel cannot be confirmed)
     at_prompt, gate = threading.Event(), threading.Event()
 
@@ -32,6 +33,7 @@ class StubComfy(BaseHTTPRequestHandler):
     def reset(cls):
         cls.pending, cls.running_ids = [], []
         cls.deletes, cls.interrupts, cls.honour_delete = [], 0, True
+        cls.bodies, cls.prompt_ids = [], []
         cls.at_prompt, cls.gate = threading.Event(), threading.Event()
 
     def log_message(self, fmt, *args):
@@ -54,6 +56,11 @@ class StubComfy(BaseHTTPRequestHandler):
         raw = self.rfile.read(int(self.headers.get('Content-Length', 0)))
         if self.path == '/prompt':
             StubComfy.at_prompt.set()
+            body = json.loads(raw or b'{}')
+            StubComfy.bodies.append(body)
+            if StubComfy.mode == 'reject_prompt_id' and 'prompt_id' in body:
+                return self._json(400, {'error': {'type': 'invalid_prompt_id',
+                                                  'message': 'unexpected prompt_id field'}})
             if StubComfy.mode == 'gate':
                 StubComfy.gate.wait(10)        # the cancel may land while this POST is in flight
             StubComfy.submits += 1
@@ -62,7 +69,11 @@ class StubComfy(BaseHTTPRequestHandler):
             if StubComfy.mode == 'drop':
                 self.connection.close()        # answer nothing: the submit stays ambiguous
                 return
-            pid = f'stub-{StubComfy.submits}'
+            if StubComfy.mode == 'mismatch':
+                pid = f'server-{StubComfy.submits}'    # answers an id it made up, not ours
+            else:
+                pid = body.get('prompt_id') or f'stub-{StubComfy.submits}'   # echo: like real ComfyUI
+            StubComfy.prompt_ids.append(pid)
             if StubComfy.mode == 'gate':
                 StubComfy.pending.append(pid)
             elif StubComfy.mode == 'hang':
@@ -236,8 +247,8 @@ class Jobs(unittest.TestCase):
         StubComfy.gate.set()
         t.join(15)
         self.assertEqual(job['state'], 'cancelled')
-        self.assertEqual(job['prompt_ids'], ['stub-1'])
-        self.assertEqual(StubComfy.deletes, [['stub-1']])   # exactly our prompt is dropped from the queue
+        self.assertEqual(job['prompt_ids'], StubComfy.prompt_ids)
+        self.assertEqual(StubComfy.deletes, [sorted(job['prompt_ids'])])   # exactly our prompt is dropped
         self.assertEqual(StubComfy.interrupts, 0)           # none of ours was executing: never interrupt
         self.assertEqual(StubComfy.running_ids, ['someone-else'])   # the unrelated prompt is untouched
 
@@ -415,7 +426,7 @@ class Jobs(unittest.TestCase):
         with self.assertRaises(web.Busy) as caught:
             web.reserve(second, [key])
         self.assertEqual(caught.exception.args[0],
-                         f'busy: job {job["id"]} state unknown - ComfyUI prompt stub-1 may still be executing')
+                         f'busy: job {job["id"]} state unknown - ComfyUI prompt {job["prompt_ids"][0]} may still be executing')
         dup = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
         with self.assertRaises(web.Busy):                       # reuse is off the table: the holder is dead to us
             web.reserve(dup, [key], reuse=True)
@@ -471,7 +482,7 @@ class Jobs(unittest.TestCase):
         web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
         row = next(r for r in web.queue_view()['jobs'] if r['id'] == job['id'])
         self.assertEqual(row['state'], 'unknown')
-        self.assertEqual(row['prompt_ids'], ['stub-1'])
+        self.assertEqual(row['prompt_ids'], job['prompt_ids'])   # our submitted id survives in the row
         self.assertIn('may still be executing', row['error'])
         self.assertIsNone(row['resolved'])
 
@@ -639,7 +650,7 @@ class Jobs(unittest.TestCase):
         job = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug, scene=self.ids[0])
         finals = []
         web.run_job(job, web.enhance_job, run, finals.append)
-        self.assertEqual(job['state'], 'finished')
+        self.assertEqual(job['state'], 'finished', job['error'])
         self.assertIn('/take.mp4', job['final']['path'])
         self.assertEqual(finals, [job['final']])
         self.assertEqual(web.RESERVES, {})

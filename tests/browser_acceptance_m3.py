@@ -81,7 +81,7 @@ class Stub(BaseHTTPRequestHandler):
                 self.connection.close()          # unanswered submit: the real unknown-job path
                 return
             body = json.loads(raw)
-            pid = f'stub-{len(POSTS)}'
+            pid = body.get('prompt_id') or f'stub-{len(POSTS)}'   # echo: like real ComfyUI
             STATE['running'].append(pid)
             return self._send({'prompt_id': pid, 'node_errors': {}})
         if self.path == '/upload/image':
@@ -421,8 +421,8 @@ def main():
         graph = json.loads(prompt_rec)
         gen = [n for n in graph.get('prompt', {}).values() if n.get('class_type') == 'FreeVideoGenerate']
         gi = gen[0]['inputs'] if len(gen) == 1 else {}
-        check('flow 6: /prompt body = graph + client_id; graph node counts match one generate node',
-              set(graph) == {'prompt', 'client_id'} and len(gen) == 1, json.dumps(sorted(graph)))
+        check('flow 6: /prompt body = graph + client_id + our prompt_id; graph node counts match one generate node',
+              set(graph) == {'prompt', 'client_id', 'prompt_id'} and len(gen) == 1, json.dumps(sorted(graph)))
         check('flow 6: generate inputs are exactly the disk scene (prompt text, rerolled seed, size, steps)',
               gi.get('text') == sc4d['prompt'] and gi.get('seed') == sc4d['seed'] and gi.get('seed') != 42
               and gi.get('width') == 1344 and gi.get('height') == 768 and gi.get('seconds') == 5.0

@@ -44,17 +44,71 @@ def comfy(path, data=None, headers=None):
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
 
-def submit_prompt(payload):
-    """POST /prompt exactly once. An explicit ComfyUI refusal fails the job; a dropped or
-    unparseable answer is ambiguous -- resubmitting could render the take twice, so callers
-    must treat it as unknown (raises AmbiguousSubmit)."""
+class ComfyReject(RuntimeError):
+    """ComfyUI answered POST /prompt with an explicit HTTP refusal."""
+
+
+class UntrackableSubmit(Exception):
+    """The durable store refused the pre-submit record; the submit must NOT go out."""
+
+
+def _post_prompt(payload):
     body = json.dumps({**payload, 'client_id': CLIENT_ID}).encode()
     try:
-        return comfy('/prompt', body, {'Content-Type': 'application/json'})['prompt_id']
+        return comfy('/prompt', body, {'Content-Type': 'application/json'})
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f'ComfyUI rejected the job: {e.read().decode(errors="replace")[:800]}')
+        raise ComfyReject(e.read().decode(errors='replace')[:800])
     except (OSError, ValueError, KeyError) as e:
         raise AmbiguousSubmit(str(e) or type(e).__name__)
+
+
+def _correlation_rejected(detail):
+    """True when ComfyUI refuses our `prompt_id` field itself, not the graph: the only refusal
+    where posting again is safe, because a field-level rejection accepted nothing."""
+    d = detail.lower()
+    return 'prompt_id' in d or 'unexpected' in d or ('invalid' in d and 'prompt' in d)
+
+
+def submit_tracked(job, payload):
+    """POST /prompt exactly once, with a prompt id WE supplied -- and record that id durably
+    BEFORE the POST leaves. That pre-submit record is the point: if the answer is lost, the job
+    turns unknown holding OUR id, and reconciliation can later ask ComfyUI whether that exact
+    prompt ran. If the store cannot write the record the submit refuses (UntrackableSubmit):
+    untrackable work must not happen. A backend that rejects the id field gets exactly one
+    uncorrelated retry; an answer naming a different id is ambiguous (the answer does not
+    describe our prompt), and the recorded id is replaced by the one the answer names."""
+    pid = str(uuid.uuid4())
+    job['prompt_ids'].append(pid)
+    job['correlation'] = 'client-supplied'
+    try:
+        jobs_db.record_submit(job, pid, **db_kwargs(job))
+    except jobs_db.JobDbError as e:
+        job['prompt_ids'].pop()
+        job['correlation'] = None
+        raise UntrackableSubmit('the job store refused the pre-submit record '
+                                f'({e}); refusing to submit work we could not track')
+    try:
+        answer = _post_prompt({**payload, 'prompt_id': pid})
+    except ComfyReject as e:
+        if not _correlation_rejected(str(e)):
+            job['prompt_ids'].pop()          # an explicit refusal of the graph accepted nothing
+            raise RuntimeError(f'ComfyUI rejected the job: {e}')
+        print(f'jobs: {COMFY} refused the client-supplied prompt_id; submitting uncorrelated once')
+        job['prompt_ids'].pop()
+        job['correlation'] = 'server-assigned'
+        answer = _post_prompt(payload)       # the fallback happens exactly once
+        pid = None
+    got = answer.get('prompt_id') if isinstance(answer, dict) else None
+    if not got:
+        raise AmbiguousSubmit('ComfyUI answered /prompt without a prompt_id;')
+    if pid is not None and got != pid:
+        job['correlation'] = 'server-assigned'
+        job['prompt_ids'][-1] = got          # keep the id the answer actually names
+        raise AmbiguousSubmit(f'ComfyUI answered with prompt id {got}, not the {pid} we submitted;')
+    if not job['prompt_ids'] or job['prompt_ids'][-1] != got:
+        job['prompt_ids'].append(got)        # the server-assigned path records here
+    db_note(job)                             # the row keeps 'submitting' until a later transition
+    return got
 
 
 def upload(name, raw):
@@ -572,8 +626,7 @@ def do_render(job, graph, finish_after, on_take=None, on_final=None):
     same job. `graph` is the exact workflow the job's snapshot recorded before submission."""
     st = activate(job, 'render')
     check_cancel(job)                                  # a cancel after prep never submits
-    pid = submit_prompt({'prompt': graph})
-    job['prompt_ids'].append(pid)
+    pid = submit_tracked(job, {'prompt': graph})
     check_cancel(job)                                  # a cancel that landed mid-submit still counts
     transition(job, 'submitted')
     transition(job, 'running')
@@ -607,8 +660,7 @@ def enhance_stages(job, run, on_final=None):
     try:
         source, _ = enhance.intermediate(run_dir, workdir)
         enhance.free_gpu()
-        pid = submit_prompt({'prompt': enhance.graph(source, run_dir.name)})
-        job['prompt_ids'].append(pid)
+        pid = submit_tracked(job, {'prompt': enhance.graph(source, run_dir.name)})
         check_cancel(job)                              # a cancel that landed mid-submit still counts
         if job['state'] == 'preparing':                # enhance-only job; a render chain is already running
             transition(job, 'submitted')

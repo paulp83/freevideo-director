@@ -13,6 +13,7 @@ import sqlite3
 import tempfile
 import threading
 import time
+import uuid
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -277,6 +278,7 @@ class WriteThrough(unittest.TestCase):
         self.assertEqual(row['holds'], [list(h) for h in job['holds']])  # holds round-trip exactly
         self.assertTrue(any(h[0] == 'scene' for h in row['holds']))      # the scene stays claimed
         self.assertIsNone(row['workdir'])
+        self.assertEqual(row['prompt_ids'], job['prompt_ids'])  # our id was durable BEFORE the POST
 
     def test_queue_board_shows_durable_verdicts_after_a_restart(self):
         job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
@@ -319,6 +321,89 @@ class WriteThrough(unittest.TestCase):
             self.assertEqual([r['id'] for r in web.queue_view()['jobs']], [])
         finally:
             jobs_db.FILE = saved
+
+    def test_gate_holds_a_row_in_submitting_with_our_own_uuid(self):
+        test_jobs.StubComfy.mode = 'gate'                # the POST stalls inside the stub
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        t = threading.Thread(target=web.run_job, args=(job, web.render_job, self.slug, self.ids[0], 'draft'))
+        t.start()
+        try:
+            self.assertTrue(test_jobs.StubComfy.at_prompt.wait(10))   # the POST is in flight
+            row = jobs_db.get(job['id'])
+            self.assertEqual(row['state'], 'submitting')              # visible ONLY in the store
+            self.assertEqual(job['state'], 'preparing')               # the live view still says preparing
+            [pid] = row['prompt_ids']
+            self.assertEqual(str(uuid.UUID(pid)), pid)                # a canonical client-supplied uuid
+            self.assertEqual(row['correlation'], 'client-supplied')
+            self.assertEqual(test_jobs.StubComfy.bodies[0]['client_id'], web.CLIENT_ID)
+        finally:
+            test_jobs.StubComfy.mode = 'complete'
+            test_jobs.StubComfy.gate.set()
+            t.join(30)
+        self.assertEqual(job['state'], 'finished')
+
+    def test_the_echoed_id_is_ours_and_the_row_says_client_supplied(self):
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'finished')
+        sent = test_jobs.StubComfy.bodies[0]['prompt_id']             # what the POST actually carried
+        self.assertEqual(str(uuid.UUID(sent)), sent)
+        row = jobs_db.get(job['id'])
+        self.assertEqual(row['prompt_ids'], [sent])
+        self.assertEqual(row['correlation'], 'client-supplied')
+
+    def test_a_backend_refusing_the_field_gets_exactly_one_uncorrelated_retry(self):
+        test_jobs.StubComfy.mode = 'reject_prompt_id'
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'finished', job['error'])
+        self.assertEqual(test_jobs.StubComfy.submits, 1)              # the refusal accepted nothing
+        self.assertEqual(len(test_jobs.StubComfy.bodies), 2)          # one correlated, one not
+        self.assertNotIn('prompt_id', test_jobs.StubComfy.bodies[1])  # the retry is uncorrelated
+        row = jobs_db.get(job['id'])
+        self.assertEqual(row['correlation'], 'server-assigned')
+        self.assertEqual(row['prompt_ids'], job['prompt_ids'])
+
+    def test_an_answer_naming_a_foreign_id_turns_the_job_unknown_never_resubmitted(self):
+        test_jobs.StubComfy.mode = 'mismatch'
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'unknown')                     # the answer is not about our prompt
+        self.assertEqual(test_jobs.StubComfy.submits, 1)              # NEVER resubmitted
+        self.assertEqual(job['prompt_ids'], ['server-1'])             # keep the id the ANSWER names
+        row = jobs_db.get(job['id'])
+        self.assertEqual(row['state'], 'unknown')
+        self.assertEqual(row['correlation'], 'server-assigned')
+        self.assertEqual(row['prompt_ids'], ['server-1'])
+
+    def test_a_store_refusing_the_pre_submit_record_refuses_the_submit(self):
+        saved, jobs_db.FILE = jobs_db.FILE, self.root    # a directory: the pre-submit write cannot land
+        try:
+            job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+            web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        finally:
+            jobs_db.FILE = saved
+        self.assertEqual(job['state'], 'failed')
+        self.assertIn('could not track', job['error'])
+        self.assertEqual(test_jobs.StubComfy.submits, 0)              # ZERO work went out untracked
+        self.assertEqual(job['prompt_ids'], [])
+
+    def test_a_later_write_failure_logs_and_the_job_finishes_anyway(self):
+        real_save, calls = jobs_db.save, {'n': 0}
+
+        def flaky(job, **kw):
+            calls['n'] += 1
+            if calls['n'] == 4:                         # a write AFTER the submit answer
+                raise jobs_db.JobDbError('disk on fire')
+            return real_save(job, **kw)
+        jobs_db.save = flaky
+        try:
+            job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+            web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        finally:
+            jobs_db.save = real_save
+        self.assertEqual(job['state'], 'finished')                    # a bookkeeping miss never kills a job
+        self.assertEqual(jobs_db.get(job['id'])['state'], 'finished') # and the row catches up
 
 
 if __name__ == '__main__':
