@@ -796,6 +796,8 @@ def check_keeps_reserved(slug, data):
     """A save that would drop scenes holding live jobs is refused outright: server-side,
     so it cannot be bypassed. A removal slipping in after this check only means the job's
     own scene_index fails it cleanly when it next touches the project."""
+    if data.get('scenes_delta'):
+        return                                       # a delta patch cannot remove scenes at all
     if isinstance(data.get('scenes'), list):
         keep = {str(s.get('id')) for s in data['scenes'] if isinstance(s, dict)}
         gone = sorted(reserved_scenes(slug) - keep)

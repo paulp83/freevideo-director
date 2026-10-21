@@ -197,6 +197,50 @@ class Revisions(unittest.TestCase):
         self.assertEqual(stored['title'], 'from tab B')
         self.assertTrue(all(p is not None for p in seen))
 
+    # ---------------------------------------------------------------- delta saves
+
+    def test_delta_save_keeps_takes_recorded_server_side(self):
+        base = self.rev()
+        self.record_take(self.ids[0])                    # a render finished while the user typed
+        taken_rev = self.rev()
+        saved, fields = projects.save_editor(self.slug, {'scenes': [{'id': self.ids[0], 'action': 'my new action'}],
+                                                         'scenes_delta': True}, base)
+        self.assertEqual(fields, [])                     # a take must not collide with an action edit
+        self.assertEqual(saved['rev'], taken_rev + 1)
+        stored = projects.load(self.slug)
+        self.assertEqual(stored['scenes'][0]['action'], 'my new action')
+        self.assertEqual(len(stored['scenes'][0]['takes']), 1, 'Keep mine must never drop a recorded take')
+
+    def test_delta_only_touches_the_scenes_it_names(self):
+        base = self.rev()
+        projects.mutate(self.slug, lambda p: p['scenes'][1].__setitem__('action', 'rewritten on the server'))
+        saved, fields = projects.save_editor(self.slug, {'scenes': [{'id': self.ids[0], 'seconds': 9}],
+                                                         'scenes_delta': True}, base)
+        self.assertEqual(fields, [], 'a clean scene the patch never mentions cannot conflict')
+        stored = projects.load(self.slug)
+        self.assertEqual(stored['scenes'][0]['seconds'], 9)
+        self.assertEqual(stored['scenes'][1]['action'], 'rewritten on the server')
+
+    def test_delta_naming_a_deleted_scene_conflicts(self):
+        base = self.rev()
+        projects.mutate(self.slug, lambda p: p['scenes'].pop())
+        saved, fields = projects.save_editor(self.slug, {'scenes': [{'id': self.ids[1], 'action': 'mine'}],
+                                                         'scenes_delta': True}, base)
+        self.assertIsNone(saved)
+        self.assertIn('scenes', fields)                  # refused; the page offers Reload
+
+    def test_delta_applies_the_first_scene_rules_and_prompt_history(self):
+        base = self.rev()
+        saved, fields = projects.save_editor(self.slug, {'scenes': [
+            {'id': self.ids[0], 'connect': 'continue', 'transition': 'crossfade', 'prompt': 'a first prompt'}],
+            'scenes_delta': True}, base)
+        self.assertEqual(fields, [])
+        s = saved['scenes'][0]
+        self.assertEqual(s['connect'], 'cut')            # scene one never connects or transitions
+        self.assertEqual(s['transition'], 'cut')
+        self.assertEqual(s['prompt'], 'a first prompt')
+        self.assertTrue(s['history'], 'a delta prompt edit keeps history')
+
 
 if __name__ == '__main__':
     unittest.main()

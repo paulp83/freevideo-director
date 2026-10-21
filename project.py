@@ -140,11 +140,17 @@ def patch_fields(data):
 
 def conflicts(project, base_rev, data):
     """The patch fields that changed after base_rev; empty when the patch merges cleanly. A base_rev that
-    is not an integer in 0..rev is a conflict whatever the patch touches."""
+    is not an integer in 0..rev is a conflict whatever the patch touches. A delta patch naming a scene the
+    server no longer has conflicts on `scenes` even when the id-list stamp alone would say otherwise."""
     if type(base_rev) is not int or not 0 <= base_rev <= rev_of(project):
         return sorted(patch_fields(data)) or ['rev']
     key_revs = project.get('key_revs') or {}
-    return sorted(f for f in patch_fields(data) if int(key_revs.get(f, 0)) > base_rev)
+    fields = {f for f in patch_fields(data) if int(key_revs.get(f, 0)) > base_rev}
+    if data.get('scenes_delta'):
+        alive = {s.get('id') for s in project.get('scenes', [])}
+        if any(isinstance(item, dict) and item.get('id') not in alive for item in data.get('scenes') or []):
+            fields.add('scenes')
+    return sorted(fields)
 
 
 def save_editor(slug, data, base_rev=None):
@@ -317,8 +323,41 @@ def apply_storyboard(project, plan):
     return project
 
 
+def _apply_scene_fields(scene, item, i):
+    """Apply one scene patch's fields under the editor's rules; `i` is the scene's position, which decides
+    whether a continue connection or a non-cut transition survives (the first scene never has either)."""
+    for key in ('title', 'action'):
+        if key in item:
+            scene[key] = str(item[key])
+    if 'prompt' in item:
+        new = str(item['prompt'])
+        if new != scene.get('prompt', ''):
+            if scene.get('prompt', '').strip() and not scene.get('history'):
+                push_history(scene, scene['prompt'], scene.get('prompt_mode'), 'edit')
+            h = scene.get('history') or []
+            if new.strip() and h and h[-1].get('live') and h[-1]['prompt'] == scene.get('prompt', '') and time.time() - h[-1]['time'] < EDIT_WINDOW:
+                h[-1].update(prompt=new, time=time.time())  # still typing, update the entry in place
+            else:
+                last = h[-1] if h else None
+                push_history(scene, new, scene.get('prompt_mode'), 'edit')
+                if scene.get('history') and scene['history'][-1] is not last:
+                    scene['history'][-1]['live'] = True
+            scene['prompt'] = new
+            scene['prompt_check'] = None
+    if 'seconds' in item:
+        scene['seconds'] = min(15, max(4, int(item['seconds'])))
+    if 'connect' in item:
+        scene['connect'] = 'continue' if i and item['connect'] == 'continue' else 'cut'
+    if 'transition' in item:
+        if item['transition'] not in TRANSITIONS:
+            raise ProjectError('transition must be cut, crossfade or dip')
+        scene['transition'] = item['transition'] if i else 'cut'
+
+
 def update_from_editor(project, data):
-    """Apply the editor's fields; scenes are matched by id, so takes survive reorder/edits."""
+    """Apply the editor's fields; scenes are matched by id, so takes survive reorder/edits. A
+    `scenes_delta` patch carries only the scenes the user touched: everything else on the server --
+    recorded takes included -- is left exactly as it is."""
     for key in ('title', 'bible', 'music_brief'):
         if key in data:
             project[key] = str(data[key])
@@ -327,40 +366,23 @@ def update_from_editor(project, data):
             raise ProjectError('notes must be text of at most 1000 characters')
         project['notes'] = data['notes']
     if 'scenes' in data:
-        old = {s['id']: s for s in project['scenes']}
-        scenes = []
-        for i, item in enumerate(data['scenes']):
-            scene = old.get(item.get('id')) or new_scene()
-            for key in ('title', 'action'):
-                if key in item:
-                    scene[key] = str(item[key])
-            if 'prompt' in item:
-                new = str(item['prompt'])
-                if new != scene.get('prompt', ''):
-                    if scene.get('prompt', '').strip() and not scene.get('history'):
-                        push_history(scene, scene['prompt'], scene.get('prompt_mode'), 'edit')
-                    h = scene.get('history') or []
-                    if new.strip() and h and h[-1].get('live') and h[-1]['prompt'] == scene.get('prompt', '') and time.time() - h[-1]['time'] < EDIT_WINDOW:
-                        h[-1].update(prompt=new, time=time.time())  # still typing, update the entry in place
-                    else:
-                        last = h[-1] if h else None
-                        push_history(scene, new, scene.get('prompt_mode'), 'edit')
-                        if scene.get('history') and scene['history'][-1] is not last:
-                            scene['history'][-1]['live'] = True
-                    scene['prompt'] = new
-                    scene['prompt_check'] = None
-            if 'seconds' in item:
-                scene['seconds'] = min(15, max(4, int(item['seconds'])))
-            if 'connect' in item:
-                scene['connect'] = 'continue' if i and item['connect'] == 'continue' else 'cut'
-            if 'transition' in item:
-                if item['transition'] not in TRANSITIONS:
-                    raise ProjectError('transition must be cut, crossfade or dip')
-                scene['transition'] = item['transition'] if i else 'cut'
-            scenes.append(scene)
-        if scenes:
-            scenes[0]['connect'] = 'cut'
-        project['scenes'] = scenes
+        if data.get('scenes_delta'):
+            old = {s['id']: s for s in project['scenes']}
+            for item in data['scenes']:
+                scene = old.get(item.get('id'))
+                if scene is None:
+                    raise ProjectError('a patched scene no longer exists on the server')   # races lose to conflicts()
+                pos = next(k for k, s in enumerate(project['scenes']) if s is scene)
+                _apply_scene_fields(scene, item, pos)
+        else:
+            old = {s['id']: s for s in project['scenes']}
+            scenes = []
+            for i, item in enumerate(data['scenes']):
+                scenes.append(old.get(item.get('id')) or new_scene())
+                _apply_scene_fields(scenes[-1], item, i)
+            if scenes:
+                scenes[0]['connect'] = 'cut'
+            project['scenes'] = scenes
     for key in ('title_card', 'end_card'):
         if key in data:
             project[key] = _clean_card(data[key])

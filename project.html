@@ -293,11 +293,21 @@ function asSnapshot(st) {   // what one request sends: values plus the generatio
 function asBody(snap, sceneList) {                  // the JSON patch for one save request
   const body = {};
   for (const [k, r] of Object.entries(snap.top)) body[k] = r.value;
-  body.scenes = sceneList.map(s => {
-    const patch = {id: s.id};
-    for (const [k, r] of Object.entries(snap.scenes[s.id] || {})) patch[k] = r.value;
-    return patch;
-  });
+  if (snap.structure) {                             // reorder/add/delete: the complete list decides
+    body.scenes = sceneList.map(s => {
+      const patch = {id: s.id};
+      for (const [k, r] of Object.entries(snap.scenes[s.id] || {})) patch[k] = r.value;
+      return patch;
+    });
+  } else {                                          // field edits only: send just the dirty scenes, so a
+    const dirty = [];                               // take recorded server-side is never silently overwritten
+    for (const [sid, fields] of Object.entries(snap.scenes)) {
+      const patch = {id: sid};
+      for (const [k, r] of Object.entries(fields)) patch[k] = r.value;
+      dirty.push(patch);
+    }
+    if (dirty.length) { body.scenes = dirty; body.scenes_delta = true; }
+  }
   body.base_rev = snap.rev;
   return body;
 }

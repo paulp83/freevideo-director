@@ -29,7 +29,7 @@ function ok(name) { checks++; console.log('ok - ' + name); }
   ok('asMark bumps the generation per field and keeps the latest value');
 }
 
-// --- request body: values only, no gen leak, base_rev carried, id-only patches ---
+// --- request body: dirty-only delta for field edits, full list for structure, no gen leak ---
 {
   const st = core.autosaveState('film');
   st.rev = 7;
@@ -39,9 +39,17 @@ function ok(name) { checks++; console.log('ok - ' + name); }
   const body = core.asBody(core.asSnapshot(st), scenes);
   assert.strictEqual(body.title, 'two');
   assert.strictEqual(body.base_rev, 7);
-  assert.deepStrictEqual(body.scenes, [{id: 's1', seconds: 9}, {id: 's2'}]);
+  assert.deepStrictEqual(body.scenes, [{id: 's1', seconds: 9}], 'clean scenes are not sent at all');
+  assert.strictEqual(body.scenes_delta, true, 'a field-only save is a delta patch');
   assert.strictEqual(JSON.stringify(body).includes('gen'), false);
-  ok('asBody sends values plus base_rev and per-scene id-only patches');
+  ok('asBody sends a dirty-scenes-only delta with values, base_rev and no gen leak');
+
+  // structure pending: the complete list goes out, unflagged, carrying every scene
+  st.structure = [{id: 's2'}, {id: 's1'}];
+  const full = core.asBody(core.asSnapshot(st), st.structure);
+  assert.deepStrictEqual(full.scenes, [{id: 's2'}, {id: 's1', seconds: 9}]);
+  assert.strictEqual(full.scenes_delta, undefined, 'a structure save is the whole list');
+  ok('asBody sends the full scene list when the structure changed');
 }
 
 // --- ack: gen-matched clears, a newer edit made during the request survives ---
