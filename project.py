@@ -30,6 +30,11 @@ XFADE = config.value('xfade_seconds')
 DIP = config.value('dip_seconds')
 FFMPEG = config.value('ffmpeg')
 FFPROBE = config.value('ffprobe')
+# the ffmpeg filters assemble() and _make_card() emit; readiness.py checks an ffmpeg that
+# answers for all of them before offering Enhance / Final / Export
+EXPORT_FILTERS = frozenset('''acrossfade afade aformat anullsrc apad aresample asplit atrim
+                            concat drawtext fade format fps loudnorm scale setsar settb
+                            sidechaincompress volume xfade'''.split())
 FILM_FPS = config.value('film_export_fps')      # the encoder flags assemble() runs with;
 PREVIEW_FPS = config.value('preview_export_fps')  # cut_plan() reports them in the export spec
 FILM_CRF = config.value('film_export_crf')

@@ -15,6 +15,7 @@ import director
 import jobs_db
 import library
 import notify
+import readiness
 import stats
 import enhance
 import project as projects
@@ -153,11 +154,14 @@ def clean_loras(items):
     return out
 
 
-def build_graph(prompt, seconds, width, height, seed, refs, first, last, two_pass=True, loras=None):
+def build_graph(prompt, seconds, width, height, seed, refs, first, last, two_pass=True,
+                loras=None, uploader=None):
     """Build the exact FreeVideo workflow for `prompt` (refs are <Picture N> files; first/last are
     frames), upload the pictures, and return the dict WITHOUT submitting it: the caller records the
     graph in the job's snapshot first, then submits it as-is. `loras` is a [{name, strength, enabled}]
-    list; disabled rows ride along in the node so the graph matches the project."""
+    list; disabled rows ride along in the node so the graph matches the project. `uploader` replaces
+    the upload step (readiness probes the node set with a graph that must not reach ComfyUI)."""
+    upload_picture = uploader or upload
     gen = {'text': prompt, 'width': width, 'height': height, 'seconds': float(seconds), 'seed': seed,
            'two_pass': two_pass, 'base_steps': 8, 'refine_steps': 2, 'force_regenerate': False}
     wf, n = {}, 0
@@ -167,7 +171,7 @@ def build_graph(prompt, seconds, width, height, seed, refs, first, last, two_pas
         wf[str(n)] = {'class_type': class_type, 'inputs': inputs}
         return str(n)
     def load(name, raw):
-        return node('LoadImage', {'image': upload(name, raw)})
+        return node('LoadImage', {'image': upload_picture(name, raw)})
     previous = None
     for name, raw in refs:
         inputs = {'image': [load(name, raw), 0]}
@@ -185,6 +189,18 @@ def build_graph(prompt, seconds, width, height, seed, refs, first, last, two_pas
         gen['loras'] = [node('FreeVideoLoRAStack', {'adapters': json.dumps(active)}), 0]
     node('FreeVideoGenerate', gen)
     return wf
+
+
+def _probe_render_graph():
+    """readiness derives the render node classes from the graph build_graph() really submits;
+    the throwaway uploader keeps the probe from uploading anything to ComfyUI."""
+    return build_graph('readiness probe', 10, 64, 64, 0, [('probe.png', b'x')],
+                       ('probe-first.png', b'x'), ('probe-last.png', b'x'), True,
+                       [{'name': 'probe.safetensors', 'strength': 1.0, 'enabled': True}],
+                       uploader=lambda name, raw: name)
+
+
+readiness.set_render_graph(_probe_render_graph)
 
 
 def render_result(prompt_id):
@@ -2116,6 +2132,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, queue_view())
         if self.path == '/api/config':
             return self.reply(200, config.api_view())
+        if self.path == '/api/readiness':
+            return self.reply(200, readiness.report())
+        route = self.path.partition('?')[0]
+        if route.startswith('/api/readiness/'):
+            name = route[len('/api/readiness/'):]
+            if name in readiness.CHECKS:
+                query = self.path.partition('?')[2]
+                refresh = (urllib.parse.parse_qs(query).get('refresh') or [''])[0] == '1'
+                return self.reply(200, readiness.check(name, refresh=refresh))
         if self.path == '/queue':
             return self.reply(200, (HERE / 'queue.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/api/loras':
@@ -2183,6 +2208,7 @@ class Handler(BaseHTTPRequestHandler):
             first = decode(data['first']) if data.get('first') else None
             last = decode(data['last']) if data.get('last') else None
             if self.path == '/api/direct':
+                readiness.require('prompt')
                 start = time.time()
                 report = director.direct_report(
                     data.get('idea', ''), float(data.get('seconds', 10)), [r for _, r in refs],
@@ -2198,6 +2224,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(400, {'error': 'unknown preset'})
                 if not str(data.get('prompt', '')).strip():
                     return self.reply(400, {'error': 'write or paste a prompt first'})
+                readiness.require('video')
+                if preset['finish']:
+                    readiness.require('finishing')
                 loras = clean_loras(data.get('loras'))
                 job = new_job(data.get('preset', 'draft'),
                               ['render', 'upscale', 'smooth', 'encode'] if preset['finish'] else ['render'])
@@ -2223,6 +2252,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(404, {'error': 'no such character'})
                 return self.reply(200, library.delete(slug))
             if self.path == '/api/projects':
+                readiness.require('prompt')            # creating a film plans its storyboard
                 created = projects.create(data.get('name', ''), data.get('logline', ''), data.get('seconds', 30),
                                           data.get('aspect', '16:9'), refs, data.get('characters', ()))
                 plan, model = director.storyboard(created['logline'], created['seconds'],
@@ -2233,6 +2263,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/p/'):
                 return self.project_action(self.path.split('/')[3], self.path.split('/')[4], data)
             if self.path == '/api/enhance':
+                readiness.require('finishing')
                 run = data.get('run')
                 if not run:
                     return self.reply(400, {'error': 'which take? (run directory missing)'})
@@ -2317,6 +2348,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(400, {'error': str(e)})
         except Busy as e:
             self.reply(409, {'error': str(e)})                # reserved scene/take, or a refused prerequisite
+        except readiness.NotReady as e:
+            self.reply(503, {'error': str(e)})         # the check names the missing items
         except (KeyError, ValueError, TypeError) as e:
             self.reply(400, {'error': f'bad request: {e}'})
         except FileNotFoundError as e:
@@ -2335,6 +2368,7 @@ class Handler(BaseHTTPRequestHandler):
                                         'project': project_view(slug)})
             return self.reply(200, project)
         if action == 'storyboard':                     # re-plan: replaces scenes (the page confirms first)
+            readiness.require('prompt')
             check_no_live_jobs(slug, 're-plan over a running job')
             p = projects.load(slug)
             plan, _ = director.storyboard(data.get('logline') or p['logline'], p['seconds'],
@@ -2346,9 +2380,11 @@ class Handler(BaseHTTPRequestHandler):
         if action == 'prompt':                         # one scene, synchronous (~15 s)
             if str(data.get('scene')) in reserved_scenes(slug):
                 raise Busy(f"busy: scene {data.get('scene')} has a running job")
+            readiness.require('prompt')                # availability only once the scene is free
             write_scene_prompt(slug, data['scene'])
             return self.reply(200, project_view(slug))
         if action == 'prompts':
+            readiness.require('prompt')
             batch_prompts(slug, bool(data.get('only_missing', True)))
             return self.reply(200, project_view(slug))
         if action == 'render':                         # one scene
@@ -2358,6 +2394,9 @@ class Handler(BaseHTTPRequestHandler):
             p = projects.load(slug)
             i = projects.scene_index(p, data['scene'])   # unknown scene -> 400 before anything is accepted
             validate_scene_media(p, i)
+            readiness.require('video')
+            if PRESETS[preset]['finish']:
+                readiness.require('finishing')
             kind = 'render-' + preset
             job = new_job(kind, scene_stage_keys(kind), project=slug, scene=data['scene'])
             try:
@@ -2370,6 +2409,7 @@ class Handler(BaseHTTPRequestHandler):
         if action == 'enhance':                        # one scene's take
             p = projects.load(slug)
             scene = p['scenes'][projects.scene_index(p, data['scene'])]
+            readiness.require('finishing')             # after the request checks, like render
             run = data.get('run') or (projects.chosen(scene) or {}).get('run')
             if not run:
                 raise projects.ProjectError('this scene has no take yet')
@@ -2417,6 +2457,7 @@ class Handler(BaseHTTPRequestHandler):
                 projects.mutate(slug, lambda p: projects.set_explicit(p, data['scene'], ref))
             return self.reply(200, project_view(slug))
         if action == 'variants':                      # one batch of n Draft renders of a single scene
+            readiness.require('video')
             n = data.get('n')
             if type(n) is not int or not 2 <= n <= 6:
                 raise projects.ProjectError('n must be an integer from 2 to 6')
@@ -2424,12 +2465,15 @@ class Handler(BaseHTTPRequestHandler):
             batch_variants(slug, data['scene'], n)
             return self.reply(200, project_view(slug))
         if action == 'draft-all':
+            readiness.require('video')
             batch_render(slug, 'draft', bool(data.get('only_missing', True)))
             return self.reply(200, project_view(slug))
         if action == 'enhance-starred':
+            readiness.require('finishing')
             batch_enhance(slug)
             return self.reply(200, project_view(slug))
         if action == 'assemble':
+            readiness.require('finishing')
             if data.get('kind') not in ('animatic', 'film'):
                 raise projects.ProjectError('kind must be animatic or film')
             batch_assemble(slug, data['kind'])
