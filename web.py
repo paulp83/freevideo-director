@@ -18,7 +18,7 @@ import enhance
 import project as projects
 
 HERE = Path(__file__).resolve().parent
-COMFY = 'http://127.0.0.1:8190'
+COMFY = enhance.COMFY                          # COMFY_URL overrides; enhance.py reads the same env
 COMFY_OUTPUT = enhance.COMFY_ROOT / 'output'
 CLIENT_ID = 'freevideo-director'
 
@@ -43,6 +43,18 @@ def comfy(path, data=None, headers=None):
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
 
+def submit_prompt(payload):
+    """POST /prompt exactly once. An explicit ComfyUI refusal fails the job; a dropped or
+    unparseable answer is ambiguous -- resubmitting could render the take twice, so callers
+    must treat it as unknown (raises AmbiguousSubmit)."""
+    body = json.dumps({**payload, 'client_id': CLIENT_ID}).encode()
+    try:
+        return comfy('/prompt', body, {'Content-Type': 'application/json'})['prompt_id']
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f'ComfyUI rejected the job: {e.read().decode(errors="replace")[:800]}')
+    except (OSError, ValueError, KeyError) as e:
+        raise AmbiguousSubmit(str(e) or type(e).__name__)
+
 
 def upload(name, raw):
     """Upload image bytes to ComfyUI's input folder; return the stored name."""
@@ -51,7 +63,16 @@ def upload(name, raw):
             f'--{boundary}\r\nContent-Disposition: form-data; name="subfolder"\r\n\r\ndirector\r\n'
             f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="{name}"\r\n'
             'Content-Type: application/octet-stream\r\n\r\n').encode() + raw + f'\r\n--{boundary}--\r\n'.encode()
-    r = comfy('/upload/image', body, {'Content-Type': f'multipart/form-data; boundary={boundary}'})
+    for attempt in range(3):                   # same-name overwrite=true upload is idempotent
+        try:
+            r = comfy('/upload/image', body, {'Content-Type': f'multipart/form-data; boundary={boundary}'})
+            break
+        except urllib.error.HTTPError:
+            raise                              # ComfyUI answered: retrying is pointless
+        except OSError:
+            if attempt == 2:
+                raise
+            time.sleep(1.0)
     return f"{r['subfolder']}/{r['name']}" if r.get('subfolder') else r['name']
 
 
@@ -106,8 +127,7 @@ def queue(prompt, seconds, width, height, seed, refs, first, last, two_pass=True
     if any(item['enabled'] for item in active):
         gen['loras'] = [node('FreeVideoLoRAStack', {'adapters': json.dumps(active)}), 0]
     node('FreeVideoGenerate', gen)
-    body = json.dumps({'prompt': wf, 'client_id': CLIENT_ID}).encode()
-    return comfy('/prompt', body, {'Content-Type': 'application/json'})['prompt_id']
+    return submit_prompt({'prompt': wf})
 
 
 def render_result(prompt_id):
@@ -194,16 +214,129 @@ def ws_listen():
 
 
 # ---------------------------------------------------------------- jobs
+# A job reaches a terminal state (`TERMINAL`) whatever its worker does, including raising
+# before the first stage activates. Legal moves only -- see TRANSITIONS.
+
+JOB_TIMEOUT = float(os.environ.get('JOB_TIMEOUT') or 4 * 3600)   # wall-clock cap per job
+POLL_SECONDS = 1.5                                              # worker poll sleep
+
+TERMINAL = ('finished', 'failed', 'cancelled', 'unknown')
+TRANSITIONS = {'queued': {'preparing', 'failed', 'cancelled', 'unknown'},
+               'preparing': {'submitted', 'finished', 'failed', 'cancelled', 'unknown'},
+               'submitted': {'running', 'finished', 'failed', 'cancelled', 'unknown'},
+               'running': {'finished', 'failed', 'cancelled', 'unknown'}}
+
+
+class Cancelled(Exception):
+    pass
+
+
+class AmbiguousSubmit(Exception):
+    """The /prompt POST never got a clean answer; retrying could double-render."""
+
+
+class JobTimeout(Exception):
+    pass
+
+
+class Busy(Exception):
+    """Pre-acceptance refusal: the scene/take is reserved or a prerequisite is missing."""
+
 
 JOBS = {}
 LOCK = threading.Lock()
 
+# One live job may hold each scene (renders, and enhances of its chosen take) and each take
+# (enhances). Maps reserve key -> job id; RESERVE_LOCK makes claim-or-refuse atomic.
+RESERVES = {}
+RESERVE_LOCK = threading.Lock()
 
-def new_job(kind, stage_keys):
+SCENE_JOB = {}          # (slug, scene id) -> latest job id, for the film view's `job` field
+
+
+def scene_key(slug, scene_id):
+    return ('scene', slug, str(scene_id))
+
+
+def take_key(run):
+    return ('take', str(run))
+
+
+def live_owner(job_id):
+    job = JOBS.get(job_id)
+    return job if job and not job['done'] else None
+
+
+def reserve(job, keys, reuse=False):
+    """Claim `keys` for `job` (all-or-nothing). Refuse while another live job holds one:
+    return that job when `reuse`, else raise Busy. Replaces the unlocked SCENE_JOB write."""
+    with RESERVE_LOCK:
+        for key in keys:
+            owner = live_owner(RESERVES.get(key))
+            if owner and owner['id'] != job['id']:
+                if reuse:
+                    return owner
+                what = f'scene {key[2]}' if key[0] == 'scene' else 'this take'
+                raise Busy(f'busy: {what} already has a running job')
+        for key in keys:
+            RESERVES[key] = job['id']
+            if key[0] == 'scene':
+                SCENE_JOB[(key[1], key[2])] = job['id']
+        job['holds'] = list(dict.fromkeys((job.get('holds') or []) + list(keys)))   # never drop earlier holds
+    return None
+
+
+def release(job):
+    with RESERVE_LOCK:
+        for key in job.get('holds') or []:
+            if RESERVES.get(key) == job['id']:
+                del RESERVES[key]
+        job['holds'] = []
+
+
+def reserved_scenes(slug):
+    with RESERVE_LOCK:
+        return {key[2] for key in RESERVES
+                if key[0] == 'scene' and key[1] == slug and live_owner(RESERVES[key])}
+
+
+def live_jobs(slug=None):
+    with LOCK:
+        return [j for j in JOBS.values()
+                if not j['done'] and (slug is None or j.get('project') == slug)]
+
+
+def abandon(job):
+    """Drop a never-started job (its endpoint refuses the work); releases nothing it held."""
+    with LOCK:
+        if JOBS.get(job['id']) is job and not job['done']:
+            del JOBS[job['id']]
+    job['done'] = True
+
+
+def transition(job, to):
+    """Every state change goes through here; illegal moves are programmer errors."""
+    with LOCK:
+        cur = job['state']
+        if to not in TRANSITIONS.get(cur, set()):
+            raise AssertionError(f'illegal job transition {cur} -> {to}')
+        job['state'] = to
+        if to in TERMINAL:
+            job['done'] = True
+
+
+def check_cancel(job):
+    if job['cancel']:
+        raise Cancelled()
+
+
+def new_job(kind, stage_keys, project=None, scene=None):
     job = {'id': uuid.uuid4().hex[:12], 'kind': kind, 'created': time.time(), 'error': None, 'done': False,
+           'state': 'queued', 'deadline': time.time() + JOB_TIMEOUT,
            'stages': [{'key': k, 'label': STAGES[k], 'state': 'pending', 'started': None, 'ended': None,
                        'value': 0, 'max': 0} for k in stage_keys],
-           'take': None, 'final': None, 'prompt_ids': [], 'cancel': False}
+           'take': None, 'final': None, 'prompt_ids': [], 'cancel': False,
+           'project': project, 'scene': str(scene) if scene is not None else None, 'holds': []}
     with LOCK:
         JOBS[job['id']] = job
     return job
@@ -226,77 +359,162 @@ def activate(job, key):
 
 
 def finish(job):
-    already = job['done']
+    if job['done']:
+        return
     now = time.time()
     for s in job['stages']:
         if s['state'] in ('pending', 'active'):
             s.update(state='done', ended=now, started=s['started'] or now)
-    job['done'] = True
-    if not already:                                # learn how long this kind of job takes (never breaks a job)
-        try:
-            stats.record(job['kind'], now - job['created'])
-        except Exception:
-            pass
+    try:
+        stats.record(job['kind'], now - job['created'])    # never breaks a job
+    except Exception:
+        pass
+    transition(job, 'finished')
 
 
 def fail(job, error):
+    if job['done']:
+        return
     for s in job['stages']:
         if s['state'] == 'active':
             s.update(state='error', ended=time.time())
     job['error'] = str(error)
-    job['done'] = True
+    transition(job, 'failed')
 
 
-def run_render(job, args, finish_after, on_take=None, on_final=None):
+def cancel_job(job):
+    if job['done']:
+        return
+    now = time.time()
+    for s in job['stages']:
+        if s['state'] in ('pending', 'active'):
+            s.update(state='error', ended=now, started=s['started'] or now)
+    job['error'] = 'cancelled'
+    transition(job, 'cancelled')
+
+
+def unknown(job, error):
+    """We lost track of work ComfyUI may still be running: report it, never resubmit."""
+    if job['done']:
+        return
+    for s in job['stages']:
+        if s['state'] == 'active':
+            s.update(state='error', ended=time.time())
+    job['error'] = str(error)
+    transition(job, 'unknown')
+
+
+def run_job(job, fn, *args, **kwargs):
+    """The only way a job thread starts: whatever `fn` does, the job reaches a terminal
+    state and its reservations are released."""
     try:
-        st = activate(job, 'render')
-        pid = queue(**args)
-        job['prompt_ids'].append(pid)
-        while (take := render_result(pid)) is None:
-            if job['cancel']:
-                raise RuntimeError('cancelled')
-            p = PROGRESS.get(pid, {})
-            st.update(value=p.get('value', 0), max=p.get('max', 0))
-            time.sleep(1.5)
-        job['take'] = take
-        if on_take:
-            on_take(take)
-        if finish_after:
-            run_enhance(job, take['run'], on_final)
-        else:
+        transition(job, 'preparing')
+        check_cancel(job)
+        fn(job, *args, **kwargs)
+        if not job['done']:
             finish(job)
-    except Exception as e:      # surfaced in the UI, never kills the server
+    except Cancelled:
+        cancel_job(job)
+    except (AmbiguousSubmit, JobTimeout) as e:
+        ids = ', '.join(job['prompt_ids'])
+        if ids:
+            unknown(job, f'{e} ComfyUI prompt {ids} may still be executing; the job will not be resubmitted.')
+        else:
+            unknown(job, f'{e} the submit was never answered; ComfyUI may still be executing. '
+                         'The job will not be resubmitted.')
+    except Exception as e:                 # a worker blowing up must surface, never kill the server
         fail(job, e)
+    finally:
+        if not job['done']:                # a terminal state is never skipped, not even here
+            with LOCK:
+                job['state'], job['done'] = 'failed', True
+                job['error'] = job['error'] or 'job ended without a terminal state'
+        release(job)
 
 
-def run_enhance(job, run, on_final=None):
+def poll(job, fetch, on_progress=None):
+    """Wait for `fetch()` to return, keeping the cancel and wall-clock guards hot. A run of
+    consecutive network failures aborts the job rather than spinning forever."""
+    failures = 0
+    while True:
+        check_cancel(job)
+        if time.time() > job['deadline']:
+            raise JobTimeout(f'no result within {int(job["deadline"] - job["created"])}s;')
+        try:
+            got = fetch()
+            failures = 0
+        except (OSError, ValueError):
+            failures += 1
+            if failures > 3:
+                raise
+            got = None
+        if got is not None:
+            return got
+        if on_progress:
+            on_progress()
+        time.sleep(POLL_SECONDS)
+
+
+def do_render(job, args, finish_after, on_take=None, on_final=None):
+    """Render one take; when `finish_after`, chain the enhance stages into the same job."""
+    st = activate(job, 'render')
+    check_cancel(job)                                  # a cancel after prep never submits
+    pid = queue(**args)
+    job['prompt_ids'].append(pid)
+    transition(job, 'submitted')
+    transition(job, 'running')
+
+    def progress():
+        p = PROGRESS.get(pid, {})
+        st.update(value=p.get('value', 0), max=p.get('max', 0))
+
+    take = poll(job, lambda: render_result(pid), progress)
+    job['take'] = take
+    if on_take:
+        on_take(take)
+    if finish_after:
+        enhance_stages(job, take['run'], on_final)
+
+
+def enhance_stages(job, run, on_final=None):
+    """SeedVR2 -> RIFE -> encode for `run`; `job` must already hold what it may touch."""
+    activate(job, 'upscale')
+    check_cancel(job)                                  # a cancel after prep never submits
+    run_dir = enhance.run_dir_of(run)
+    source, _ = enhance.intermediate(run_dir)
     try:
-        activate(job, 'upscale')
-        pid, run_dir = enhance.submit(run)
+        enhance.free_gpu()
+        pid = submit_prompt({'prompt': enhance.graph(source, run_dir.name)})
         job['prompt_ids'].append(pid)
+        if job['state'] == 'preparing':                # enhance-only job; a render chain is already running
+            transition(job, 'submitted')
+            transition(job, 'running')
         if job['take'] is None:
             job['take'] = {'path': str(run_dir / 'video.mp4'), 'run': str(run_dir), 'url': None}
-        while (final := enhance.result(pid)) is None:
-            if job['cancel']:
-                raise RuntimeError('cancelled')
+
+        def progress():
             p = PROGRESS.get(pid, {})
             if p.get('node') in ENHANCE_NODES:
                 st = activate(job, ENHANCE_NODES[p['node']])
                 st.update(value=p.get('value', 0), max=p.get('max', 0))
-            time.sleep(1.5)
-        job['final'] = final
-        if on_final:
-            on_final(final)
-        finish(job)
-    except Exception as e:
-        fail(job, e)
+
+        final = poll(job, lambda: enhance.result(pid), progress)
     finally:
-        enhance.cleanup_intermediate(run)         # the lossless -raw.mkv is only needed while ComfyUI reads it
+        enhance.cleanup_intermediate(run)   # the lossless -raw.mkv is only needed while ComfyUI reads it
+    job['final'] = final
+    if on_final:
+        on_final(final)
+
+
+def enhance_job(job, run, on_final=None, keys=()):
+    """Thread body for a standalone enhance: hold the take (plus the endpoint's scene key), then finish it."""
+    reserve(job, [take_key(run), *keys])
+    enhance_stages(job, run, on_final)
 
 
 def public(job):
     now = time.time()
-    out = {k: job[k] for k in ('id', 'kind', 'error', 'done', 'take', 'final')}
+    out = {k: job[k] for k in ('id', 'kind', 'error', 'done', 'state', 'take', 'final')}
     out['stages'] = [{**s, 'seconds': round((s['ended'] or now) - s['started']) if s['started'] else None}
                      for s in job['stages']]
     out['elapsed'] = round(now - job['created'])
@@ -311,7 +529,6 @@ def decode(image):
 # ---------------------------------------------------------------- film projects
 
 BATCH = {}        # slug -> {'label', 'step', 'of', 'scene', 'job', 'error', 'done', 'started'}
-SCENE_JOB = {}    # (slug, scene id) -> job id of the scene's latest render / enhance / prompt
 
 
 def _files(paths):
@@ -319,11 +536,27 @@ def _files(paths):
 
 
 def project_busy(slug):
-    """True while a batch or any registered job of this film is still running."""
+    """True while a batch or any live job of this film is still running."""
     b = BATCH.get(slug)
     if b and not b['done']:
         return True
-    return any(s == slug and jid in JOBS and not JOBS[jid]['done'] for (s, _), jid in SCENE_JOB.items())
+    return bool(live_jobs(slug))
+
+
+def check_no_live_jobs(slug, what):
+    if live_jobs(slug):
+        raise Busy(f'busy: a job is running for this film; cannot {what}')
+
+
+def check_keeps_reserved(slug, data):
+    """A save that would drop scenes holding live jobs is refused outright: server-side,
+    so it cannot be bypassed. A removal slipping in after this check only means the job's
+    own scene_index fails it cleanly when it next touches the project."""
+    if isinstance(data.get('scenes'), list):
+        keep = {str(s.get('id')) for s in data['scenes'] if isinstance(s, dict)}
+        gone = sorted(reserved_scenes(slug) - keep)
+        if gone:
+            raise Busy('busy: ' + ', '.join(f'scene {sid} has a running job' for sid in gone))
 
 
 def check_of(report):
@@ -351,19 +584,39 @@ def write_scene_prompt(slug, scene_id, think=True):
     return mode
 
 
-def render_scene(slug, scene_id, preset_name, job, variant=None):
-    """Blocking: render one scene (Draft or Final) and record the take (and final) in the project."""
+def scene_stage_keys(kind):
+    return {'render-draft': ['render'], 'render-final': ['render', 'upscale', 'smooth', 'encode'],
+            'enhance': ['upscale', 'smooth', 'encode']}[kind]
+
+
+def validate_scene_media(p, i):
+    """Reject a render whose prerequisites are missing before accepting the job, so a doomed
+    render fails with a clear 4xx instead of dying mid-job."""
+    for f in projects.ref_files(p):
+        if not f.is_file():
+            raise projects.ProjectError(f'reference picture missing: {f.name}')
+    if p['scenes'][i]['connect'] == 'continue' and i:
+        prev = projects.chosen(p['scenes'][i - 1])
+        if prev:
+            enhance.run_dir_of(prev['run'])   # raises FileNotFoundError; the handler answers 4xx
+
+
+def render_job(job, slug, scene_id, preset_name, variant=None):
+    """Thread body: render one scene (Draft or Final) and record the take (and final) in the project."""
+    reserve(job, [scene_key(slug, scene_id)])
     preset = PRESETS[preset_name]
     p = projects.load(slug)
     i = projects.scene_index(p, scene_id)
     scene = p['scenes'][i]
     if not scene['prompt'].strip():
         write_scene_prompt(slug, scene_id)
+        check_cancel(job)                      # never submit work the user already cancelled
         p = projects.load(slug)
         scene = p['scenes'][i]
     refs, first = projects.scene_media(p, i)
     prompt = projects.ensure_i2va(scene['prompt']) if first else scene['prompt']
     w, h = p['size']
+    check_cancel(job)                          # ...and not after reading media either
     args = dict(prompt=prompt, seconds=scene['seconds'], width=w, height=h, seed=scene['seed'],
                 refs=_files(refs), first=_files([first])[0] if first else None, last=None,
                 two_pass=preset['two_pass'], loras=p.get('loras'))
@@ -374,7 +627,7 @@ def render_scene(slug, scene_id, preset_name, job, variant=None):
                                'seed': scene['seed'], 'created': time.time(), 'final': None, 'final_url': None,
                                'variant': list(variant) if variant else None})
         projects.mutate(slug, apply)
-    run_render(job, args, preset['finish'], on_take, final_recorder(slug, scene_id, lambda: job['take']['run']))
+    do_render(job, args, preset['finish'], on_take, final_recorder(slug, scene_id, lambda: job['take']['run']))
 
 
 def final_recorder(slug, scene_id, run_of):
@@ -388,19 +641,13 @@ def final_recorder(slug, scene_id, run_of):
     return on_final
 
 
-def scene_job(slug, scene_id, kind):
-    keys = {'render-draft': ['render'], 'render-final': ['render', 'upscale', 'smooth', 'encode'],
-            'enhance': ['upscale', 'smooth', 'encode']}[kind]
-    job = new_job(kind, keys)
-    SCENE_JOB[(slug, scene_id)] = job['id']
-    return job
-
-
 def start_batch(slug, label, steps, worker):
     """Run worker(step_callback) in a thread; one batch per project at a time."""
     current = BATCH.get(slug)
     if current and not current['done']:
-        raise projects.ProjectError(f'busy: {current["label"]} is still running')
+        raise Busy(f'busy: {current["label"]} is still running')
+    if live_jobs(slug):
+        raise Busy('busy: a job is running for this film')
     state = {'label': label, 'step': 0, 'of': steps, 'scene': None, 'job': None, 'error': None, 'done': False,
              'started': time.time(), 'result': None}
     BATCH[slug] = state
@@ -451,11 +698,9 @@ def cancel_project(slug):
     if state and not state['done']:
         state['cancel'] = True
     ours = set()
-    for (s, _), jid in list(SCENE_JOB.items()):
-        job = JOBS.get(jid)
-        if s == slug and job and not job['done']:
-            job['cancel'] = True
-            ours.update(job['prompt_ids'])
+    for job in live_jobs(slug):                 # every live job of this film, however it started
+        job['cancel'] = True
+        ours.update(job['prompt_ids'])
     if not ours:
         return
     try:
@@ -497,9 +742,10 @@ def batch_render(slug, preset_name, only_missing):
         for n, sid in enumerate(todo, 1):
             if state.get('cancel'):
                 raise RuntimeError('cancelled')
-            job = scene_job(slug, sid, 'render-' + preset_name)
+            kind = 'render-' + preset_name
+            job = new_job(kind, scene_stage_keys(kind), project=slug, scene=sid)
             state.update(step=n, scene=sid, job=job['id'])
-            render_scene(slug, sid, preset_name, job)
+            run_job(job, render_job, slug, sid, preset_name)
             if job['error']:
                 raise RuntimeError(f'scene {n}: {job["error"]}')
     return start_batch(slug, 'Drafting scenes' if preset_name == 'draft' else 'Rendering finals', 0, worker)
@@ -515,9 +761,9 @@ def batch_variants(slug, scene_id, n):
             scene = p['scenes'][projects.scene_index(p, scene_id)]
             if k > 1 or scene['takes']:
                 projects.mutate(slug, lambda pr: projects.reroll_seed(pr, scene_id))
-            job = scene_job(slug, scene_id, 'render-draft')
+            job = new_job('render-draft', scene_stage_keys('render-draft'), project=slug, scene=scene_id)
             state.update(step=k, scene=scene_id, job=job['id'])
-            render_scene(slug, scene_id, 'draft', job, variant=(k, n))
+            run_job(job, render_job, slug, scene_id, 'draft', variant=(k, n))
             if job['error']:
                 raise RuntimeError(f'variant {k}: {job["error"]}')
     return start_batch(slug, 'Drafting variants', n, worker)
@@ -532,9 +778,9 @@ def batch_enhance(slug):
         for n, (sid, take) in enumerate(todo, 1):
             if state.get('cancel'):
                 raise RuntimeError('cancelled')
-            job = scene_job(slug, sid, 'enhance')
+            job = new_job('enhance', scene_stage_keys('enhance'), project=slug, scene=sid)
             state.update(step=n, scene=sid, job=job['id'])
-            run_enhance(job, take['run'], final_recorder(slug, sid, lambda run=take['run']: run))
+            run_job(job, enhance_job, take['run'], final_recorder(slug, sid, lambda run=take['run']: run))
             if job['error']:
                 raise RuntimeError(f'scene {n}: {job["error"]}')
     return start_batch(slug, 'Enhancing ★ takes', 0, worker)
@@ -570,27 +816,27 @@ def library_view(c):
 def queue_view():
     """Everything that is running now: jobs (with learned estimates) and batches, oldest first."""
     now = time.time()
-    where = {jid: key for key, jid in SCENE_JOB.items()}          # job id -> (project slug, scene id)
     def film(slug, scene_id=None):
         try:
             p = projects.load(slug)
         except Exception:
             return None, None
-        scene = next((s for s in p['scenes'] if s['id'] == scene_id), None)
+        scene = next((s for s in p['scenes'] if str(s['id']) == scene_id), None)
         return p.get('name') or slug, scene['title'] if scene else None
     jobs = []
     for jid, job in list(JOBS.items()):
         if job['done']:
             continue
-        slug, scene_id = where.get(jid, (None, None))
+        slug, scene_id = job.get('project'), job.get('scene')
         name, title = film(slug, scene_id) if slug else (None, None)
         elapsed = round(now - job['created'])
         estimate = stats.estimate(job['kind'])
         estimate = round(estimate) if estimate is not None else None
         stage = next((s['label'] for s in job['stages'] if s['state'] == 'active'), None)
-        jobs.append({'id': jid, 'kind': job['kind'], 'project': slug, 'project_name': name, 'scene': scene_id,
-                     'scene_title': title, 'elapsed': elapsed, 'estimate': estimate,
-                     'eta': max(0, estimate - elapsed) if estimate is not None else None, 'stage': stage})
+        jobs.append({'id': jid, 'kind': job['kind'], 'state': job['state'], 'project': slug,
+                     'project_name': name, 'scene': scene_id, 'scene_title': title, 'elapsed': elapsed,
+                     'estimate': estimate, 'eta': max(0, estimate - elapsed) if estimate is not None else None,
+                     'stage': stage})
     batches = []
     for slug, b in list(BATCH.items()):
         if not b['done']:
@@ -745,7 +991,7 @@ class Handler(BaseHTTPRequestHandler):
                             width=int(data.get('width', 1344)), height=int(data.get('height', 768)),
                             seed=int(data.get('seed') or time.time_ns() % 2**31), refs=refs, first=first,
                             last=last, two_pass=preset['two_pass'], loras=loras)
-                threading.Thread(target=run_render, args=(job, args, preset['finish']), daemon=True).start()
+                threading.Thread(target=run_job, args=(job, do_render, args, preset['finish']), daemon=True).start()
                 return self.reply(200, public(job))
             if self.path == '/api/library':
                 img = data.get('image')
@@ -777,12 +1023,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not run:
                     return self.reply(400, {'error': 'which take? (run directory missing)'})
                 enhance.run_dir_of(run)                       # fail fast if it is not a FreeVideo take
-                job = new_job('enhance', ['upscale', 'smooth', 'encode'])
-                threading.Thread(target=run_enhance, args=(job, run), daemon=True).start()
+                job = new_job('enhance', scene_stage_keys('enhance'))
+                holder = reserve(job, [take_key(run)], reuse=True)
+                if holder:                             # duplicate click: hand back the live job
+                    abandon(job)
+                    return self.reply(200, public(holder))
+                threading.Thread(target=run_job, args=(job, enhance_job, run), daemon=True).start()
                 return self.reply(200, public(job))
             self.reply(404, {'error': 'not found'})
         except (director.DirectorError, projects.ProjectError, library.LibraryError) as e:
             self.reply(400, {'error': str(e)})
+        except Busy as e:
+            self.reply(409, {'error': str(e)})                # reserved scene/take, or a refused prerequisite
         except (KeyError, ValueError, TypeError) as e:
             self.reply(400, {'error': f'bad request: {e}'})
         except FileNotFoundError as e:
@@ -794,12 +1046,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def project_action(self, slug, action, data):
         if action == 'save':                         # base_rev: the rev the editor was loaded at (optional)
+            check_keeps_reserved(slug, data)         # a save must not silently delete a scene with a live job
             project, fields = projects.save_editor(slug, data, data.get('base_rev'))
             if fields:                               # the film changed underneath this editor: keep its draft
                 return self.reply(409, {'error': 'the film changed while you were editing', 'fields': fields,
                                         'project': project_view(slug)})
             return self.reply(200, project)
         if action == 'storyboard':                     # re-plan: replaces scenes (the page confirms first)
+            check_no_live_jobs(slug, 're-plan over a running job')
             p = projects.load(slug)
             plan, _ = director.storyboard(data.get('logline') or p['logline'], p['seconds'],
                                           projects.ref_files(p), p['aspect'], character_notes=p.get('character_notes', ''))
@@ -808,6 +1062,8 @@ class Handler(BaseHTTPRequestHandler):
                 projects.apply_storyboard(proj, plan)
             return self.reply(200, projects.mutate(slug, apply))
         if action == 'prompt':                         # one scene, synchronous (~15 s)
+            if str(data.get('scene')) in reserved_scenes(slug):
+                raise Busy(f"busy: scene {data.get('scene')} has a running job")
             write_scene_prompt(slug, data['scene'])
             return self.reply(200, project_view(slug))
         if action == 'prompts':
@@ -817,8 +1073,17 @@ class Handler(BaseHTTPRequestHandler):
             preset = data.get('preset', 'draft')
             if preset not in PRESETS:
                 raise projects.ProjectError('unknown preset')
-            job = scene_job(slug, data['scene'], 'render-' + preset)
-            threading.Thread(target=render_scene, args=(slug, data['scene'], preset, job), daemon=True).start()
+            p = projects.load(slug)
+            i = projects.scene_index(p, data['scene'])   # unknown scene -> 400 before anything is accepted
+            validate_scene_media(p, i)
+            kind = 'render-' + preset
+            job = new_job(kind, scene_stage_keys(kind), project=slug, scene=data['scene'])
+            try:
+                reserve(job, [scene_key(slug, data['scene'])])
+            except Busy:
+                abandon(job)                             # never leave a job that was refused at the door
+                raise
+            threading.Thread(target=run_job, args=(job, render_job, slug, data['scene'], preset), daemon=True).start()
             return self.reply(200, project_view(slug))
         if action == 'enhance':                        # one scene's take
             p = projects.load(slug)
@@ -826,12 +1091,21 @@ class Handler(BaseHTTPRequestHandler):
             run = data.get('run') or (projects.chosen(scene) or {}).get('run')
             if not run:
                 raise projects.ProjectError('this scene has no take yet')
-            job = scene_job(slug, data['scene'], 'enhance')
-            threading.Thread(target=run_enhance, args=(job, run, final_recorder(slug, data['scene'], lambda: run)),
+            enhance.run_dir_of(run)                    # fail fast if it is not a FreeVideo take
+            job = new_job('enhance', scene_stage_keys('enhance'), project=slug, scene=data['scene'])
+            holder = reserve(job, [take_key(run), scene_key(slug, data['scene'])], reuse=True)
+            if holder:                                 # duplicate click: the live job already shows on the scene
+                abandon(job)
+                return self.reply(200, project_view(slug))
+            threading.Thread(target=run_job,
+                             args=(job, enhance_job, run, final_recorder(slug, data['scene'], lambda: run),
+                                   [scene_key(slug, data['scene'])]),
                              daemon=True).start()
             return self.reply(200, project_view(slug))
         if action == 'characters':                     # change the film's library characters
             slugs = data.get('characters')
+            if any(j['kind'].startswith('render') for j in live_jobs(slug)):
+                raise Busy('busy: a render is running; it reads the current character pictures')
             return self.reply(200, projects.mutate(slug, lambda p: projects.set_characters(p, slugs)))
         if action == 'reroll':                         # new seed for the next Draft / Final of this scene
             projects.mutate(slug, lambda p: projects.reroll_seed(p, data['scene']))
