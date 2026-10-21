@@ -284,7 +284,7 @@ class Recovery(unittest.TestCase):
         self.assertIn('before anything reached ComfyUI', job['error'])
         self.assertTrue(job['retry_allowed'])
         self.assertTrue(jobs_db.get(jid)['retry_allowed'])
-        self.assertIn(web.scene_key(self.slug, self.ids[0]), web.RESERVES)
+        self.assertNotIn(web.scene_key(self.slug, self.ids[0]), web.RESERVES)   # provably nothing runs: free
 
     # ---------------------------------------------------------------- unreachable ComfyUI
 

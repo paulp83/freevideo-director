@@ -164,7 +164,7 @@ class Retry(unittest.TestCase):
         job = web.JOBS[jid]
         self.assertTrue(job['retry_allowed'])
         key = web.scene_key(self.slug, str(self.ids[0]))
-        self.assertIn(key, web.RESERVES)                       # still held while unknown
+        self.assertNotIn(key, web.RESERVES)                   # never reached ComfyUI: provably free
         code, d = self.post(f'/api/job/{jid}/retry')
         self.assertEqual(code, 200)
         self.assertEqual(d['retry_of'], jid)

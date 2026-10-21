@@ -1122,6 +1122,8 @@ def _settle(job, row, snap, details):
         job['retry_allowed'] = True       # set BEFORE unknown()'s write so it is persisted
         unknown(job, 'the job was interrupted before anything reached ComfyUI: nothing had been '
                      'submitted, so nothing was resubmitted.')
+        release(job)                      # provably nothing runs: the scene must not stay blocked
+        db_note(job)                      # the freed holds are durable too
         return 'unknown'
     out, msg = (details[0] if render else details[-1])
     if out == 'completed':
