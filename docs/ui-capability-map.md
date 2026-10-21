@@ -2,13 +2,16 @@
 
 Inventory of every control/handler in the **old** `project.html` (pre-M3, kept byte-for-byte as
 `project-classic.html` and served at `/project/classic?p=<slug>`), and where each capability lives in
-the new workspace page. "Stage B" = deliberately deferred per the M3 plan (comparison UI, richer
-selection UI, continuity-warning UI, queue drawer).
+the new workspace page. "Stage B" = deliberately deferred per the M3 plan; Stage B1 (the first B
+step: take comparison UI, validity-vs-execution state, disabled-action reasons, unknown-job notices,
+continuity warnings) is now live below; the queue drawer and richer selection UI remain deferred.
 
 Verified-by legend: `autosave_check.js` = JS unit check; `browser_autosave.py` = Firefox check of the
 classic page (autosave behaviour is page-independent, the core block is identical); `browser_status.py`
 = Firefox check of badges/details on the classic page; `browser_layout.py` = Firefox check of the new
-page (loads ids/handler names below).
+page (loads ids/handler names below); `browser_compare.py` = Firefox check of the Stage B1 surfaces
+(comparison view, validity-vs-execution wording, disabled-action reasons, unknown-job notices, continuity
+context) against the fixture plus real in-process jobs.
 
 | Old control (id / handler) | Old location | New location | Status | Verified by |
 |---|---|---|---|---|
@@ -49,11 +52,16 @@ page (loads ids/handler names below).
 | Seed reroll `bReroll` (`sceneReroll`: POST `reroll` + POST `render`) | per scene button | inspector **Generate another take** (`#bAnother`, same two POSTs) | moved, label fixed | browser_layout (both POSTs) |
 | Draft variants `#vCount` + `bVariants` (POST `variants`) | per scene row | inspector action row (Generate variants) | kept | browser_layout (POST) |
 | One-shot Final `bFinal` (POST `render` preset final) | per scene row | inspector action row ("Generate final: render + upscale + smooth + encode") | kept | browser_layout (POST) |
-| Enhance ★ `bEnhance` (POST `enhance {scene}`) | per scene row | inspector **Enhance selected take** (`#bEnhanceSel`) | moved, label fixed | browser_layout (POST) |
-| Compare takes | — (did not exist) | inspector **Compare takes**, disabled with reason "Stage B" | not yet — Stage B (comparison UI is the next M3 step) | browser_layout (disabled + reason shown) |
+| Enhance ★ `bEnhance` (POST `enhance {scene}`) | per scene row | inspector **Enhance selected take** (`#bEnhanceSel`; stays visible with "no take to enhance" when the scene has none) | moved, label fixed | browser_layout (POST), browser_compare (reason on a new scene) |
+| Compare takes | — (did not exist) | inspector **Compare takes** → two-take side-by-side view (`#cmpWrap`/`#cmpBar`: shared seek, approximate sync, per-pane metadata + diffs) | live (Stage B1) | browser_compare (open, play/seek/audio/diffs/use-take/Escape), browser_layout (enabled with 2 takes; reason on 1-take scene) |
 | Job progress chips `data-k=job` (stages) | per scene card | inspector status line ("Running · upscale …") + take-strip state text | kept (words, not colour) | browser_layout (fixture has no live job; text states checked) |
 | Validity badges `updateFlags` (`.flags .badge.stale`/`.soft`, FLAG_LABEL texts) | per scene card | inspector status line + navigator state text (same flag words from `scene.status`) | kept (words/icons) | browser_status.py (classic); browser_layout (new, fixture text) |
 | Take strip videos (`preload=none`, `.take`) | per scene card | take strip cards: poster `<img>` from GET `poster?id=` (ffmpeg, cached in `frames/`), placeholder + play overlay; **zero** `<video>` elements in the strip — card click loads the take into the single viewer | moved | browser_layout (0 videos, 2 posters, click → viewer `/files/` src); test_poster.py (endpoint) |
+| Validity vs execution split (`#scValidity` / `#scExec` + `data-exec`, navigator `.navexec`, timeline chip line 2) | one muddled status line | inspector status line + navigator + timeline chip (e.g. "Ready · prompt changed" vs "Running · upscale") | live (Stage B1) | browser_compare (verbatim strings for each fixture state) |
+| Disabled-action reasons (`#primaryWhy`, `#anotherWhy`, `#enhanceWhy`, `#renderWhy`, `#compareWhy`) | `title` tooltip only (mostly) | visible sentence beside each inspector button | live (Stage B1) | browser_compare (per-state reason strings) |
+| Unknown-job notice (Reconcile → POST `job/<id>/reconcile`, Dismiss → native `<dialog>` → POST `job/<id>/resolve`) | nothing (job looked failed) | inspector notice `#unkJob` with both buttons + per-job reply line | live (Stage B1) | browser_compare (notice strings, reconcile-keeps-unknown, dismiss frees scene), test_jobs.py (route) |
+| Continuity-outdated context (`#contBox` + "Regenerate from current take") and instructions-changed honesty line | badge only | inspector notice box under the status line | live (Stage B1) | browser_compare (scene 2 strings) |
+| Cut-outdated flags `#animFlag`/`#filmFlag` beside Preview/Export film | absent | under each film button | live (Stage B1) | browser_compare (flag contains outdated + takes) |
 | Take badges (preset/final, seed, variant, chosen) | take meta | take strip card meta + viewer info | kept | browser_layout |
 | Choose take `bChoose` (POST `star {scene,take}`) | take meta | take strip card **Use this take**; the inspector's single primary action offers the same when the viewer take is unpinned | kept, one control per card | browser_layout (POST, badge "pinned") |
 | Release to auto `bAuto` (POST `star {auto:true}`) | take meta | the pinned card's own button (the one release control; no duplicate in the inspector) | moved | browser_layout (exactly one visible "Release to auto") |
@@ -63,15 +71,13 @@ page (loads ids/handler names below).
 
 ## Not on the old project page (for completeness)
 
-- "best quality" badge: only on `index.html` (single-shot page) — out of scope for this step; the new
-  project page describes the actual chain everywhere instead ("SeedVR2 upscale to 1920×1080, RIFE
-  interpolation to 48 fps, CRF-16 encode" — verified against `web.py` PRESETS/STAGES and
-  `enhance.py` DEFAULTS).
+- "best quality" badge: was on `index.html` (single-shot page) only; reworded in Stage B1 to the real
+  chain ("SeedVR2 1080p · RIFE ×2 48 fps · CRF-16"), matching the wording the new project page uses
+  everywhere ("SeedVR2 upscale to 1920×1080, RIFE interpolation to 48 fps, CRF-16 encode" — verified
+  against `web.py` PRESETS/STAGES and `enhance.py` DEFAULTS).
 
 ## Pending Stage B (with reason)
 
-- **Compare takes**: two-take linked playback UI is the next M3 step; the button ships disabled with the
-  visible reason "Stage B".
 - **Queue drawer**: the header links to the existing `/queue` page (real jobs, real times); an in-page
   drawer is Stage B.
 - **Per-take posters in real projects**: the strip renders `take.thumb_url` when a record carries one

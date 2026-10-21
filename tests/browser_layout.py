@@ -268,7 +268,13 @@ def main():
         check('viewer video preloads metadata',
               d.js("return document.getElementById('viewer').preload;") == 'metadata')
         cmp = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
-        check('Compare takes is disabled with its Stage B reason visible', cmp[0] and cmp[1] == 'Stage B', str(cmp))
+        check('Compare takes is enabled when the selected scene has two takes', not cmp[0] and cmp[1] == '', str(cmp))
+        d.js("document.querySelectorAll('#navigator .navitem')[3].click(); return 1;")
+        d.wait("document.getElementById('bCompare').disabled")
+        cmp1 = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
+        check('Compare takes says why it is disabled on a one-take scene', cmp1[0] and cmp1[1] == 'this scene has fewer than two takes', str(cmp1))
+        d.js("document.querySelectorAll('#navigator .navitem')[0].click(); return 1;")
+        d.wait("document.querySelectorAll('#takeStrip .take').length === 2")
         d.js("document.querySelector('#takeStrip .take [data-k=bUse]').click();")
         d.wait("window.__hits('/star') > 0")
         check('Use this take pins the take (one badge: pinned)',

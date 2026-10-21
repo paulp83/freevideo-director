@@ -493,6 +493,56 @@ class Jobs(unittest.TestCase):
         self.assertIn('duplicate take', r['warning'])
         self.assertEqual(job['state'], 'unknown')              # the state itself is never rewritten
 
+    def post(self, path):
+        srv = ThreadingHTTPServer(('127.0.0.1', 0), web.Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            req = urllib.request.Request(f'http://127.0.0.1:{srv.server_address[1]}{path}',
+                                         data=b'{}', method='POST',
+                                         headers={'Content-Type': 'application/json'})
+            return json.loads(urllib.request.urlopen(req, timeout=10).read())
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_reconcile_route_proves_the_truth_without_dismissing(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'unknown')
+        StubComfy.mode = 'complete'
+        StubComfy.running_ids = []
+        r = self.post(f'/api/job/{job["id"]}/reconcile')
+        self.assertEqual(r['proved'], 'finished')
+        self.assertEqual(job['resolved']['by'], 'reconcile')
+        key = web.scene_key(self.slug, str(self.ids[0]))
+        self.assertNotIn(key, web.RESERVES)                    # a proven verdict releases the holds
+        self.assertEqual(job['state'], 'unknown')              # ... but never rewrites the state
+        self.assertNotIn(key, web.SCENE_JOB)                   # the scene is free for new work
+
+    def test_reconcile_route_reports_still_running_and_keeps_the_holds(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        r = self.post(f'/api/job/{job["id"]}/reconcile')
+        self.assertEqual(r['proved'], 'running')                # ComfyUI still holds the prompt
+        self.assertIsNone(job.get('resolved'))                  # nothing dismissed, nothing released
+        self.assertIn(web.scene_key(self.slug, str(self.ids[0])), web.RESERVES)
+
+    def test_reconcile_route_refuses_jobs_it_cannot_answer(self):
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.post('/api/job/nope000000000000/reconcile')
+        self.assertEqual(e.exception.code, 404)
+        run = self.take_dir('run-r')                            # a finished job is not "unknown"
+        job = web.new_job('enhance', ['upscale'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, lambda *a: None)
+        self.assertEqual(job['state'], 'finished')
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.post(f'/api/job/{job["id"]}/reconcile')
+        self.assertEqual(e.exception.code, 400)
+
     # ---------------------------------------------------------------- enhance
 
     def test_enhance_finishes_and_releases_the_take(self):

@@ -91,13 +91,15 @@ def build(root):
     ids = [s['id'] for s in projects.load(slug)['scenes']]
     manifest = {'slug': slug, 'scene_ids': ids, 'takes': {}}
 
-    def take(i, label, prompt, seed, mode='ref2va', first=None, source=None, final=False):
+    def take(i, label, prompt, seed, mode='ref2va', first=None, source=None, final=False,
+             seconds=None, loras=None):
         """One take: real clip laid out like a FreeVideo run, a snapshot, a take record, a thumb."""
         tid, jid = projects.new_take_id(), secrets.token_hex(8)
-        title, seconds, _c, _a, hue, freq = PLAN[i]
+        title, _planned, _c, _a, hue, freq = PLAN[i]
+        secs = seconds or PLAN[i][1]
         run = comfy / f'run-{i}-{tid}'
         (run / 'video.artifacts').mkdir(parents=True, exist_ok=True)
-        clip(run / 'video.mp4', seconds, hue, freq, f'{title} {label}')
+        clip(run / 'video.mp4', secs, hue, freq, f'{title} {label}')
         media = projects.path(slug, 'media', f'{tid}.mp4'); media.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(run / 'video.mp4', media)
         thumbs = projects.path(slug, 'thumbs'); thumbs.mkdir(exist_ok=True)
@@ -111,8 +113,9 @@ def build(root):
             'id': jid, 'kind': 'render-draft', 'created': time.time(), 'project': slug,
             'scene': str(scene['id']), 'take_id': tid, 'preset': 'draft', 'variant': None,
             'mode': mode, 'prompt': projects.ensure_i2va(prompt) if first else prompt,
-            'seed': seed, 'width': p['size'][0], 'height': p['size'][1], 'seconds': scene['seconds'],
-            'two_pass': mode == 'ref2va', 'refs': refs, 'first': firsts, 'loras': p['loras'], 'graph': {},
+            'seed': seed, 'width': p['size'][0], 'height': p['size'][1], 'seconds': secs,
+            'two_pass': mode == 'ref2va', 'refs': refs, 'first': firsts,
+            'loras': loras if loras is not None else p['loras'], 'graph': {},
             'director': {'model': None, 'skill_revision': None},
             'instructions': projects.instructions_of(p), 'finishing': None})
         src = dict(source, frame_sha256=firsts['sha256']) if firsts else None
@@ -121,7 +124,7 @@ def build(root):
                'final': None, 'final_url': None, 'variant': None, 'source_take': src,
                'thumb_url': f'/files/{slug}/thumbs/{tid}.jpg'}
         if final:                                   # an enhanced take: a real "finished" clip next to the run
-            clip(run / 'final.mp4', seconds, hue + 30, freq, f'{title} {label} final')
+            clip(run / 'final.mp4', secs, hue + 30, freq, f'{title} {label} final')
             fmed = projects.path(slug, 'media', f'{tid}-final.mp4')
             shutil.copyfile(run / 'final.mp4', fmed)
             rec['final'] = str(run / 'final.mp4'); rec['final_url'] = f'/files/{slug}/media/{tid}-final.mp4'
@@ -146,10 +149,15 @@ def build(root):
     take(1, 'take 1', prompts['Running on'], 21, mode='i2va', first=frame,
          source={'scene': ids[0], 'take': src1['id'], 'run': src1['run']})
 
-    # scene 3: three takes, latest auto-chosen; the newest one carries a real enhanced final
+    # scene 3 (index 2): four takes, so the nav's "N takes" badge, the "another take" affordance
+    # and the comparison view all have somewhere to live; one is enhanced (a real final next to the
+    # run) and the newest deliberately differs in seed, length and LoRAs from the previous take, so
+    # "Ready · settings changed" and a take length mismatch are real states to look at
     take(2, 'take 1', prompts['The gate'], 31)
     take(2, 'take 2', prompts['The gate'], 32)
     take(2, 'take 3', prompts['The gate'], 33, final=True)
+    take(2, 'take 4', prompts['The gate'], 77, seconds=7,
+         loras=projects.clean_loras([{'name': 'gate-grain.safetensors', 'strength': 0.5}]))
 
     take(3, 'take 1', prompts['Lantern'], 41)
 

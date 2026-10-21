@@ -1437,6 +1437,18 @@ class Handler(BaseHTTPRequestHandler):
                     'job': public(job), 'proved': proved,
                     'warning': 'the ComfyUI prompt may still be running: starting new work for this '
                                'scene/take could generate a duplicate take'})
+            m = re.match(r'^/api/job/([^/]+)/reconcile$', self.path)
+            if m:
+                job = JOBS.get(m.group(1))
+                if not job:
+                    return self.reply(404, {'error': 'unknown job'})
+                if not job['done']:
+                    return self.reply(409, {'error': 'the job is still running; cancel it instead'})
+                if job['state'] != 'unknown':
+                    return self.reply(400, {'error': 'only a job whose ComfyUI state is unknown can be reconciled'})
+                # ask ComfyUI and report; unlike /resolve this never dismisses on its own --
+                # only a proven verdict releases the holds (reconcile(), web.py)
+                return self.reply(200, {'job': public(job), 'proved': reconcile(job)})
             self.reply(404, {'error': 'not found'})
         except (director.DirectorError, projects.ProjectError, library.LibraryError) as e:
             self.reply(400, {'error': str(e)})
