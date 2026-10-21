@@ -53,20 +53,32 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 .flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .flags:empty { display: none; }
 
-/* header */
-#hdr { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px 6px; }
+/* header: one wrapping row; the controls stay under ~32 px so the phone header is 2 rows */
+#hdr { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px 4px; }
 #hdr .spacer { flex: 1; }
-#nameTitle { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#hdr .btn { padding: 2px 10px; }
+#hdr select { min-height: 32px; padding: 3px 8px; }
+#hdr a { font-size: 14px; white-space: nowrap; }
+#nameTitle { font-size: 17px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #saveStatus, #backend { font-size: 14px; color: var(--muted); }
 #backend { max-width: 26ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #backend.err { color: var(--err); }
-#stages { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 8px; align-items: stretch; }
-.stage { display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--line); border-radius: 99px;
-         padding: 4px 6px 4px 12px; font-size: 14px; background: var(--panel); }
+/* stage nav: a compact row of items; each item's action sits in a small menu, the next action
+   in its own fixed slot that never scrolls away with the chips */
+#stages { display: flex; gap: 8px; align-items: center; padding: 0 12px 6px; min-width: 0; }
+#stageChips { display: flex; gap: 6px; align-items: center; min-width: 0; flex: 1 1 auto; scrollbar-width: none; }
+.stage { display: inline-flex; align-items: center; gap: 5px; border: 1.5px solid var(--line); border-radius: 99px;
+         padding: 1px 4px 1px 10px; font-size: 14px; background: var(--panel); white-space: nowrap; cursor: pointer; }
 .stage .count { color: var(--muted); }
 .stage.done { border-color: var(--ok); }
 .stage.next { border-color: var(--accent); background: var(--soft); }
-.stage .btn { font-size: 14px; }
+.stage .caret { border: 0; background: transparent; color: var(--muted); font-size: 14px; min-height: 20px;
+                padding: 0 5px; cursor: pointer; border-radius: 99px; }
+.stage .caret:hover, .stage .caret[aria-expanded="true"] { background: var(--soft); color: var(--ink); }
+#stageMenu { position: fixed; z-index: 40; display: none; background: var(--panel); border: 1px solid var(--line);
+             border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 8px; font-size: 14px; }
+#stageMenu button { min-height: 32px; }
+#nextAction { flex: 0 1 auto; min-width: 0; text-align: left; white-space: normal; font-size: 14px; margin-left: auto; }
 .batch { display: none; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--soft); font-size: 14px;
          align-items: center; gap: 10px; flex-wrap: wrap; }
 .batch.show { display: flex; }
@@ -93,13 +105,19 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 .navitem .navstate { font-size: 14px; color: var(--muted); }
 .navitem .navwarn { font-size: 14px; color: var(--warn); }
 
-/* take strip */
+/* take strip: poster cards; a take is only ever loaded into the main viewer, never inline */
 #takeStrip { display: flex; gap: 10px; overflow-x: auto; padding: 6px 2px; }
 .take { flex: 0 0 240px; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px; background: var(--panel); cursor: pointer; }
 .take.chosen { border-color: var(--accent); }
 .take.preview { box-shadow: 0 0 0 2px var(--accent); }
-.take video { width: 100%; aspect-ratio: 16/9; border-radius: 6px; background: #000; display: block; }
+.take .posterBox { position: relative; aspect-ratio: 16/9; border-radius: 6px; background: #000; overflow: hidden; }
+.take .posterBox img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.take .takePlaceholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                         color: var(--muted); font-size: 14px; background: var(--soft); }
+.take .playOv { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                color: #fff; background: rgba(0,0,0,.22); font-size: 15px; }
 .take .meta { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+.take .takeActions { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 
 /* timeline */
 #timelineRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
@@ -111,15 +129,15 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 .tl.draft { background: var(--s-draft); } .tl.final { background: var(--s-final); }
 .legend { display: flex; gap: 14px; font-size: 14px; color: var(--muted); margin-top: 4px; flex-wrap: wrap; }
 
-/* the stage chips turn into a one-row scroller when they would wrap; this plus the
-   tighter strip keeps the viewer >= 40% of the viewport height down to 1100 px wide */
+/* the chips get their own scroll window (the next action beside them never scrolls); this plus
+   the tighter strip keeps the viewer >= 40% of the viewport height down to 1100 px wide */
 @media (max-width: 1440px) {
-  #stages { gap: 4px; flex-wrap: nowrap; overflow-x: auto; }
-  .stage { padding: 4px 3px 4px 8px; gap: 4px; flex: 0 0 auto; }
-  .stage .btn { padding: 0 8px; }
+  #stageChips { overflow-x: auto; gap: 4px; }
+  .stage { padding: 1px 3px 1px 8px; gap: 4px; flex: 0 0 auto; }
 }
 @media (max-width: 1199px) {
-  .take { flex: 0 0 200px; }
+  main { grid-template-columns: 150px minmax(0, 1fr) 240px; }   /* keep the viewer >= 40% vh */
+  .take { flex: 0 0 224px; }                                    /* card actions stay on one row */
   .legend { gap: 6px; margin-top: 2px; }
   #timelineRow { padding-top: 2px; }
   .timeline { height: 32px; }
@@ -139,10 +157,16 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 .chip.error { border-color: var(--err); color: var(--err); }
 #inspector details { margin-top: 10px; }
 #inspector summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+/* author display on details children (.row/.trow boxes) beats the UA's collapsed-content hiding */
+details:not([open]) > :not(summary) { display: none; }
 .trow { display: flex; gap: 6px; align-items: baseline; }
 .trow b { color: var(--muted); font-weight: 600; min-width: 90px; flex: 0 0 auto; }
 .trow span { overflow-wrap: anywhere; }
 #techBox { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; font-size: 14px; }
+#bPrimary { width: 100%; margin-top: 10px; padding: 8px 12px; }
+.action-group { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.action-group .hint { margin: 0; }
+.promptMeta { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; font-size: 14px; color: var(--muted); }
 
 /* settings drawer */
 dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(760px, 94vw); max-height: 88vh; color: var(--ink); background: var(--panel); }
@@ -169,6 +193,22 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 @media (max-width: 600px) {
   #navigator { order: 9; }
   button, .btn, input[type=text], input[type=number], select, textarea, .seg button, .navitem, .tl { min-height: 44px; }
+  /* header: picker on its own line, then one row of controls; text chips share that row.
+     only the stage caret stays a compact pill part; the menu button it opens is full-size */
+  .stage .caret { min-height: 24px; min-width: 44px; }
+  #hdr { padding: 6px 10px 4px; gap: 5px; }
+  #hdr .btn { padding: 2px 6px; }
+  #hdr a { display: inline-flex; align-items: center; min-height: 44px; }
+  #hdr #nameTitle, #hdr #saveStatus { display: none; }
+  #hdr #picker { order: 0; flex: 1 1 100%; }
+  #hdr #newBtn { order: 1; } #hdr #openSettings { order: 2; } #hdr .btn-queue { order: 3; }
+  #hdr .btn-shot { order: 5; }
+  #hdr #backend { order: 4; display: inline-flex; align-items: center; min-height: 44px; max-width: 13ch; min-width: 0; flex: 0 1 auto; }
+  #hdr select { min-height: 44px; }
+  #hdr .wide, #hdr .bmsg, #hdr .spacer { display: none; }
+  #stages { flex-wrap: wrap; padding: 0 10px 4px; }
+  #stageChips { flex: 1 1 100%; }
+  #nextAction { flex: 1 1 100%; margin-left: 0; }
   .take { flex-basis: 260px; }
   .grid2 { grid-template-columns: 1fr; }
 }
@@ -178,14 +218,14 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 <header>
   <div id="hdr">
     <select id="picker" style="width:auto"></select>
-    <button class="btn ghost" id="newBtn">+ New film</button>
+    <button class="btn ghost" id="newBtn">+ New<span class="wide"> film</span></button>
     <h1 id="nameTitle">FreeVideo Film</h1>
     <span class="status" id="saveStatus"></span>
     <span class="spacer"></span>
     <span id="backend" class="status" role="status"></span>
-    <button class="btn ghost" id="openSettings" hidden>Project settings</button>
-    <a href="/queue">Queue</a>
-    <a href="/">Single shot →</a>
+    <button class="btn ghost" id="openSettings" hidden title="Project settings">Settings</button>
+    <a class="btn-queue" href="/queue">Queue</a>
+    <a class="btn-shot" href="/">Single shot →</a>
   </div>
   <div id="stages" hidden></div>
   <div class="batch" id="batch"><span id="batchText"></span><button class="btn ghost" id="batchCancel" hidden>Cancel</button><div class="bar"><i id="batchBar"></i></div></div>
@@ -265,53 +305,51 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <div class="status" id="scStatus"></div>
     <div class="flags" id="scFlags"></div>
     <div id="scJob"></div>
-    <div class="row">
-      <button class="btn" data-k="bCreatePrompt" id="bCreatePrompt" title="Ask the director to write this scene's H3 prompt from the style bible and action">Create prompt</button>
-      <button class="btn ghost" data-k="bPreview" id="bPreview" title="Two-pass FreeVideo render at the project size (1344×768 for 16:9), 24 fps — no finishing">Generate preview</button>
-      <button class="btn ghost" data-k="bAnother" id="bAnother" title="New seed, then a fresh preview render">Generate another take</button>
+    <div class="row" style="margin-top:0">
+      <input type="text" data-k="title" id="scTitle" aria-label="Scene title">
     </div>
-    <div class="row">
-      <button class="btn ghost" data-k="bUseTake" id="bUseTake" title="Pin the take in the viewer for the animatic, finals and continue scenes">Use this take</button>
-      <button class="btn ghost" data-k="bAuto" id="bAuto" hidden title="Stop pinning; the scene follows its latest take again">Release to auto</button>
+    <textarea data-k="action" id="scAction" rows="2" placeholder="What happens in this scene (shot, action, sound, dialogue)…"></textarea>
+    <div class="promptMeta"><span>H3 prompt</span><span class="badge" data-k="mode" id="scMode"></span>
+      <span class="badge" data-k="check" id="scCheck"></span></div>
+    <textarea data-k="prompt" id="scPrompt" rows="9" class="mono" placeholder="Click &quot;Create prompt&quot;, or paste your own."></textarea>
+    <button class="btn" id="bPrimary" data-k="bPrimary" style="display:none"></button>
+    <div class="action-group">
+      <button class="btn ghost" data-k="bAnother" id="bAnother" title="New seed, then a fresh preview render">Generate another take</button>
       <button class="btn ghost" data-k="bEnhanceSel" id="bEnhanceSel" title="Finishing only on the in-use take: SeedVR2 upscale to 1920×1080, RIFE interpolation ×2 to 48 fps, CRF-16 encode">Enhance selected take</button>
+    </div>
+    <div class="action-group">
       <button class="btn ghost" data-k="bCompare" id="bCompare" disabled title="Stage B: side-by-side take comparison is the next M3 step">Compare takes</button>
       <span class="hint" id="compareWhy">Stage B</span>
     </div>
-    <div class="row">
+    <div class="action-group">
       <select id="vCount" title="How many variants" style="width:auto">
         <option value="2">×2</option><option value="3" selected>×3</option><option value="4">×4</option><option value="5">×5</option><option value="6">×6</option>
       </select>
       <button class="btn ghost" data-k="bVariants" id="bVariants" title="Several preview renders with new seeds">Generate variants</button>
       <button class="btn ghost" data-k="bFinal" id="bFinal" title="One render straight to finished: render, SeedVR2 upscale to 1920×1080, RIFE ×2 to 48 fps, CRF-16 encode">Generate final</button>
     </div>
-    <h2 style="margin-top:14px">Scene settings</h2>
-    <div class="row" style="margin-top:0">
-      <input type="text" data-k="title" id="scTitle" aria-label="Scene title">
-      <input type="number" data-k="seconds" id="scSeconds" min="4" max="15" aria-label="Scene seconds" style="width:74px">
-    </div>
-    <div class="row">
-      <select data-k="connect" id="scConnect" aria-label="Connection">
-        <option value="cut">Cut (new shot)</option><option value="continue">↪ Continue</option></select>
-      <select data-k="transition" id="scTransition" aria-label="Transition">
-        <option value="cut">Cut</option><option value="crossfade">Crossfade</option><option value="dip">Dip to black</option></select>
-    </div>
-    <div class="row">
-      <button class="btn ghost" data-k="bMoveUp" id="bMoveUp" title="Move scene earlier">Move up</button>
-      <button class="btn ghost" data-k="bMoveDown" id="bMoveDown" title="Move scene later">Move down</button>
-      <button class="btn ghost" data-k="bDeleteScene" id="bDeleteScene" title="Remove this scene from the film">Delete scene</button>
-      <button class="btn ghost" data-k="bAddScene" id="bAddScene">+ Add scene</button>
-    </div>
-    <textarea data-k="action" id="scAction" rows="3" placeholder="What happens in this scene (shot, action, sound, dialogue)…"></textarea>
-    <details id="promptBox" data-k="details">
-      <summary>H3 prompt <span class="badge" data-k="mode" id="scMode"></span> <span class="badge" data-k="check" id="scCheck"></span></summary>
-      <textarea data-k="prompt" id="scPrompt" rows="10" class="mono" placeholder="Click &quot;Create prompt&quot;, or paste your own."></textarea>
+    <details id="scSettings">
+      <summary>Scene settings</summary>
+      <div class="row" style="margin-top:6px">
+        <label class="inline">Seconds <input type="number" data-k="seconds" id="scSeconds" min="4" max="15" aria-label="Scene seconds" style="width:64px"></label>
+        <label class="inline">Connection <select data-k="connect" id="scConnect" aria-label="Connection" style="width:auto">
+          <option value="cut">Cut (new shot)</option><option value="continue">↪ Continue</option></select></label>
+        <label class="inline">Transition <select data-k="transition" id="scTransition" aria-label="Transition" style="width:auto">
+          <option value="cut">Cut</option><option value="crossfade">Crossfade</option><option value="dip">Dip to black</option></select></label>
+      </div>
+      <div class="row">
+        <button class="btn ghost" data-k="bMoveUp" id="bMoveUp" title="Move scene earlier">Move up</button>
+        <button class="btn ghost" data-k="bMoveDown" id="bMoveDown" title="Move scene later">Move down</button>
+        <button class="btn ghost" data-k="bDeleteScene" id="bDeleteScene" title="Remove this scene from the film">Delete scene</button>
+        <button class="btn ghost" data-k="bAddScene" id="bAddScene">+ Add scene</button>
+      </div>
+      <p class="hint">Seed: <span id="scSeed"></span> &mdash; "Generate another take" picks a new seed; a take records the seed it was made with.</p>
     </details>
     <details id="hist" data-k="hist"><summary data-k="histSum" id="histSum"></summary><div data-k="histList" id="histList"></div></details>
-    <div style="margin-top:10px">
-      <button class="btn ghost" data-k="bTech" id="bTech" aria-expanded="false"
-              title="Show exactly what this take was generated with">Technical details</button>
-    </div>
-    <div id="techBox" hidden></div>
+    <details id="techDetails">
+      <summary>Technical details</summary>
+      <div id="techBox"></div>
+    </details>
   </aside>
 </main>
 
@@ -705,7 +743,7 @@ function draw(force) {
   drawNext(p);
 }
 
-/* stage chips: the old six workflow steps, compact; clicking one runs its action */
+/* workflow steps: the counts and actions the compact stage nav shows */
 function stageSteps(p) {
   const n = p.scenes.length;
   const prompts = p.scenes.filter(s => s.prompt).length;
@@ -720,19 +758,59 @@ function stageSteps(p) {
     {t: 'Film', c: p.outputs.film ? `${p.outputs.film.seconds} s` : 'final cut', done: !!p.outputs.film, act: 'Assemble film', fn: () => run('assemble', {kind: 'film'})},
   ];
 }
+/* compact stage nav: glyph + name + count per stage; each stage's action sits behind a caret in
+   one small shared menu (appended to body, so the chip scroll window cannot clip it). The row
+   itself never scrolls the next action away: it has its own slot beside the chips. */
+let stageMenu = null, menuFor = null;
+function closeStageMenu() {
+  if (!stageMenu) return;
+  stageMenu.remove(); stageMenu = null; menuFor = null;
+  document.querySelectorAll('.stage .caret[aria-expanded="true"]').forEach(c => c.setAttribute('aria-expanded', 'false'));
+}
+document.addEventListener('click', (ev) => {
+  if (stageMenu && !stageMenu.contains(ev.target) && !ev.target.closest('.stage')) closeStageMenu();
+});
+function openStageMenu(anchor, s, i, drafted, n) {
+  const same = menuFor === i;
+  closeStageMenu();                                     // the second click on the same caret closes
+  if (same) return;
+  const b = el('button', {class: 'btn', onclick: () => { closeStageMenu(); s.fn(); }}, s.act);
+  b.disabled = busy() || (i === 3 && drafted < n) || (i === 5 && drafted < n);
+  stageMenu = el('div', {id: 'stageMenu', role: 'menu'}, b);
+  document.body.append(stageMenu);
+  const r = anchor.getBoundingClientRect();
+  stageMenu.style.display = 'block';
+  stageMenu.style.left = Math.max(8, Math.min(r.left, innerWidth - stageMenu.offsetWidth - 8)) + 'px';
+  stageMenu.style.top = Math.min(r.bottom + 4, innerHeight - stageMenu.offsetHeight - 8) + 'px';
+  anchor.setAttribute('aria-expanded', 'true');
+  menuFor = i;
+}
 function drawStages(p) {
   const steps = stageSteps(p), next = steps.findIndex(s => !s.done);
   const drafted = p.scenes.filter(s => s.takes.length).length, n = p.scenes.length;
+  closeStageMenu();
   const box = $('stages'); box.replaceChildren();
+  const chips = el('div', {id: 'stageChips'});
   steps.forEach((s, i) => {
-    const b = el('button', {class: 'btn' + (i === next ? '' : ' ghost'), onclick: s.fn, title: s.t}, s.act);
-    b.disabled = busy() || (i === 3 && drafted < n) || (i === 5 && drafted < n);
-    box.append(el('span', {class: 'stage' + (s.done ? ' done' : '') + (i === next ? ' next' : '')},
-      el('span', {}, (s.done ? '✓ ' : '') + s.t), el('span', {class: 'count'}, s.c), b));
+    const item = el('span', {class: 'stage' + (s.done ? ' done' : '') + (i === next ? ' next' : ''), title: s.t + ' — click for its action',
+      onclick: () => openStageMenu(item, s, i, drafted, n)},
+      el('span', {}, (s.done ? '✓ ' : '') + s.t), el('span', {class: 'count'}, s.c),
+      el('button', {class: 'caret', 'aria-expanded': 'false', 'aria-label': s.t + ' action',
+        onclick: (ev) => { ev.stopPropagation(); openStageMenu(ev.currentTarget, s, i, drafted, n); }}, '▾'));
+    chips.append(item);
   });
+  if (next >= 0)     // the next step's action stays reachable at the edge of the chips window
+    chips.append(el('span', {class: 'stage', title: 'Next step: ' + steps[next].t + ' — click for its action',
+      onclick: (ev) => openStageMenu(ev.currentTarget, steps[next], next, drafted, n)},
+      el('span', {class: 'count'}, '▸ next'),
+      el('button', {class: 'caret', 'aria-expanded': 'false', 'aria-label': 'Next step action',
+        onclick: (ev) => { ev.stopPropagation(); openStageMenu(ev.currentTarget, steps[next], next, drafted, n); }}, '▾')));
+  box.append(chips, el('button', {class: 'btn', id: 'nextAction'}));
+  drawNext(p);
 }
 function drawNext(p) {
-  // The single most useful next move, from real counts and records only.
+  // The single most useful next move, from real counts and records only; it lives in its own
+  // header slot, never inside the scrolling chips, and wraps rather than clips.
   let label, fn;
   const noPrompt = p.scenes.findIndex(s => !s.prompt);
   const noTake = p.scenes.findIndex(s => !s.takes.length);
@@ -745,9 +823,8 @@ function drawNext(p) {
   else if (noFinal >= 0) { label = `Next: Enhance selected take — scene ${noFinal + 1}`; fn = () => selectScene(p.scenes[noFinal].id); }
   else if (!p.outputs.film) { label = 'Next: Export film'; fn = () => run('assemble', {kind: 'film'}); }
   else { label = 'Every stage has a result — iterate freely'; fn = () => {}; }
-  const box = $('stages');
-  const b = el('button', {class: 'stage', style: 'font-weight:600', onclick: fn}, label);
-  box.append(b);
+  const b = $('nextAction');
+  if (b) { b.textContent = label; b.onclick = fn; }
 }
 
 function drawBatch(p) {
@@ -848,10 +925,10 @@ function drawTech() {
   const s = selScene(); if (!s) return;
   const t = takeInScene(s, previewRef) || (s.takes || []).find(t => t.run === s.chosen);
   const ref = t && (t.id || t.run);
-  const box = $('techBox'), btn = $('bTech');
-  if (!ref || !takeOpen.has(ref)) { box.hidden = true; btn.setAttribute('aria-expanded', 'false'); return; }
-  box.hidden = false; btn.setAttribute('aria-expanded', 'true');
-  loadTakeDetails(box, ref);
+  const det = $('techDetails');
+  if (!ref || !takeOpen.has(ref)) { det.hidden = !ref; det.open = false; return; }
+  det.hidden = false; det.open = true;
+  loadTakeDetails($('techBox'), ref);
 }
 function takeInScene(s, ref) { return ref ? (s.takes || []).find(t => (t.id || t.run) === ref) : null; }
 
@@ -865,21 +942,36 @@ function drawStrip(p) {
   [...s.takes].slice().reverse().forEach(t => box.append(buildTakeCard(t, s)));
 }
 function buildTakeCard(t, s) {
+  // a poster image, never a <video>: the card is a still with a play affordance; the take only
+  // loads into the main viewer when the card is clicked
   const ref = t.id || t.run, chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
-  const poster = t.thumb_url || (proj.refs && proj.refs.length ? `/files/${proj.slug}/refs/${proj.refs[0]}` : null);
   const card = el('div', {class: 'take' + (chosen ? ' chosen' : '') + (previewRef === ref ? ' preview' : ''), 'data-t': ref,
-    title: 'Preview in the viewer',
-    onclick: (ev) => { if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'VIDEO') return; previewTake(s, t); }});
-  card.append(el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'none', ...(poster ? {poster} : {})}));
+    title: 'Play this take in the viewer',
+    onclick: (ev) => { if (ev.target.closest('button')) return; previewTake(s, t); }});
+  const pos = s.takes.indexOf(t) + 1;
+  const box = el('div', {class: 'posterBox'});
+  const src = t.thumb_url || (t.final_url || t.url ? `/api/p/${proj.slug}/poster?id=${encodeURIComponent(ref)}` : null);
+  if (src) {
+    const img = el('img', {src, alt: '', loading: 'lazy',
+      onerror: () => { img.remove(); box.prepend(el('div', {class: 'takePlaceholder'}, `take ${pos}`)); }});
+    box.append(img);
+  } else box.append(el('div', {class: 'takePlaceholder'}, `take ${pos}`));
+  box.append(el('div', {class: 'playOv', 'aria-hidden': 'true'}, '▶ play in viewer'));
+  card.append(box);
+  const state = chosen ? (explicit ? 'pinned' : 'in use') : (t.provenance === 'legacy' ? 'provenance legacy' : null);
   card.append(el('div', {class: 'meta'},
     el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'enhanced 1080p48' : t.preset),
     el('span', {class: 'badge'}, 'seed ' + t.seed),
     ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
-    ...(chosen ? [el('span', {class: 'badge'}, explicit ? '★ in use (pinned)' : 'in use (latest, auto)')] : []),
-    el('button', {'data-k': 'bUse', 'data-t': ref, class: 'btn ' + (chosen && explicit ? 'ghost' : ''),
-      title: 'Use this take for the animatic, finals and continue scenes',
-      onclick: () => { previewTake(s, t); sceneAct('star', {scene: s.id, take: ref}); }},
-      chosen && explicit ? 'In use' : 'Use this take'),
+    ...(state ? [el('span', {class: 'badge' + (state === 'pinned' ? ' accent' : '')}, state)] : [])));
+  card.append(el('div', {class: 'takeActions'},
+    chosen && explicit
+      ? el('button', {'data-k': 'bUse', 'data-t': ref, class: 'btn ghost',
+          title: 'Stop pinning; this scene follows its latest take again',
+          onclick: () => sceneAct('star', {scene: s.id, auto: true})}, 'Release to auto')
+      : el('button', {'data-k': 'bUse', 'data-t': ref, class: 'btn',
+          title: 'Use this take for the animatic, finals and continue scenes',
+          onclick: () => { previewTake(s, t); sceneAct('star', {scene: s.id, take: ref}); }}, 'Use this take'),
     el('button', {'data-k': 'bDetails', 'data-t': ref, class: 'btn ghost', title: 'Show exactly what this take was generated with',
       onclick: () => { previewTake(s, t); const ref2 = t.id || t.run;
         takeOpen.has(ref2) ? takeOpen.delete(ref2) : takeOpen.add(ref2); drawTech(); }}, 'Details')));
@@ -903,10 +995,11 @@ const FLAG_LABEL = {prompt_changed: 'prompt changed', refs_changed: 'references 
 
 function drawInspector(p) {
   const s = selScene();
-  ['bCreatePrompt', 'bPreview', 'bAnother', 'bUseTake', 'bAuto', 'bEnhanceSel', 'bVariants', 'vCount', 'bFinal',
+  ['bPrimary', 'bAnother', 'bEnhanceSel', 'bVariants', 'vCount', 'bFinal',
    'bMoveUp', 'bMoveDown', 'bDeleteScene'].forEach(k => $(k).disabled = !s || busy() || (s && s.job && !s.job.done));
   if (!s) { $('inspTitle').textContent = 'No scene selected'; ['scTitle','scSeconds','scConnect','scTransition','scAction','scPrompt'].forEach(id => $(id).disabled = true);
-    $('scStatus').textContent = ''; $('scFlags').replaceChildren(); $('scJob').replaceChildren(); return; }
+    $('scStatus').textContent = ''; $('scFlags').replaceChildren(); $('scJob').replaceChildren(); $('bPrimary').style.display = 'none'; return; }
+  $('bPrimary').style.display = '';
   ['scTitle','scSeconds','scConnect','scTransition','scAction','scPrompt'].forEach(id => $(id).disabled = false);
   const i = sceneIndex(s);
   $('inspTitle').textContent = `Scene ${i + 1} of ${p.scenes.length}`;
@@ -916,6 +1009,8 @@ function drawInspector(p) {
   $('scConnect').disabled = i === 0;
   setIfIdle($('scTransition'), s.transition, 'transition', s.id);
   $('scTransition').disabled = i === 0;
+  const seedTake = (s.takes || []).find(x => x.run === s.chosen) || (s.takes || [s.takes.length - 1])[s.takes.length - 1];
+  $('scSeed').textContent = seedTake ? `take in use: seed ${seedTake.seed}` : 'no take yet';
   setIfIdle($('scAction'), s.action, 'action', s.id);
   setIfIdle($('scPrompt'), s.prompt, 'prompt', s.id);
   $('scMode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
@@ -932,15 +1027,20 @@ function drawInspector(p) {
   }
   updateStatus(s, i);
   updateJob(s);
-  // Use this take applies to the take in the viewer; Release to auto when pinned
+  // one primary action chosen from real state; "Use this take" targets the take in the viewer,
+  // and Release to auto is the single pinned control (the card strip and here never repeat text)
   const t = takeInScene(s, previewRef) || (s.takes || []).find(t => t.run === s.chosen);
   const explicit = s.selection === 'explicit';
-  $('bUseTake').hidden = $('bEnhanceSel').hidden = !s.takes.length;
+  let primary;
+  if (!s.prompt) primary = {t: 'Create prompt', fn: () => scenePrompt(s.id)};
+  else if (!s.takes.length) primary = {t: 'Generate preview', fn: () => sceneAct('render', {scene: s.id, preset: 'draft'})};
+  else if (t && !(explicit && t.run === s.chosen)) primary = {t: 'Use this take', fn: () => sceneAct('star', {scene: s.id, take: t.id || t.run})};
+  else primary = {t: 'Generate another take', fn: () => sceneReroll(s.id)};
+  const prim = $('bPrimary');
+  prim.textContent = primary.t; prim.onclick = primary.fn;
+  $('bAnother').hidden = primary.t === 'Generate another take';   // never the same action twice
+  $('bEnhanceSel').hidden = !s.takes.length;
   $('bCompare').disabled = true;
-  $('bAuto').hidden = !(s.takes.length && explicit);
-  $('bUseTake').onclick = () => { if (t) { const ref = t.id || t.run; if (!(explicit && t.run === s.chosen)) sceneAct('star', {scene: s.id, take: ref}); } };
-  $('bAuto').onclick = () => sceneAct('star', {scene: s.id, auto: true});
-  $('bUseTake').textContent = (t && explicit && t.run === s.chosen) ? 'In use (pinned)' : 'Use this take';
   drawTech();
 }
 function updateStatus(s, i) {
@@ -994,13 +1094,13 @@ function checkLabel(c) { if (!c) return ''; if (c.final_failures && c.final_fail
 
 /* ---------- take Details: fetched lazily, once per take; open state and payload live outside the DOM ---------- */
 let takeOpen = new Set(), takeData = new Map();
-$('bTech').onclick = () => {
+$('techDetails').ontoggle = () => {            // opening it by hand keeps takeOpen in sync
   const s = selScene(); if (!s) return;
   const t = takeInScene(s, previewRef) || (s.takes || []).find(t => t.run === s.chosen);
   if (!t) return;
   const ref = t.id || t.run;
-  takeOpen.has(ref) ? takeOpen.delete(ref) : takeOpen.add(ref);
-  drawTech();
+  if ($('techDetails').open) { takeOpen.add(ref); loadTakeDetails($('techBox'), ref); }
+  else takeOpen.delete(ref);
 };
 async function loadTakeDetails(box, ref) {
   if (takeData.has(ref)) return renderTakeDetails(box, takeData.get(ref));
@@ -1074,8 +1174,13 @@ async function loadLoras(onChange, probeOnly) {
 function setBackend(ok, msg) {
   const b = $('backend');
   b.classList.toggle('err', !ok);
-  const text = ok ? 'Renderer reachable' : 'Renderer unavailable — ' + (msg || 'cannot reach the server');
-  b.textContent = text;
+  const why = ' — ' + (msg || 'cannot reach the server');
+  const text = ok ? 'Renderer reachable' : 'Renderer unavailable' + why;
+  // words, not colour; on a phone the "Renderer " lead-in and the message tail drop away but
+  // the state keeps its word (textContent stays complete for probes and screen readers)
+  b.replaceChildren(el('span', {}, ...(ok ? ['Renderer reachable']
+                                          : [el('span', {class: 'wide'}, 'Renderer '), 'unavailable'])),
+                    ...(ok ? [] : [el('span', {class: 'bmsg'}, why)]));
   b.title = text;                                // the full probe message, shown on hover
 }
 function loraRows(onChange) {
@@ -1197,8 +1302,6 @@ async function runNow(action, body) {  // bookkeeping that never reads the edito
   catch (e) { flash(e.message, true); }
 }
 async function sceneAct(action, body) { await run(action, body); }
-$('bCreatePrompt').onclick = () => scenePrompt(selId);
-$('bPreview').onclick = () => selScene() && sceneAct('render', {scene: selId, preset: 'draft'});
 $('bAnother').onclick = () => selScene() && sceneReroll(selId);
 $('bVariants').onclick = () => selScene() && sceneAct('variants', {scene: selId, n: +$('vCount').value});
 $('bFinal').onclick = () => selScene() && sceneAct('render', {scene: selId, preset: 'final'});
@@ -1223,7 +1326,7 @@ async function scenePrompt(id) {
     if (asStale(st, requestSlug)) return;
     if (draft && (st.pendingScene[id] || {}).prompt && st.pendingScene[id].prompt.gen === draft.gen)
       delete st.pendingScene[id].prompt;                    // typing during the call itself stays pending
-    proj = p; viewToken++; stat.textContent = ''; $('promptBox').open = true; draw();
+    proj = p; viewToken++; stat.textContent = ''; draw();
   }
   catch (e) { clearInterval(tick); stat.textContent = e.message; }
 }
