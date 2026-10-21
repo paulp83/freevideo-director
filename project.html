@@ -63,13 +63,28 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 #hdr select { min-height: 32px; padding: 3px 8px; }
 #hdr a { font-size: 14px; white-space: nowrap; }
 #nameTitle { font-size: 17px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#saveStatus, #backend { font-size: 14px; color: var(--muted); }
+#saveStatus { font-size: 14px; color: var(--muted); }
 /* the flash line takes a shrinkable slot in the header row: a long message truncates instead of
    squeezing the controls or growing the header; the full text stays in the aria-live textContent
    (CSS ellipsis never touches it) and in the title; empty, it claims no width (basis 0) */
 #saveStatus { flex: 1 1 auto; min-width: 0; max-width: 34ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#backend { max-width: 26ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#backend.err { color: var(--err); }
+/* three independent readiness chips: one pill per check, opening its own details panel;
+   a shared reason never travels by colour alone (the state word is in textContent too) */
+#readiness { display: inline-flex; gap: 6px; align-items: center; }
+.rchip { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 2px 10px;
+         border: 1px solid var(--line); border-radius: 99px; background: var(--panel); color: var(--muted);
+         font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.rchip .rstate { font-weight: 700; }
+.rchip.limited .rstate { color: var(--warn); }
+.rchip.down .rstate { color: var(--err); }
+.rchip[aria-expanded="true"] { border-color: var(--accent); }
+#rd-panel { position: fixed; z-index: 41; display: none; max-width: min(480px, 92vw);
+            background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 10px 12px; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+#rd-panel h3 { margin: 0 0 6px; font-size: 15px; }
+#rd-panel .ritem { display: flex; gap: 8px; align-items: baseline; margin: 0 0 6px; }
+#rd-panel .rv { font-weight: 700; white-space: nowrap; }
+#rd-panel .rv.ok { color: var(--ok); } #rd-panel .rv.soft { color: var(--warn); } #rd-panel .rv.hard { color: var(--err); }
 /* stage nav: a compact row of items; each item's action sits in a small menu, the next action
    in its own fixed slot that never scrolls away with the chips */
 #stages { display: flex; gap: 8px; align-items: center; padding: 0 12px 6px; min-width: 0; }
@@ -151,8 +166,13 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 #cmpDiff .badge { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 #cmpSync { font-size: 14px; }
 
+/* the header band budget gets tight beside the three chips: they keep their state words
+   (Ready/Limited/Down) and drop the label, which aria-label and title still carry */
+@media (max-width: 1500px) { #hdr .rchip .wide { display: none; } }
+
 /* the chips get their own scroll window (the next action beside them never scrolls); this plus
    the tighter strip keeps the viewer >= 40% of the viewport height down to 1100 px wide */
+
 @media (max-width: 1440px) {
   #stageChips { overflow-x: auto; gap: 4px; }
   .stage { padding: 1px 3px 1px 8px; gap: 4px; flex: 0 0 auto; }
@@ -236,11 +256,14 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   /* save feedback must survive the small screen: the title gives its slot to the flash line,
      and the flash line shares the picker's row instead of squeezing the control row below */
   #hdr #nameTitle { display: none; }
-  #hdr #picker { order: 0; flex: 0 1 190px; }
+  #hdr #picker { order: 0; flex: 0 1 176px; min-width: 92px; }
   #hdr #saveStatus { order: 1; flex: 1 1 0; min-height: 44px; line-height: 44px; }
   #hdr #newBtn { order: 2; } #hdr #openSettings { order: 3; } #hdr .btn-queue { order: 4; }
   #hdr .btn-shot { order: 5; }
-  #hdr #backend { order: 4; display: inline-flex; align-items: center; min-height: 44px; max-width: 10ch; min-width: 0; flex: 0 1 auto; }
+  /* the three chips shrink to their state words (the .wide labels hide above) and take the
+     picker's row, so the phone header stays within the two-row + stages budget */
+  #hdr #readiness { order: 1; gap: 2px; flex: 0 1 170px; min-width: 170px; }
+  #hdr .rchip { padding: 2px 6px; min-height: 44px; overflow: hidden; }
   #hdr select { min-height: 44px; }
   #hdr .wide, #hdr .bmsg, #hdr .spacer { display: none; }
   #stages { flex-wrap: wrap; padding: 0 10px 4px; }
@@ -297,7 +320,11 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <h1 id="nameTitle">FreeVideo Film</h1>
     <span class="status" id="saveStatus" role="status"></span>
     <span class="spacer"></span>
-    <span id="backend" class="status" role="status"></span>
+    <span id="readiness" role="status" aria-label="backend readiness">
+      <button class="rchip" id="rd-prompt" aria-expanded="false" title="Checking the prompt model"><span class="wide">Prompts: </span><span class="rstate">Checking…</span></button>
+      <button class="rchip" id="rd-video" aria-expanded="false" title="Checking ComfyUI"><span class="wide">Video: </span><span class="rstate">Checking…</span></button>
+      <button class="rchip" id="rd-finishing" aria-expanded="false" title="Checking the finishing install"><span class="wide">Finishing: </span><span class="rstate">Checking…</span></button>
+    </span>
     <button class="btn ghost" id="openSettings" hidden title="Project settings">Settings</button>
     <button class="btn ghost btn-queue" id="openQueue" title="Live jobs: this film first, then everything else running">Queue<span id="queueCount"></span></button>
     <a class="btn-shot" href="/">Single shot →</a>
@@ -305,6 +332,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   <div id="stages" hidden></div>
   <div class="batch" id="batch"><span id="batchText"></span><button class="btn ghost" id="batchCancel" hidden>Cancel</button><div class="bar"><i id="batchBar"></i></div></div>
 </header>
+<div id="rd-panel" role="region" aria-label="readiness details" hidden></div>
 
 <!-- new film (full view) -->
 <div id="newBox" hidden>
@@ -729,6 +757,8 @@ document.querySelectorAll('#newBox .slot').forEach(slot => {
 });
 $('createBtn').onclick = async () => {
   const stat = $('createStatus'), t0 = Date.now();
+  const down = rdReason('prompt');
+  if (down) { stat.textContent = down; stat.classList.add('err'); return; }
   const chosen = [...document.querySelectorAll('#nCharacters input:checked')].map(x => x.value);
   const pics = chosen.filter(s => (library.find(c => c.slug === s) || {}).image_url).length + newRefs.filter(Boolean).length;
   if (pics > 4) { stat.textContent = 'Pick at most 4 pictures in total (uploads plus characters with a picture).'; stat.classList.add('err'); return; }
@@ -842,7 +872,7 @@ async function refresh(force) {
   } catch (e) { flash(e.message, true); }
 }
 setInterval(() => refresh(false), 3000);
-setInterval(() => { if (slug) loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)), true); }, 15000);
+setInterval(() => { loadReadiness(); if (slug) loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)), true); }, 15000);
 
 /* ---------- draw ---------- */
 function sceneState(s) {
@@ -983,8 +1013,15 @@ function openStageMenu(anchor, s, i, drafted, n) {
   const same = menuFor === i;
   closeStageMenu();                                     // the second click on the same caret closes
   if (same) return;
-  const b = el('button', {class: 'btn', onclick: () => { closeStageMenu(); s.fn(); }}, s.act);
+  // readiness gating never disables the menu item (a dead disabled button would trap the
+  // menu): the click closes it and flashes the same reason the replan path shows
+  const why = [rdReason('prompt'), rdReason('prompt'), rdReason('video'),
+               rdReason('finishing'), rdReason('finishing'), rdReason('finishing')][i];
+  const b = el('button', {class: 'btn', onclick: () => { closeStageMenu();
+                                                         if (why) flash(why, true);
+                                                         else s.fn(); }}, s.act);
   b.disabled = busy() || (i === 3 && drafted < n) || (i === 5 && drafted < n);
+  b.title = why || '';
   stageMenu = el('div', {id: 'stageMenu', role: 'menu'}, b);
   document.body.append(stageMenu);
   const r = anchor.getBoundingClientRect();
@@ -1138,8 +1175,10 @@ function drawTimeline(p) {
     });
   } else for (const b of tl.children) b.classList.toggle('sel', b.dataset.scene === selId);
   const drafted = p.scenes.filter(s => s.takes.length).length;
-  $('bPreviewFilm').disabled = busy() || drafted < p.scenes.length;
-  $('bExportFilm').disabled = busy() || drafted < p.scenes.length;
+  const finWhy = rdReason('finishing');
+  $('bPreviewFilm').disabled = busy() || drafted < p.scenes.length || !!finWhy;
+  $('bExportFilm').disabled = busy() || drafted < p.scenes.length || !!finWhy;
+  $('bPreviewFilm').title = finWhy || ''; $('bExportFilm').title = finWhy || '';
   for (const [kind, id] of [['animatic', 'animFlag'], ['film', 'filmFlag']]) {
     const o = p.outputs[kind], f = $(id);
     if (o && o.outdated && o.changes) { f.hidden = false; f.textContent = `cut outdated: a new cut would change ${o.changes.join(', ')}`; }
@@ -1442,10 +1481,11 @@ function actionReason(s, act) {
   if (act === 'compare') return (s.takes || []).length < 2 ? 'this scene has fewer than two takes' : null;
   if (act === 'enhance') {
     if (!(s.takes || []).length) return 'no take to enhance';
-    return backendOk ? null : 'ComfyUI not reachable';
+    return rdReason('finishing');
   }
   if (!s.prompt) return 'Create a prompt first';
-  if (['render', 'final', 'variants', 'reroll'].includes(act) && !backendOk) return 'ComfyUI not reachable';
+  if (['render', 'final', 'variants', 'reroll'].includes(act))
+    return act === 'final' ? rdReason('video') || rdReason('finishing') : rdReason('video');
   return null;
 }
 
@@ -1497,8 +1537,8 @@ function drawInspector(p) {
   // an unresolved unknown job still holds the scene (web.py keeps its reservations), so the
   // primary action is blocked for it too -- not only for a visibly running job
   const block = busy() || !!(s.job && (!s.job.done || (s.job.state === 'unknown' && !s.job.resolved)));
-  prim.disabled = block;
-  const blockWhy = block ? sceneBlockReason(s) : '';
+  const blockWhy = block ? sceneBlockReason(s) : (primary.t === 'Create prompt' ? rdReason('prompt') : '');
+  prim.disabled = block || !!blockWhy;
   $('primaryWhy').textContent = blockWhy; $('primaryWhy').hidden = !blockWhy;
   $('bAnother').hidden = primary.t === 'Generate another take';   // never the same action twice
   // a shared reason is written once near the controls it blocks: every span still carries its
@@ -1699,8 +1739,8 @@ function sourceTakeText(stx) {
          (stx.frame_sha256 ? `, frame sha ${String(stx.frame_sha256).slice(0, 12)}` : '');
 }
 
-/* ---------- backend readiness (the only probe the server offers: the ComfyUI LoRA list) ---------- */
-let loraNames = null, loraList = [], backendOk = true;
+/* ---------- LoRA picker (fed by /api/loras; readiness now owns the health chips) ---------- */
+let loraNames = null, loraList = [];
 async function loadLoras(onChange, probeOnly) {
   try {
     const r = await fetch('/api/loras');
@@ -1709,27 +1749,81 @@ async function loadLoras(onChange, probeOnly) {
       throw new Error(body.error || `renderer probe failed (HTTP ${r.status})`);
     }
     loraNames = (await r.json()).loras || [];
-    setBackend(true);
-  } catch (e) { loraNames = loraNames || []; setBackend(false, e.message); }
+  } catch (e) { loraNames = loraNames || []; }
   if (probeOnly) return;
   document.getElementById('addLora').onclick = () => {
     loraList.push({name: loraNames[0], strength: 1, enabled: true}); loraRows(onChange); onChange();
   };
   loraRows(onChange);
 }
-function setBackend(ok, msg) {
-  backendOk = !!ok;
-  const b = $('backend');
-  b.classList.toggle('err', !ok);
-  const why = ' — ' + (msg || 'cannot reach the server');
-  const text = ok ? 'Renderer reachable' : 'Renderer unavailable' + why;
-  // words, not colour; on a phone the "Renderer " lead-in and the message tail drop away but
-  // the state keeps its word (textContent stays complete for probes and screen readers)
-  b.replaceChildren(el('span', {}, ...(ok ? ['Renderer reachable']
-                                          : [el('span', {class: 'wide'}, 'Renderer '), 'unavailable'])),
-                    ...(ok ? [] : [el('span', {class: 'bmsg'}, why)]));
-  b.title = text;                                // the full probe message, shown on hover
+/* ---------- readiness: three separate checks, one place (readiness.py backs all three) ---------- */
+let RD = null, rdOpen = null;
+const RD_LABEL = {prompt: 'Prompts', video: 'Video', finishing: 'Finishing'};
+const RD_STATE = {ready: 'Ready', limited: 'Limited', unavailable: 'Down'};
+function rdReason(kind) {
+  const c = RD && RD.checks && RD.checks[kind];
+  if (!c || c.level !== 'unavailable') return null;    // 'limited' warns in the chip, never disables
+  const hard = c.items.filter(i => !i.ok && i.hard).map(i => i.short);
+  const s = hard[0] || 'not ready';
+  if (kind === 'prompt') return 'Prompt model ' + s;
+  if (kind === 'video') return s.startsWith('not reachable') ? 'ComfyUI ' + s : 'Video generation unavailable: ' + s;
+  return 'Finishing unavailable: ' + hard.join('; ') + ' (affects Enhance, Final, Export)';
 }
+async function loadReadiness() {
+  try { RD = await api('/api/readiness'); } catch (e) { /* keep the last picture; the chip says what we knew */ }
+  drawReadiness();
+}
+function drawReadiness() {
+  for (const kind of ['prompt', 'video', 'finishing']) {
+    const chip = $('rd-' + kind), c = RD && RD.checks && RD.checks[kind];
+    chip.classList.toggle('down', !!(c && c.level === 'unavailable'));
+    chip.classList.toggle('limited', !!(c && c.level === 'limited'));
+    chip.querySelector('.rstate').textContent = c ? RD_STATE[c.level] : 'Checking…' ;
+    if (c) chip.title = `${RD_LABEL[kind]}: ${c.summary}`;
+    chip.setAttribute('aria-label',
+      (c ? c.reason || c.summary : RD_LABEL[kind] + ': checking') + ' - press Enter for the details and fixes');
+  }
+  if (rdOpen) paintRdPanel();
+  const sig = RD ? Object.keys(RD.checks).map(k => k + RD.checks[k].level).join(',') : '';
+  if (sig !== drawReadiness.sig) {     // a level change re-reasons every gated button at once
+    drawReadiness.sig = sig;
+    if (proj) draw();
+  }
+}
+function paintRdPanel() {
+  const panel = $('rd-panel'); if (!rdOpen || panel.hidden) return;
+  const c = RD && RD.checks && RD.checks[rdOpen];
+  panel.replaceChildren(el('h3', {}, `${RD_LABEL[rdOpen]}: ${c ? RD_STATE[c.level] : 'Checking…'}`));
+  if (!c) return;
+  for (const it of c.items) {
+    const v = it.ok ? ['ok', 'ok'] : (it.hard ? ['missing', 'hard'] : ['not confirmed', 'soft']);
+    panel.append(el('div', {class: 'ritem'}, el('span', {class: 'rv ' + v[1]}, v[0]),
+      el('span', {style: 'flex:1'}, `${it.name}: ${it.detail}` +
+        (it.how_to_fix ? ` - fix: ${it.how_to_fix}` : ''))));
+  }
+}
+function closeRdPanel() {
+  rdOpen = null;
+  const panel = $('rd-panel'); panel.hidden = true; panel.style.display = 'none';
+  document.querySelectorAll('#readiness .rchip').forEach(c => c.setAttribute('aria-expanded', 'false'));
+}
+function toggleRdPanel(kind) {
+  if (rdOpen === kind) return closeRdPanel();
+  rdOpen = kind;
+  const panel = $('rd-panel'), chip = $('rd-' + kind);
+  panel.hidden = false; panel.style.display = 'block';
+  paintRdPanel();
+  const r = chip.getBoundingClientRect();
+  panel.style.left = Math.max(8, Math.min(r.left, innerWidth - panel.offsetWidth - 8)) + 'px';
+  panel.style.top = Math.min(r.bottom + 6, innerHeight - panel.offsetHeight - 8) + 'px';
+  document.querySelectorAll('#readiness .rchip').forEach(c => c.setAttribute('aria-expanded', c === chip ? 'true' : 'false'));
+}
+for (const kind of ['prompt', 'video', 'finishing'])
+  $('rd-' + kind).onclick = () => toggleRdPanel(kind);
+document.addEventListener('click', (ev) => {
+  if (rdOpen && !ev.target.closest('#readiness') && !ev.target.closest('#rd-panel')) closeRdPanel();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rdOpen) closeRdPanel(); });
 function loraRows(onChange) {
   const box = document.getElementById('loras'); box.replaceChildren();
   const make = (tag, props = {}) => Object.assign(document.createElement(tag), props);
@@ -1880,6 +1974,8 @@ async function scenePrompt(id) {
 async function replan() {
   const logline = prompt('Re-plan the storyboard from this logline. This REPLACES all scenes, prompts and takes in the project.', proj.logline);
   if (logline === null) return;
+  const down = rdReason('prompt');
+  if (down) { flash(down, true); return; }
   try { await flushEdits(); } catch (e) { flash(e.message, true); return; }
   flash('Re-planning… ~20 s');
   const requestSlug = slug;
@@ -2145,6 +2241,7 @@ window.addEventListener('resize', fitGrid);
 
 loadList().then(() => { if (slug) open(slug); });
 loadLibrary().catch(() => {});
+loadReadiness();
 loadLoras(() => markDirty(null, 'loras', structuredClone(loraList)));
 </script>
 </body>
