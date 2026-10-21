@@ -100,6 +100,28 @@ class Finishing(unittest.TestCase):
         self.assertEqual(finishing.clean_finishing(once), once)
         self.assertEqual(finishing.clean_finishing({'encode': {'crf': 18, 'preset': None}}), once)
 
+    def test_disabled_stages_leave_their_nodes_out_of_the_graph(self):
+        import enhance
+        full = enhance.graph('in.mp4', 'run')
+        off = finishing.clean_finishing({'upscale': {'enabled': False}, 'fps_policy': 'original'})
+        g = enhance.graph('in.mp4', 'run', settings=off)
+        cls = lambda gr: {str(n.get('class_type')) for n in gr.values()}
+        self.assertTrue(any('SEEDVR2' in c.upper() for c in cls(full)))
+        self.assertTrue(any('RIFE' in c.upper() for c in cls(full)))
+        self.assertFalse(any('SEEDVR2' in c.upper() for c in cls(g)))
+        self.assertFalse(any('RIFE' in c.upper() for c in cls(g)))
+        # only upscale off: RIFE stays, fed by the raw frames instead of SeedVR2
+        u = enhance.graph('in.mp4', 'run',
+                          settings=finishing.clean_finishing({'upscale': {'enabled': False}}))
+        self.assertTrue(any('RIFE' in c.upper() for c in cls(u)))
+        self.assertEqual(next(n for n in full.values()
+                              if str(n.get('class_type')).upper().startswith('VHS_VIDEO'))
+                         ['inputs']['frame_rate'], 48)
+        self.assertEqual(next(n for n in g.values()
+                              if str(n.get('class_type')).upper().startswith('VHS_VIDEO'))
+                         ['inputs']['frame_rate'], 24)
+        self.assertEqual(set(enhance.node_stages(off)), set(g))
+
     def test_plan_extras_appear_only_when_the_project_leaves_legacy(self):
         self.assertEqual(finishing.plan_extras(finishing.for_project({})), {})   # old fingerprints hold
         extras = finishing.plan_extras(settings(upscale={'enabled': False}))
