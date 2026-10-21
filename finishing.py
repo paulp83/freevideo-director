@@ -89,7 +89,7 @@ def clean_finishing(raw):
                                  f'{", ".join(map(str, INTERP_FACTORS))}')
     enc = dict(d['encode'])
     if (v := raw.get('encode')) is not None:
-        if 'preset' in v:
+        if v.get('preset') is not None:      # a null preset (custom CRF round-trip) means none
             if v['preset'] not in QUALITY_PRESETS:
                 raise ValueError(f'finishing quality preset must be one of '
                                  f'{", ".join(sorted(QUALITY_PRESETS))}')

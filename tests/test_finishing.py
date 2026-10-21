@@ -93,6 +93,13 @@ class Finishing(unittest.TestCase):
                                                            'fps_policy': 'original'}})
         self.assertFalse(new['upscale']['enabled'])
 
+    def test_a_saved_custom_crf_round_trips_through_validation(self):
+        once = finishing.clean_finishing({'encode': {'crf': 18}})
+        self.assertEqual(once['encode'], {'crf': 18, 'preset': None})
+        # exactly what the editor stores and the browser sends back on the next save
+        self.assertEqual(finishing.clean_finishing(once), once)
+        self.assertEqual(finishing.clean_finishing({'encode': {'crf': 18, 'preset': None}}), once)
+
     def test_plan_extras_appear_only_when_the_project_leaves_legacy(self):
         self.assertEqual(finishing.plan_extras(finishing.for_project({})), {})   # old fingerprints hold
         extras = finishing.plan_extras(settings(upscale={'enabled': False}))
