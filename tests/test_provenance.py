@@ -194,7 +194,7 @@ class Provenance(unittest.TestCase):
                                                  resolution=1080, multiplier=2, crf=16,
                                                  settings={'upscale': {'enabled': True, 'height': 1080},
                                                            'interpolation': {'enabled': True, 'factor': 2},
-                                                           'encode': {'crf': 16, 'preset': None},
+                                                           'encode': {'crf': 16, 'preset': 'high'},
                                                            'fps_policy': 'interpolated'},
                                                  stages=['upscale', 'smooth', 'encode'], output_fps=48))
         result = projects.read_job(self.slug, job['id'])[1]
@@ -295,7 +295,7 @@ class Provenance(unittest.TestCase):
                                                  resolution=1080, multiplier=2, crf=16,
                                                  settings={'upscale': {'enabled': True, 'height': 1080},
                                                            'interpolation': {'enabled': True, 'factor': 2},
-                                                           'encode': {'crf': 16, 'preset': None},
+                                                           'encode': {'crf': 16, 'preset': 'high'},
                                                            'fps_policy': 'interpolated'},
                                                  stages=['upscale', 'smooth', 'encode'], output_fps=48))
         self.assertIn('/take.mp4', result['final'])

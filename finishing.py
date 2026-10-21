@@ -33,9 +33,10 @@ _SECTIONS = ('upscale', 'interpolation', 'encode')
 
 def defaults():
     """The pipeline as it ran before per-project settings existed (values from config.py)."""
+    crf = int(config.value('enhance_crf'))
     return {'upscale': {'enabled': True, 'height': int(config.value('enhance_resolution'))},
             'interpolation': {'enabled': True, 'factor': int(config.value('enhance_multiplier'))},
-            'encode': {'crf': int(config.value('enhance_crf')), 'preset': None},
+            'encode': {'crf': crf, 'preset': next((n for n, c in QUALITY_PRESETS.items() if c == crf), None)},
             'fps_policy': 'interpolated'}
 
 
@@ -46,7 +47,7 @@ def clean_finishing(raw):
     Raises ValueError naming the offending key -- the web layer turns that into a 400."""
     d = defaults()
     if raw is None:
-        return d
+        raw = {}                                       # normalised like any other input
     if not isinstance(raw, dict):
         raise ValueError('finishing must be an object')
     for key in raw:
@@ -110,6 +111,8 @@ def clean_finishing(raw):
         interp['enabled'] = policy == 'interpolated'      # the one fps decision wins
     else:
         policy = 'interpolated' if interp['enabled'] else 'original'
+    # one name per CRF, so the defaults and an explicit save of the same values compare equal
+    enc['preset'] = next((n for n, c in QUALITY_PRESETS.items() if c == enc['crf']), None)
     return {'upscale': up, 'interpolation': interp, 'encode': enc, 'fps_policy': policy}
 
 
