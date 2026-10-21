@@ -7,7 +7,7 @@ workspace (:8190, GPU 0); FreeVideo's idle engine is released first via ComfyUI'
 
   python3 enhance.py <freevideo run dir | video.mp4> [--resolution 1080] [--fps-multiplier 2]
 """
-import argparse, ast, json, os, subprocess, time, urllib.parse, urllib.request
+import argparse, ast, json, os, shutil, subprocess, tempfile, time, urllib.parse, urllib.request
 from pathlib import Path
 
 COMFY = os.environ.get('COMFY_URL') or 'http://127.0.0.1:8190'
@@ -55,17 +55,18 @@ def npy_header(path):
     return header['shape'], offset
 
 
-def intermediate(run):
-    """Write the raw frames (+ audio) losslessly to ComfyUI/input/director/<run>-raw.mkv.
+def intermediate(run, workdir):
+    """Write the raw frames (+ audio) losslessly to <workdir>/<run>-raw.mkv.
 
-    Without raw frames (FreeVideo 0.4.9+) return the take's own video.mp4 and no frame count.
+    `workdir` is the enhance job's private temp dir (see new_workdir), so concurrent enhances
+    never share or clobber an intermediate. Without raw frames (FreeVideo 0.4.9+) return the
+    take's own video.mp4 and no frame count.
     """
     if not (run / 'video.artifacts' / 'rgb.npy').is_file():
         return run / 'video.mp4', None
     shape, offset = npy_header(run / 'video.artifacts' / 'rgb.npy')
     frames, height, width, _ = shape
-    out = COMFY_ROOT / 'input' / 'director' / f'{run.name}-raw.mkv'
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = workdir / f'{run.name}-raw.mkv'
     audio = run / 'video.artifacts' / 'audio.wav'
     cmd = ['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}',
            '-r', str(FPS), '-i', 'pipe:0']
@@ -83,13 +84,22 @@ def intermediate(run):
     return out, frames
 
 
-def cleanup_intermediate(path):
-    """Delete the lossless <run>-raw.mkv that intermediate() wrote; a missing file or run is fine."""
-    try:
-        run = run_dir_of(path)
-    except FileNotFoundError:
-        return
-    (COMFY_ROOT / 'input' / 'director' / f'{run.name}-raw.mkv').unlink(missing_ok=True)
+def workdir_parent():
+    """Parent of the per-enhance temp dirs; inside ComfyUI's input folder so the graph can read it."""
+    return COMFY_ROOT / 'input' / 'director' / 'enhance-tmp'
+
+
+def new_workdir(run, ident):
+    """Private temp dir for one enhance job; the name carries the take and the job id."""
+    parent = workdir_parent()
+    parent.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=f'{run.name}-{ident}-', dir=parent))
+
+
+def remove_workdir(workdir):
+    """Delete one enhance job's temp dir; never raises, so it is safe in a finally."""
+    if workdir:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def graph(source, run_name, **opts):
@@ -127,13 +137,22 @@ def free_gpu():
     time.sleep(3)
 
 
-def submit(path, **opts):
-    """Prepare the intermediate and queue the enhance graph. Returns (prompt_id, run dir)."""
+def submit(path, ident='cli', **opts):
+    """Prepare the intermediate in a private temp dir and queue the enhance graph.
+
+    Returns (prompt_id, run dir, work dir); the caller must remove_workdir() in a finally once
+    ComfyUI no longer needs the intermediate. On failure the dir is already removed.
+    """
     run = run_dir_of(path)
-    source, _ = intermediate(run)
-    free_gpu()
-    reply = _post('/prompt', {'prompt': graph(source, run.name, **opts), 'client_id': 'freevideo-director'})
-    return reply['prompt_id'], run
+    workdir = new_workdir(run, ident)
+    try:
+        source, _ = intermediate(run, workdir)
+        free_gpu()
+        reply = _post('/prompt', {'prompt': graph(source, run.name, **opts), 'client_id': 'freevideo-director'})
+    except BaseException:
+        remove_workdir(workdir)
+        raise
+    return reply['prompt_id'], run, workdir
 
 
 def result(prompt_id):
@@ -173,15 +192,16 @@ def main():
     p.add_argument('--batch-size', type=int, default=DEFAULTS['batch_size'], help='SeedVR2 frames per batch (4n+1)')
     a = p.parse_args()
     start = time.time()
+    workdir = None
     try:
-        pid, run = submit(a.take, resolution=a.resolution, multiplier=a.fps_multiplier, crf=a.crf,
-                          batch_size=a.batch_size)
+        pid, run, workdir = submit(a.take, resolution=a.resolution, multiplier=a.fps_multiplier, crf=a.crf,
+                                   batch_size=a.batch_size)
         print(f'enhance: queued {pid} for {run.name}')
         while (r := result(pid)) is None:
             time.sleep(5)
         print(f'enhance: {r["path"]}  ({time.time() - start:.0f}s)')
     finally:
-        cleanup_intermediate(a.take)
+        remove_workdir(workdir)         # the lossless raw mkv is only needed while ComfyUI reads it
 
 
 if __name__ == '__main__':

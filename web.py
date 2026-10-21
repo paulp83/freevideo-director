@@ -481,8 +481,9 @@ def enhance_stages(job, run, on_final=None):
     activate(job, 'upscale')
     check_cancel(job)                                  # a cancel after prep never submits
     run_dir = enhance.run_dir_of(run)
-    source, _ = enhance.intermediate(run_dir)
+    workdir = enhance.new_workdir(run_dir, job['id'])   # private to this job; two enhances never share a name
     try:
+        source, _ = enhance.intermediate(run_dir, workdir)
         enhance.free_gpu()
         pid = submit_prompt({'prompt': enhance.graph(source, run_dir.name)})
         job['prompt_ids'].append(pid)
@@ -500,7 +501,7 @@ def enhance_stages(job, run, on_final=None):
 
         final = poll(job, lambda: enhance.result(pid), progress)
     finally:
-        enhance.cleanup_intermediate(run)   # the lossless -raw.mkv is only needed while ComfyUI reads it
+        enhance.remove_workdir(workdir)   # the lossless raw mkv is only needed while ComfyUI reads it
     job['final'] = final
     if on_final:
         on_final(final)
