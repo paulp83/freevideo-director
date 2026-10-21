@@ -953,6 +953,90 @@ def scene_status(project, scene):
     return status
 
 
+# ---------------------------------------------------------------- cut fingerprint
+# Every assembled cut records a fingerprint: sha256 over a canonical JSON plan of the exact
+# inputs -- ordered takes (with each take's final/draft choice), per-scene transitions, the
+# title/end cards, the music bed, and the export settings assemble() used. On read an output is
+# re-planned from the CURRENT project (no ffmpeg, stored nowhere): components that would cut
+# differently come back named in `changes`. Cuts assembled before fingerprints existed answer
+# 'unknown_legacy' instead of guessing, and old entries and files are never edited.
+
+CUT_COMPONENTS = ('takes', 'transitions', 'cards', 'music', 'export')
+MUSIC_VOLUME = '0.6'                              # keep in step with the ffmpeg flags below
+LOUDNORM = 'I=-14:TP=-1.5:LRA=11'
+
+
+def _card_plan(card):
+    return None if not card else {'text': card['text'], 'seconds': float(card['seconds'])}
+
+
+def cut_plan(project, used_takes, kind='film'):
+    """The canonical input plan of one cut, as a plain JSON-able dict. Pure: reads the project
+    dict and the frozen used_takes list and touches nothing else. `kind` selects the same
+    size/fps/encoding assemble() uses; each take's final/draft choice is the one a cut of THIS
+    project state would make (film prefers a take's enhanced final when it has one)."""
+    w, h = FILM_SIZES[project['aspect']] if kind == 'film' else project['size']
+    takes = []
+    for u in used_takes:
+        scene = next((s for s in project['scenes'] if s['id'] == u['scene']), None)
+        take = find_take(scene, u['take']) if scene else None
+        takes.append({'scene': u['scene'], 'take': u['take'], 'run': u['run'],
+                      'selection': u['selection'],
+                      'file': 'final' if kind == 'film' and take and take.get('final') else 'draft'})
+    music = None
+    name = project.get('music_file')
+    if name and path(project['slug'], name).is_file():
+        music = {'file': name, 'hash': hashlib.sha256(path(project['slug'], name).read_bytes()).hexdigest(),
+                 'brief_hash': hashlib.sha256((project.get('music_brief') or '').encode()).hexdigest(),
+                 'volume': MUSIC_VOLUME, 'loudnorm': LOUDNORM}
+    return {'takes': takes,
+            'transitions': [s.get('transition', 'cut') for s in project['scenes']],
+            'cards': {'title': _card_plan(project.get('title_card')), 'end': _card_plan(project.get('end_card'))},
+            'music': music,
+            # the encoder flags assemble() puts on its command line; change both together
+            'export': {'width': int(w), 'height': int(h), 'fps': 48 if kind == 'film' else 24,
+                       'video_codec': 'libx264', 'preset': 'medium', 'crf': '16' if kind == 'film' else '20',
+                       'pix_fmt': 'yuv420p', 'audio_codec': 'aac', 'audio_bitrate': '192k',
+                       'audio_rate': 48000, 'faststart': True, 'crossfade': XFADE, 'dip': DIP}}
+
+
+def _plan_fingerprint(plan):
+    return hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def cut_fingerprint(project, used_takes, kind='film'):
+    return _plan_fingerprint(cut_plan(project, used_takes, kind))
+
+
+def current_used_takes(project, kind='film'):
+    """The used_takes a fresh assemble(kind) of THIS project state would record: each scene's
+    resolved take in scene order. Resolution mirrors chosen()/selection_of(); ffmpeg never runs."""
+    used = []
+    for scene in project['scenes']:
+        take = chosen(scene)
+        if not take:
+            continue
+        used.append({'scene': scene['id'], 'take': take_ref(take), 'run': take['run'],
+                     'selection': selection_of(scene)[1]})
+    return used
+
+
+def current_cut_fingerprint(project, kind='film'):
+    return cut_fingerprint(project, current_used_takes(project, kind), kind)
+
+
+def output_status(project, kind, entry):
+    """Derived per-output state for the read view, stored nowhere: 'fingerprint' -- the one the
+    entry was cut with, or 'unknown_legacy' for cuts predating fingerprints; 'outdated'; and
+    'changes', the components a fresh assemble(kind) would cut differently. A fingerprint with
+    no stored plan cannot be compared: it reports changes nothing rather than guessing."""
+    if not entry.get('fingerprint') or not entry.get('cut_plan'):
+        return {'fingerprint': entry.get('fingerprint') or 'unknown_legacy', 'outdated': False, 'changes': []}
+    current = cut_plan(project, current_used_takes(project, kind), kind)
+    changes = [c for c in CUT_COMPONENTS if entry['cut_plan'].get(c) != current.get(c)]
+    return {'fingerprint': entry['fingerprint'], 'outdated': bool(changes), 'changes': changes}
+
+
 # ---------------------------------------------------------------- assembly
 
 def _duration(file):
@@ -1013,6 +1097,7 @@ def assemble(project, kind):
     if not clips:
         raise ProjectError('no scenes')
     w, h = FILM_SIZES[project['aspect']] if kind == 'film' else project['size']
+    plan = cut_plan(project, used_takes, kind)      # inputs frozen before ffmpeg runs
     fps = 48 if kind == 'film' else 24
     n_scenes, cards = len(clips), None
     trans = [s.get('transition', 'cut') for s in project['scenes']]
@@ -1060,14 +1145,14 @@ def assemble(project, kind):
         cmd += ['-stream_loop', '-1', '-i', str(path(project['slug'], music))]
         m = len(clips)
         fade = min(2.5, tcur / 4)
-        parts += [f'[{m}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{tcur:.3f},volume=0.6,'
+        parts += [f'[{m}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{tcur:.3f},volume={MUSIC_VOLUME},'
                   f'afade=t=in:d=0.5,afade=t=out:st={tcur - fade:.3f}:d={fade:.3f}[mus]',
                   f'[{acur}]asplit=2[dia1][key]',
                   '[mus][key]sidechaincompress=threshold=0.04:ratio=6:attack=20:release=500[duck]',
                   '[dia1][duck]amix=inputs=2:duration=first:normalize=0[mix]',
-                  '[mix]loudnorm=I=-14:TP=-1.5:LRA=11[aout]']
+                  f'[mix]loudnorm={LOUDNORM}[aout]']
     else:
-        parts.append(f'[{acur}]loudnorm=I=-14:TP=-1.5:LRA=11[aout]')
+        parts.append(f'[{acur}]loudnorm={LOUDNORM}[aout]')
     out = path(project['slug'], f'{kind}-{time.strftime("%Y%m%d-%H%M%S")}.mp4')
     cmd += ['-filter_complex', ';'.join(parts), '-map', f'[{vcur}]', '-map', '[aout]',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '16' if kind == 'film' else '20', '-pix_fmt', 'yuv420p',
@@ -1078,4 +1163,5 @@ def assemble(project, kind):
     if result.returncode:
         raise ProjectError('ffmpeg failed: ' + result.stderr.strip()[-600:])
     return {'file': out.name, 'seconds': round(tcur, 1), 'scenes': n_scenes, 'not_final': not_final,
-            'used_takes': used_takes, 'created': time.time()}
+            'used_takes': used_takes, 'created': time.time(),
+            'fingerprint': _plan_fingerprint(plan), 'cut_plan': plan}

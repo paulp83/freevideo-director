@@ -313,6 +313,24 @@ def main():
         time.sleep(1.5)
         saves_b = d.js("return window.__log.filter(x => x.url.endsWith('/save')).length")
         check('9 the failed save is not retried in a loop', saves_b - saves_a <= 1, saves_b - saves_a)
+
+        # 10. cut fingerprint: a stored cut whose music differs shows as outdated with the component
+        # named; a cut from before fingerprints existed shows as legacy
+        p = server_project(alpha)
+        plan = projects.cut_plan(p, projects.current_used_takes(p, 'animatic'), 'animatic')
+        plan['music'] = {'file': 'music.mp3', 'hash': 'old-song', 'brief_hash': 'old-brief',
+                         'volume': '0.6', 'loudnorm': 'I=-14:TP=-1.5:LRA=11'}   # the bed under the cut differs
+        p['outputs'] = {'animatic': {'file': 'animatic-old.mp4', 'seconds': 18.0, 'scenes': 2, 'not_final': [],
+                                     'used_takes': [], 'created': time.time(), 'fingerprint': 'deadbeef', 'cut_plan': plan},
+                        'film': {'file': 'film-old.mp4', 'seconds': 18.0, 'scenes': 2, 'not_final': [],
+                                 'used_takes': [], 'created': time.time()}}      # no fingerprint: legacy
+        projects.save(p)
+        d.go(url(alpha))
+        landed = d.wait("document.getElementById('animaticInfo').textContent.includes('outdated')", 10)
+        anim = d.js("return document.getElementById('animaticInfo').textContent")
+        check('10 the outdated cut names the component that differs', bool(landed) and 'music' in anim, anim)
+        film = d.js("return document.getElementById('filmInfo').textContent")
+        check('10 a legacy cut reports it predates cut fingerprints', 'predates cut fingerprints' in film, film)
     finally:
         if d: d.close()
         web.terminate()

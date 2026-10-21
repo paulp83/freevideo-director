@@ -1119,6 +1119,8 @@ def project_view(slug):
         for t in s.get('takes') or []:          # derived: legacy takes never grow stored keys
             t['provenance'] = projects.take_provenance(t)
             t['selected'] = t is c
+    for kind, out in (p.get('outputs') or {}).items():
+        out.update(projects.output_status(p, kind, out))   # derived per request; never stored (project.py)
     b = BATCH.get(slug)
     p['batch'] = dict(b, seconds=round(time.time() - b['started'])) if b else None
     p['batch_job'] = public(JOBS[b['job']]) if b and b.get('job') in JOBS else None

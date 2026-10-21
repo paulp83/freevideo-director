@@ -566,7 +566,9 @@ function draw(force) {
       const src = `/files/${p.slug}/${out[k].file}`;
       if (!$(k).src.endsWith(src)) $(k).src = src;
       $(k + 'Info').textContent = `${out[k].file} · ${out[k].scenes} scenes · ${out[k].seconds} s` +
-        (out[k].not_final && out[k].not_final.length ? ` · scenes ${out[k].not_final.join(', ')} used drafts` : '');
+        (out[k].not_final && out[k].not_final.length ? ` · scenes ${out[k].not_final.join(', ')} used drafts` : '') +
+        (out[k].outdated ? ` · outdated: a new cut would change ${out[k].changes.join(', ')}` :
+         out[k].fingerprint === 'unknown_legacy' ? ' · predates cut fingerprints' : '');
     }
   }
 
