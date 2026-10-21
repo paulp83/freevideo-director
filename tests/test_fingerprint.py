@@ -26,10 +26,28 @@ class FakeFfmpeg:
     """Stands in for the subprocess module inside project.py: ffprobe answers a 6 s silent clip
     and the encode always succeeds, without ffmpeg ever running."""
 
+    PIPE = subprocess.PIPE
+
     def run(self, cmd, **kw):
         stdout = '6.000000\n' if 'format=duration' in cmd else ''
         return subprocess.CompletedProcess(cmd, 0, stdout, '')
 
+    def Popen(self, cmd, **kw):
+        return _FakeProc(cmd)
+
+
+class _FakeProc:
+    """Stands in for the Popen of a finished encode: poll answers 0 without a child process."""
+    def __init__(self, cmd):
+        self.cmd, self.returncode = cmd, None
+    def poll(self):
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
+    def kill(self):
+        self.returncode = -9
+    def communicate(self):
+        return ('', '')
 
 class Cuts(unittest.TestCase):
     def setUp(self):

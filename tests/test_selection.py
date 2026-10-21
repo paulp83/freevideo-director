@@ -72,10 +72,28 @@ class FakeFfmpeg:
     """Stands in for the subprocess module inside project.py: ffprobe answers a 6 s silent clip
     and the final encode always succeeds, without ffmpeg ever running."""
 
+    PIPE = subprocess.PIPE
+
     def run(self, cmd, **kw):
         stdout = '6.000000\n' if 'format=duration' in cmd else ''
         return subprocess.CompletedProcess(cmd, 0, stdout, '')
 
+    def Popen(self, cmd, **kw):
+        return _FakeProc(cmd)
+
+
+class _FakeProc:
+    """Stands in for the Popen of a finished encode: poll answers 0 without a child process."""
+    def __init__(self, cmd):
+        self.cmd, self.returncode = cmd, None
+    def poll(self):
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
+    def kill(self):
+        self.returncode = -9
+    def communicate(self):
+        return ('', '')
 
 class Selection(unittest.TestCase):
     @classmethod
@@ -270,6 +288,36 @@ class Selection(unittest.TestCase):
         self.assertIn(a['run'], joined)
         self.assertIn(b['run'], joined)
         self.assertEqual([u['take'] for u in out['used_takes']], ['take-aaaa', 'take-bbbb'])
+
+    def test_cancelling_mid_encode_kills_ffmpeg_and_records_no_cut(self):
+        self.add_take(0, tid='take-aaaa')
+        self.add_take(1, tid='take-bbbb')
+        class Watching(FakeFfmpeg):
+            def __init__(self):
+                self.procs = []
+            def Popen(self, cmd, **kw):
+                class Blocking:                                   # the encode child stays alive
+                    def __init__(self):
+                        self.returncode = None
+                    def poll(self):
+                        return self.returncode
+                    def kill(self):
+                        self.returncode = -9
+                    def communicate(self):
+                        return ('', '')
+                p = Blocking()
+                self.procs.append(p)
+                return p
+        fake, polls = Watching(), itertools.count()
+        saved = projects.subprocess
+        projects.subprocess = fake
+        try:                                                   # cancel flips on after the first checkpoint
+            self.assertRaises(projects.ProjectError, projects.assemble,
+                              projects.load(self.slug), 'animatic', lambda: next(polls) > 0)
+        finally:
+            projects.subprocess = saved
+        self.assertTrue(fake.procs and fake.procs[-1].returncode == -9, 'the live encode is killed')
+        self.assertIsNone(projects.load(self.slug)['outputs'].get('animatic'))
 
     # --------------------------------------------------- renders (stub ComfyUI) and endpoint
 

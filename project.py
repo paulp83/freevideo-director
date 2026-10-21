@@ -1075,11 +1075,12 @@ def _make_card(card, w, h, fps, tmpdir, name):
     return out
 
 
-def assemble(project, kind):
+def assemble(project, kind, cancel=None):
     """Cut each scene's resolved take into one video, recording per scene which take -- id and
     whether the pick was explicit or automatic -- actually went into the cut, so an export never
     silently describes something else afterwards.
-    kind: 'animatic' (takes, 24 fps) or 'film' (finals, 48 fps)."""
+    kind: 'animatic' (takes, 24 fps) or 'film' (finals, 48 fps). cancel(): turn true and the
+    running encode is killed and the cut abandoned with ProjectError('cancelled')."""
     clips, missing, not_final, used_takes = [], [], [], []
     for i, scene in enumerate(project['scenes'], 1):
         take = chosen(scene)
@@ -1157,11 +1158,24 @@ def assemble(project, kind):
     cmd += ['-filter_complex', ';'.join(parts), '-map', f'[{vcur}]', '-map', '[aout]',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '16' if kind == 'film' else '20', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', str(out)]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    if cancel and cancel():
+        if cards:
+            cards.cleanup()
+        raise ProjectError('cancelled')
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    while proc.poll() is None:
+        if cancel and cancel():
+            proc.kill()
+            proc.communicate()
+            if cards:
+                cards.cleanup()
+            raise ProjectError('cancelled')
+        time.sleep(0.15)
+    _stdout, err = proc.communicate()
     if cards:
         cards.cleanup()
-    if result.returncode:
-        raise ProjectError('ffmpeg failed: ' + result.stderr.strip()[-600:])
+    if proc.returncode:
+        raise ProjectError('ffmpeg failed: ' + err.strip()[-600:])
     return {'file': out.name, 'seconds': round(tcur, 1), 'scenes': n_scenes, 'not_final': not_final,
             'used_takes': used_takes, 'created': time.time(),
             'fingerprint': _plan_fingerprint(plan), 'cut_plan': plan}

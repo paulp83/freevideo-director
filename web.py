@@ -1102,7 +1102,7 @@ def batch_assemble(slug, kind):
     def worker(state):
         state['of'] = 1
         state['step'] = 1
-        out = projects.assemble(projects.load(slug), kind)
+        out = projects.assemble(projects.load(slug), kind, cancel=lambda: bool(state.get('cancel')))
         projects.mutate(slug, lambda proj: proj['outputs'].__setitem__(kind, out))
         return out
     return start_batch(slug, 'Assembling the film' if kind == 'film' else 'Assembling the animatic', 1, worker)
