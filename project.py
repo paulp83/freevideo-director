@@ -17,7 +17,7 @@ import enhance
 import library
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE / 'projects'
+ROOT = Path(os.environ.get('PROJECTS_ROOT') or HERE / 'projects')
 LOCK = threading.Lock()
 
 SIZES = {'16:9': (1344, 768), '9:16': (768, 1344)}

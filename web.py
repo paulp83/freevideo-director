@@ -276,7 +276,7 @@ def ws_listen():
 # before the first stage activates. Legal moves only -- see TRANSITIONS.
 
 JOB_TIMEOUT = float(os.environ.get('JOB_TIMEOUT') or 4 * 3600)   # wall-clock cap per job
-POLL_SECONDS = 1.5                                              # worker poll sleep
+POLL_SECONDS = float(os.environ.get('POLL_SECONDS') or 1.5)   # worker poll sleep
 
 TERMINAL = ('finished', 'failed', 'cancelled', 'unknown')
 TRANSITIONS = {'queued': {'preparing', 'failed', 'cancelled', 'unknown'},
@@ -761,7 +761,7 @@ def enhance_job(job, run, on_final=None, keys=()):
 
 # ---------------------------------------------------------------- resolving unknown jobs
 
-RECONCILE_SECONDS = 15                                   # background ask-again interval
+RECONCILE_SECONDS = float(os.environ.get('RECONCILE_SECONDS') or 15)   # background ask-again interval
 
 
 def comfy_history_detail(pid):

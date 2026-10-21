@@ -11,7 +11,7 @@ import argparse, ast, json, os, shutil, subprocess, tempfile, time, urllib.parse
 from pathlib import Path
 
 COMFY = os.environ.get('COMFY_URL') or 'http://127.0.0.1:8190'
-COMFY_ROOT = Path(__file__).resolve().parent.parent / 'ComfyUI'
+COMFY_ROOT = Path(os.environ.get('COMFY_ROOT') or Path(__file__).resolve().parent.parent / 'ComfyUI')
 FPS = 24
 
 DEFAULTS = dict(resolution=1080, multiplier=2, crf=16, upscaler='seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors',

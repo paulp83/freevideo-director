@@ -3,10 +3,10 @@
 stats.json lives next to this file (user data, git-ignored). Everything here is best effort: a missing, corrupt or
 hand-edited file counts as empty, and nothing raises, so statistics can never break a render.
 """
-import json, math, statistics, threading, uuid
+import json, math, os, statistics, threading, uuid
 from pathlib import Path
 
-FILE = Path(__file__).resolve().parent / 'stats.json'
+FILE = Path(os.environ.get('STATS') or Path(__file__).resolve().parent / 'stats.json')
 KEEP = 20
 LOCK = threading.Lock()
 
