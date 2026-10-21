@@ -54,7 +54,7 @@ def check(name, ok, detail=''):
 # ---------------------------------------------------------------- stub ComfyUI
 POSTS = []                  # (path, body-str) in arrival order, guarded by LOCK
 POST_LOCK = threading.Lock()
-STATE = {'running': [], 'drop_next_prompt': False}   # running: prompt ids ComfyUI "has"
+STATE = {'running': [], 'unknown': [], 'drop_next_prompt': False}   # running: prompt ids ComfyUI "has"
 
 
 class Stub(BaseHTTPRequestHandler):
@@ -75,13 +75,15 @@ class Stub(BaseHTTPRequestHandler):
         with POST_LOCK:
             POSTS.append((self.path, raw.decode('latin1')))
         if self.path == '/prompt':
-            if STATE['drop_next_prompt']:
-                STATE['drop_next_prompt'] = False
-                self.close_connection = True
-                self.connection.close()          # unanswered submit: the real unknown-job path
-                return
             body = json.loads(raw)
             pid = body.get('prompt_id') or f'stub-{len(POSTS)}'   # echo: like real ComfyUI
+            if STATE['drop_next_prompt']:
+                STATE['drop_next_prompt'] = False
+                STATE['running'].append(pid)   # the prompt ARRIVED; only the answer was lost --
+                STATE['unknown'].append(pid)   # survives later interrupts: it is still queued up there
+                self.close_connection = True   # reconcile can then prove it is still executing
+                self.connection.close()        # unanswered submit: the real unknown-job path
+                return
             STATE['running'].append(pid)
             return self._send({'prompt_id': pid, 'node_errors': {}})
         if self.path == '/upload/image':
@@ -96,7 +98,8 @@ class Stub(BaseHTTPRequestHandler):
                 pass
             return self._send({})
         if self.path in ('/interrupt',):       # interrupt stops the executing prompt: it leaves the queue
-            STATE['running'].clear()
+            # ...but only THAT one: a still-queued prompt (the unanswered unknown submit) keeps running
+            STATE['running'] = [p for p in STATE['running'] if p in STATE.get('unknown', [])]
             return self._send({})
         return self._send({})                   # /free
 
