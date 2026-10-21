@@ -653,12 +653,12 @@ def validate_scene_media(p, i):
 
 
 def continuation(p, i):
-    """The take a continue-scene starts from, as chosen when its media was resolved. A legacy source
-    take has no app id; none is invented."""
+    """The take a continue-scene starts from, as chosen when its media was resolved: addressed by
+    application id, or by run directory when the source take is legacy; none is invented."""
     if p['scenes'][i].get('connect') != 'continue' or not i:
         return None
     prev = projects.chosen(p['scenes'][i - 1])
-    return prev and {'scene': p['scenes'][i - 1]['id'], 'take': prev.get('id'), 'run': prev['run']}
+    return prev and {'scene': p['scenes'][i - 1]['id'], 'take': projects.take_ref(prev), 'run': prev['run']}
 
 
 def render_snapshot(job, slug, scene_id, take_id, preset_name, variant, args, graph, model, source):
@@ -681,6 +681,19 @@ def render_snapshot(job, slug, scene_id, take_id, preset_name, variant, args, gr
         'refs': refs, 'first': first, 'loras': args['loras'], 'graph': graph,
         'director': {'model': model, 'skill_revision': director.skill_revision()},
         'finishing': job_finishing() if PRESETS[preset_name]['finish'] else None}
+
+
+def source_take_of(snapshot):
+    """For a continuation render, the take its first frame came from: the scene, that take's app id
+    (its run directory when legacy), its run, and the hash of the frame this snapshot content-
+    addressed. Read back from the snapshot this same job wrote, so the record on the take can never
+    drift from what was actually used."""
+    first = snapshot.get('first') or {}
+    src = first.get('source')
+    if not src:
+        return None
+    return {'scene': src['scene'], 'take': src['take'], 'run': src['run'],
+            'frame_sha256': first.get('sha256')}
 
 
 def render_job(job, slug, scene_id, preset_name, variant=None):
@@ -708,15 +721,18 @@ def render_job(job, slug, scene_id, preset_name, variant=None):
                 two_pass=preset['two_pass'], loras=p.get('loras'))
     graph = build_graph(**args)                # uploads the pictures; submits only once recorded
     take_id = projects.new_take_id()
-    projects.write_job_snapshot(slug, render_snapshot(job, slug, scene_id, take_id, preset_name, variant,
-                                                      args, graph, model, continuation(p, i)))
+    snapshot = render_snapshot(job, slug, scene_id, take_id, preset_name, variant,
+                               args, graph, model, continuation(p, i))
+    projects.write_job_snapshot(slug, snapshot)
+    source_take = source_take_of(snapshot)     # a continuation names the take it started from
     def on_take(take):
         def apply(proj):
             s = proj['scenes'][projects.scene_index(proj, scene_id)]
             s['takes'].append({'id': take_id, 'job': job['id'], 'provenance': 'recorded',
                                'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
                                'seed': scene['seed'], 'created': time.time(), 'final': None, 'final_url': None,
-                               'variant': list(variant) if variant else None})
+                               'variant': list(variant) if variant else None,
+                               'source_take': source_take})
         projects.mutate(slug, apply)
     do_render(job, graph, preset['finish'], on_take, final_recorder(slug, scene_id, lambda: job['take']['run']))
     write_job_result(job, take_id)
@@ -895,8 +911,12 @@ def project_view(slug):
         s['job'] = public(JOBS[jid]) if jid in JOBS else None
         c = projects.chosen(s)
         s['chosen'] = c['run'] if c else None
+        ref, mode = projects.selection_of(s)   # derived: like provenance, a GET stores nothing
+        s['selected_take'] = ref
+        s['selection'] = mode
         for t in s.get('takes') or []:          # derived: legacy takes never grow stored keys
             t['provenance'] = projects.take_provenance(t)
+            t['selected'] = t is c
     b = BATCH.get(slug)
     p['batch'] = dict(b, seconds=round(time.time() - b['started'])) if b else None
     p['batch_job'] = public(JOBS[b['job']]) if b and b.get('job') in JOBS else None
@@ -1245,11 +1265,12 @@ class Handler(BaseHTTPRequestHandler):
             result = {}
             projects.mutate(slug, lambda p: result.update(projects.prune_apply(p)))
             return self.reply(200, dict(project_view(slug), prune=dict(result, applied=True)))
-        if action == 'star':
-            def apply(p):
-                s = p['scenes'][projects.scene_index(p, data['scene'])]
-                s['star'] = data.get('run')
-            projects.mutate(slug, apply)
+        if action == 'star':                    # choose a take explicitly, by app id (or run for a
+            ref = data.get('take') or data.get('run')   # legacy take); {"auto": true} releases the
+            if data.get('auto') or ref is None:         # pick and the scene follows its latest take
+                projects.mutate(slug, lambda p: projects.set_auto(p, data['scene']))
+            else:
+                projects.mutate(slug, lambda p: projects.set_explicit(p, data['scene'], ref))
             return self.reply(200, project_view(slug))
         if action == 'variants':                      # one batch of n Draft renders of a single scene
             n = data.get('n')

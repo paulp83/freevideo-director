@@ -80,7 +80,8 @@ save automatically. Scenes can be added, moved and deleted.
 | ⑥ Film | Final cut at 1080p48, with music bed and loudness | seconds |
 
 Per scene: **Write prompt**, **Draft**, **Final**, **✨ Enhance ★**, and **☆ choose** on any take.
-The ★ take is used downstream; a scene without a ★ uses its latest take.
+Choosing pins that take explicitly (it becomes the ★): later takes never replace it. **auto** on the
+chosen take releases the pin, and a scene that was never chosen simply follows its latest take.
 
 **Continuity**
 

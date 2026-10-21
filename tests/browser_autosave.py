@@ -185,6 +185,62 @@ def main():
         time.sleep(4.5)                                      # > 1 poll interval (3 s)
         notes = d.js("return document.getElementById('pNotes').value")
         check('5 poll leaves the dirty field alone', notes.endswith('draft-text') and 'from-elsewhere' not in notes, notes)
+
+        # 6. take selection: choosing pins a take to disk; a new take does not move the pin; auto releases it
+        p = server_project(alpha)
+        sid = p['scenes'][0]['id']
+        def take_rec(n, tid):
+            run = str(tmp / 'takes' / ('take-%d' % n))
+            return {'id': tid, 'run': run, 'path': run + '/video.mp4', 'url': '/files/x.mp4',
+                    'preset': 'draft', 'seed': 100 + n, 'created': time.time(),
+                    'final': None, 'final_url': None, 'variant': None}
+        run1 = take_rec(1, 'aaaa0001')['run']
+        p['scenes'][0]['takes'] = [take_rec(1, 'aaaa0001'), take_rec(2, 'bbbb0002')]
+        projects.save(p)
+        d.go(url(alpha))
+        d.wait("document.querySelector('#scene-" + sid + " .take [data-k=bChoose]')")
+        badges = d.js("return [...document.querySelectorAll('#scene-" + sid + " .take .badge')].map(b => b.textContent)")
+        check('6 latest take is the automatic choice', 'latest (auto)' in badges and '★ chosen' not in badges, badges)
+        d.js("document.querySelectorAll('#scene-" + sid + " .take [data-k=bChoose]')[1].click()")  # pin the older take
+        def scene_disk():
+            return next(s for s in server_project(alpha)['scenes'] if s['id'] == sid)
+        for _ in range(40):
+            if scene_disk().get('selection') == 'explicit':
+                break
+            time.sleep(0.2)
+        sp = scene_disk()
+        check('6 choose click pins the take on disk',
+              sp.get('selection') == 'explicit' and sp.get('selected_take') == 'aaaa0001' and sp.get('star') == run1, sp)
+        labels = None
+        for _ in range(40):                                   # the 3 s poll redraws the rows
+            labels = d.js("return [...document.querySelectorAll('#scene-" + sid + " .take [data-k=bChoose]')].map(b => b.textContent)")
+            if labels == ['☆ choose', '★ chosen']:
+                break
+            time.sleep(0.2)
+        check('6 page marks the pinned take chosen', labels == ['☆ choose', '★ chosen'], labels)
+        d.js("document.querySelector('#scene-" + sid + " [data-k=bAuto]').click()")
+        for _ in range(40):
+            if scene_disk().get('selection') == 'auto':
+                break
+            time.sleep(0.2)
+        sp = scene_disk()
+        check('6 auto releases the pin on disk',
+              sp.get('selection') == 'auto' and sp.get('star') is None and sp.get('selected_take') is None, sp)
+        d.js("document.querySelectorAll('#scene-" + sid + " .take [data-k=bChoose]')[1].click()")  # pin again
+        for _ in range(40):
+            if scene_disk().get('selection') == 'explicit':
+                break
+            time.sleep(0.2)
+        p = server_project(alpha)                               # a new take finishes while pinned
+        p['scenes'][0]['takes'].append(take_rec(3, 'cccc0003'))
+        projects.save(p)
+        time.sleep(4.5)                                         # > 1 poll interval (3 s)
+        sp = scene_disk()
+        check('6 new take does not move the pinned choice on disk',
+              sp['selection'] == 'explicit' and sp['selected_take'] == 'aaaa0001', sp)
+        labels = d.js("return [...document.querySelectorAll('#scene-" + sid + " .take [data-k=bChoose]')].map(b => b.textContent)")
+        check('6 page still marks the pinned take chosen after a new take arrives',
+              labels == ['☆ choose', '☆ choose', '★ chosen'], labels)
     finally:
         if d: d.close()
         web.terminate()

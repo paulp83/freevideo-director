@@ -78,6 +78,7 @@ def mutate(slug, fn):
 def _mutate(slug, fn):
     """mutate() without the lock: callers that must check and write as one step hold LOCK themselves."""
     project = load(slug)
+    migrate_selections(project)            # a bare `star` folds into the selection fields, on write only
     before = copy.deepcopy(_flat(project))       # fn edits nested lists/dicts in place, so snapshot
     fn(project)
     _stamp(project, before)
@@ -304,7 +305,8 @@ def set_characters(project, slugs):
 def new_scene(title='New scene', seconds=6, connect='cut', action=''):
     return {'id': secrets.token_hex(3), 'title': title, 'seconds': int(seconds), 'connect': connect,
             'action': action, 'prompt': '', 'prompt_mode': None, 'seed': secrets.randbelow(2**31),
-            'takes': [], 'star': None, 'transition': 'cut', 'history': [], 'prompt_check': None}
+            'takes': [], 'star': None, 'selected_take': None, 'selection': 'auto',
+            'transition': 'cut', 'history': [], 'prompt_check': None}
 
 
 def apply_storyboard(project, plan):
@@ -523,12 +525,81 @@ def reroll_seed(project, scene_id):
     return project
 
 
-def chosen(scene):
-    """The take used downstream: the starred one, else the latest."""
-    takes = scene.get('takes') or []
-    for t in takes:
-        if t['run'] == scene.get('star'):
+# ---------------------------------------------------------------- selection
+#
+# A scene resolves downstream in one of two ways: an *explicit* pick (`selection: 'explicit'`,
+# `selected_take` = the take's application id, or the run directory for a legacy take that has no
+# id) or the *automatic* latest-take fallback (`selection: 'auto'`). `star` is the pre-selection
+# spelling of a pick: it stays readable, old projects keep loading untouched, and
+# migrate_selections() folds it into the new fields the first time the project is written -- never
+# on load, so GETs leave old files byte for byte as they are. A newly finished take never moves an
+# explicit pick; set_auto() hands a scene back to following its latest take.
+
+def take_ref(take):
+    """How a scene addresses a take: its application id, or the run directory when it is legacy."""
+    return take.get('id') or take['run']
+
+
+def find_take(scene, ref):
+    """The take of `scene` whose id or run is `ref`, or None."""
+    for t in scene.get('takes') or []:
+        if ref and ref in (t.get('id'), t.get('run')):
             return t
+    return None
+
+
+def selection_of(scene):
+    """The scene's effective (selected_take, selection). A bare `star` reads as an explicit pick
+    without touching the file; when a pick points at a take that is gone, chosen() falls back."""
+    if scene.get('selection') == 'explicit':
+        return scene.get('selected_take'), 'explicit'
+    if scene.get('selection') == 'auto':
+        return None, 'auto'
+    if scene.get('star'):                        # pre-selection project: a star was a manual pick
+        return scene['star'], 'explicit'
+    return None, 'auto'
+
+
+def migrate_selections(project):
+    """Fold each scene's bare `star` into selected_take/selection. Write-path only (see _mutate)."""
+    for scene in project.get('scenes', []):
+        if 'selection' in scene:
+            continue
+        star = scene.get('star')
+        take = find_take(scene, star)
+        scene['selected_take'] = take_ref(take) if take else (star or None)
+        scene['selection'] = 'explicit' if star else 'auto'
+
+
+def set_explicit(project, scene_id, ref):
+    """Pin the scene to one take (application id, or run for a legacy take); `star` keeps in step."""
+    scene = project['scenes'][scene_index(project, scene_id)]
+    take = find_take(scene, ref)
+    if not take:
+        raise ProjectError(f'no take {ref!r} in this scene')
+    scene['selected_take'] = take_ref(take)
+    scene['selection'] = 'explicit'
+    scene['star'] = take['run']                  # old readers (prune, pages) keep working
+    return project
+
+
+def set_auto(project, scene_id):
+    """Release the pick: the scene follows its latest take again."""
+    scene = project['scenes'][scene_index(project, scene_id)]
+    scene['selected_take'] = None
+    scene['selection'] = 'auto'
+    scene['star'] = None
+    return project
+
+
+def chosen(scene):
+    """The take used downstream: the explicitly selected one, else the latest."""
+    takes = scene.get('takes') or []
+    ref, mode = selection_of(scene)
+    if mode == 'explicit' and ref:
+        for t in takes:
+            if ref in (t.get('id'), t.get('run')):
+                return t
     return takes[-1] if takes else None
 
 
@@ -702,13 +773,18 @@ def _make_card(card, w, h, fps, tmpdir, name):
 
 
 def assemble(project, kind):
-    """Cut the chosen takes into one video. kind: 'animatic' (takes, 24 fps) or 'film' (finals, 48 fps)."""
-    clips, missing, not_final = [], [], []
+    """Cut each scene's resolved take into one video, recording per scene which take -- id and
+    whether the pick was explicit or automatic -- actually went into the cut, so an export never
+    silently describes something else afterwards.
+    kind: 'animatic' (takes, 24 fps) or 'film' (finals, 48 fps)."""
+    clips, missing, not_final, used_takes = [], [], [], []
     for i, scene in enumerate(project['scenes'], 1):
         take = chosen(scene)
         if not take:
             missing.append(f'{i} {scene["title"]}')
             continue
+        used_takes.append({'scene': scene['id'], 'take': take_ref(take), 'run': take['run'],
+                           'selection': selection_of(scene)[1]})
         source = take.get('final') if kind == 'film' and take.get('final') else take['path']
         if kind == 'film' and not take.get('final'):
             not_final.append(i)
@@ -783,4 +859,4 @@ def assemble(project, kind):
     if result.returncode:
         raise ProjectError('ffmpeg failed: ' + result.stderr.strip()[-600:])
     return {'file': out.name, 'seconds': round(tcur, 1), 'scenes': n_scenes, 'not_final': not_final,
-            'created': time.time()}
+            'used_takes': used_takes, 'created': time.time()}

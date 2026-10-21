@@ -772,18 +772,26 @@ function updateScene(s, i) {
   }
   // takes
   const tk = q(card, 'takes');
-  const sig = s.takes.map(t => t.run + (t.final ? 'F' : '') + (t.run === s.chosen ? '*' : '')).join('|');
+  const sig = s.takes.map(t => t.run + (t.final ? 'F' : '') +
+              (t.run === s.chosen ? (s.selection === 'explicit' ? '*' : 'a') : '')).join('|');
   if (tk.dataset.sig !== sig) {
     tk.dataset.sig = sig; tk.replaceChildren();
     [...s.takes].reverse().forEach(t => {
-      const chosen = t.run === s.chosen;
+      const chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
       tk.append(el('div', {class: 'take' + (chosen ? ' chosen' : '')},
         el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'metadata'}),
         el('div', {class: 'meta'},
           el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'final 1080p48' : t.preset),
           el('span', {class: 'badge'}, 'seed ' + t.seed),
           ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
-          el('button', {class: 'btn small ' + (chosen ? '' : 'ghost'), onclick: () => sceneAct('star', {scene: s.id, run: t.run})}, chosen ? '★ chosen' : '☆ choose'))));
+          ...(chosen ? [el('span', {class: 'badge'}, explicit ? '★ chosen' : 'latest (auto)')] : []),
+          el('button', {'data-k': 'bChoose', class: 'btn small ' + (chosen && explicit ? '' : 'ghost'),
+            title: 'Use this take for the animatic, Finals and Continue scenes',
+            onclick: () => sceneAct('star', {scene: s.id, take: t.id || t.run})},
+            chosen && explicit ? '★ chosen' : '☆ choose'),
+          ...(chosen && explicit ? [el('button', {'data-k': 'bAuto', class: 'btn ghost small',
+            title: 'Stop pinning this take; the scene follows its latest take again',
+            onclick: () => sceneAct('star', {scene: s.id, auto: true})}, 'auto')] : []))));
     });
   }
 }
