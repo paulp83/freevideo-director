@@ -332,14 +332,17 @@ def abandon(job):
 
 
 def transition(job, to):
-    """Every state change goes through here; illegal moves are programmer errors."""
     with LOCK:
-        cur = job['state']
-        if to not in TRANSITIONS.get(cur, set()):
-            raise AssertionError(f'illegal job transition {cur} -> {to}')
+        if to not in TRANSITIONS.get(job['state'], ()):
+            raise AssertionError(f"illegal transition {job['state']} -> {to}")
         job['state'] = to
+        if to in ('submitted', 'running') and job.get('started') is None:
+            # first moment ComfyUI verifiably holds the work: split "queued for"
+            # (waiting in our own queue) from "running for" (execution time)
+            job['started'] = time.time()
         if to in TERMINAL:
-            job['done'] = True
+            job['ended'] = time.time()
+        job['done'] = to in TERMINAL
 
 
 def check_cancel(job):
@@ -1188,8 +1191,16 @@ def library_view(c):
     return dict(c, image_url=f'/library-files/{c["slug"]}/{c["image"]}' if c.get('image') else None)
 
 
+RECENT_DONE_SECONDS = 30 * 60   # finished jobs stay on the queue board this long
+
+
 def queue_view():
-    """Everything that is running now: jobs (with learned estimates) and batches, oldest first."""
+    """The queue board: live jobs (with learned estimates), recently finished jobs, and batches.
+
+    Nothing claims persistence: these live in memory only, a restart forgets them. Each job row
+    carries the raw epochs (created/started/ended) plus two SEPARATE durations: queued_for
+    (accepted -> ComfyUI first verifiably had the work) and running_for (that moment -> now/end).
+    A job that never reached ComfyUI has running_for null and is still marked cancelled/failed."""
     now = time.time()
     def film(slug, scene_id=None):
         try:
@@ -1198,27 +1209,39 @@ def queue_view():
             return None, None
         scene = next((s for s in p['scenes'] if str(s['id']) == scene_id), None)
         return p.get('name') or slug, scene['title'] if scene else None
-    jobs = []
+    live, done = [], []
     for jid, job in list(JOBS.items()):
-        if job['done'] and not unresolved_owner(job['id']):
-            continue                                     # an unresolved unknown job stays on the board
+        unresolved = job['state'] == 'unknown' and bool(unresolved_owner(job['id']))
+        recent = job['done'] and (job.get('ended') or 0) > now - RECENT_DONE_SECONDS
+        if not (not job['done'] or unresolved or recent):
+            continue                                     # old verdicts leave the board
         slug, scene_id = job.get('project'), job.get('scene')
         name, title = film(slug, scene_id) if slug else (None, None)
-        elapsed = round(now - job['created'])
+        end = job['ended'] if job['done'] else now
         estimate = stats.estimate(job['kind'])
         estimate = round(estimate) if estimate is not None else None
-        stage = next((s['label'] for s in job['stages'] if s['state'] == 'active'), None)
-        jobs.append({'id': jid, 'kind': job['kind'], 'state': job['state'], 'project': slug,
-                     'project_name': name, 'scene': scene_id, 'scene_title': title, 'elapsed': elapsed,
-                     'estimate': estimate, 'eta': max(0, estimate - elapsed) if estimate is not None else None,
-                     'stage': stage, 'error': job['error'], 'prompt_ids': list(job['prompt_ids']),
-                     'resolved': job.get('resolved')})
+        started = job.get('started')
+        row = {'id': jid, 'kind': job['kind'], 'state': job['state'], 'project': slug,
+               'project_name': name, 'scene': scene_id, 'scene_title': title,
+               'elapsed': round(end - job['created']),
+               'estimate': estimate,
+               'eta': max(0, estimate - round(end - job['created'])) if estimate is not None and not job['done'] else None,
+               'stage': next((s['label'] for s in job['stages'] if s['state'] == 'active'), None),
+               'error': job['error'], 'prompt_ids': list(job['prompt_ids']),
+               'resolved': job.get('resolved'), 'live': not job['done'],
+               'take': (job.get('take') or {}).get('run'),
+               'created': job.get('created'), 'started': started, 'ended': job.get('ended'),
+               'queued_for': round((started or end) - job['created']),
+               'running_for': round(end - started) if started else None}
+        (live if row['live'] else done).append(row)
+    live.sort(key=lambda r: r['created'] or 0)             # oldest live job first
+    done.sort(key=lambda r: -(r['ended'] or 0))           # newest verdict first
     batches = []
     for slug, b in list(BATCH.items()):
         if not b['done']:
             batches.append({'project': slug, 'project_name': film(slug)[0], 'label': b['label'], 'step': b['step'],
                             'of': b['of'], 'scene': b['scene'], 'seconds': round(now - b['started'])})
-    return {'jobs': jobs, 'batches': batches}
+    return {'jobs': live + done, 'batches': batches}
 
 
 def serve_file(handler, file):
@@ -1449,6 +1472,28 @@ class Handler(BaseHTTPRequestHandler):
                 # ask ComfyUI and report; unlike /resolve this never dismisses on its own --
                 # only a proven verdict releases the holds (reconcile(), web.py)
                 return self.reply(200, {'job': public(job), 'proved': reconcile(job)})
+            m = re.match(r'^/api/job/([^/]+)/cancel$', self.path)
+            if m:
+                job = JOBS.get(m.group(1))
+                if not job:
+                    return self.reply(404, {'error': 'unknown job'})
+                if job['state'] == 'unknown':
+                    return self.reply(409, {'error': 'job state unknown: reconcile or dismiss it instead'})
+                if job['done']:
+                    return self.reply(409, {'error': f'the job already {job["state"]}'})
+                with LOCK:
+                    job['cancel'] = True
+                if job['prompt_ids']:
+                    # ComfyUI verifiably holds the work: ask it to drop/interrupt; the worker
+                    # proves the stop and finalises the job (run_job's Cancelled path)
+                    stopped = target_cancel(job['prompt_ids'])
+                    return self.reply(200, {'job': public(job), 'proved': stopped,
+                                            'warning': None if stopped else
+                                            'ComfyUI did not confirm the stop: the job stays live '
+                                            'until the stop is proven'})
+                # nothing ever reached ComfyUI: the cancel is provable right here
+                cancel_job(job)
+                return self.reply(200, {'job': public(job), 'proved': True})
             self.reply(404, {'error': 'not found'})
         except (director.DirectorError, projects.ProjectError, library.LibraryError) as e:
             self.reply(400, {'error': str(e)})

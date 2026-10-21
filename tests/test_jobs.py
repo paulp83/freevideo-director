@@ -543,6 +543,92 @@ class Jobs(unittest.TestCase):
             self.post(f'/api/job/{job["id"]}/reconcile')
         self.assertEqual(e.exception.code, 400)
 
+    # ---------------------------------------------------------------- queue board
+
+    def test_started_and_ended_are_recorded_once_at_the_right_transition(self):
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug, scene=self.ids[0])
+        self.assertIsNotNone(job['created'])
+        self.assertIsNone(job.get('started'))
+        web.transition(job, 'preparing')
+        self.assertIsNone(job.get('started'))                 # preparing is still our queue
+        time.sleep(0.2)
+        web.transition(job, 'submitted')
+        started = job['started']
+        self.assertIsNotNone(started)                         # first moment ComfyUI verifiably had it
+        web.transition(job, 'running')
+        self.assertEqual(job['started'], started)             # never moved again
+        self.assertIsNone(job.get('ended'))
+        web.finish(job)
+        self.assertIsNotNone(job['ended'])
+
+    def test_queue_board_lists_a_recent_finished_job_with_both_times(self):
+        job = web.new_job('enhance', ['upscale', 'smooth', 'encode'], project=self.slug, scene=self.ids[0])
+        web.reserve(job, [web.scene_key(self.slug, self.ids[0])])
+        web.transition(job, 'preparing')
+        time.sleep(0.2)
+        web.transition(job, 'submitted')
+        web.transition(job, 'running')
+        time.sleep(0.2)
+        web.finish(job)
+        row = next(r for r in web.queue_view()['jobs'] if r['id'] == job['id'])
+        self.assertEqual(row['state'], 'finished')
+        self.assertFalse(row['live'])
+        self.assertGreaterEqual(row['queued_for'], 0)
+        self.assertGreaterEqual(row['running_for'], 0)        # separate from the queued time
+        for f in ('created', 'started', 'ended'):
+            self.assertIsInstance(row[f], float)
+        job['ended'] = time.time() - web.RECENT_DONE_SECONDS - 5
+        self.assertNotIn(job['id'], [r['id'] for r in web.queue_view()['jobs']])   # old verdicts leave
+
+    def test_cancel_route_cancels_a_preparing_job_that_never_reached_comfyui(self):
+        job = web.new_job('enhance', ['upscale'], project=self.slug, scene=self.ids[0])
+        web.reserve(job, [web.scene_key(self.slug, self.ids[0])])
+        web.transition(job, 'preparing')
+        r = self.post(f'/api/job/{job["id"]}/cancel')
+        self.assertTrue(r['proved'])
+        self.assertEqual(job['state'], 'cancelled')
+        self.assertIsNotNone(job['ended'])                    # it never ran, so no running time
+        self.assertIsNone(job.get('started'))
+        row = next(x for x in web.queue_view()['jobs'] if x['id'] == job['id'])
+        self.assertEqual((row['state'], row['running_for']), ('cancelled', None))
+        self.assertIsNone(web.reserve(web.new_job('enhance', ['upscale']),
+                                      [web.scene_key(self.slug, self.ids[0])]))   # scene free again
+
+    def test_cancel_route_flags_a_running_job_and_asks_comfyui_to_stop(self):
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.reserve(job, [web.scene_key(self.slug, self.ids[0])])
+        web.transition(job, 'preparing')
+        job['prompt_ids'] = ['stub-1', 'stub-2']
+        StubComfy.running_ids = ['stub-1']                    # one prompt executes,
+        StubComfy.pending = ['stub-2']                        # the other waits in the queue
+        web.transition(job, 'submitted')
+        web.transition(job, 'running')
+        r = self.post(f'/api/job/{job["id"]}/cancel')
+        self.assertTrue(r['proved'])
+        self.assertTrue(job['cancel'])                        # the worker finalises on its next check
+        self.assertEqual(job['state'], 'running')
+        self.assertEqual(StubComfy.interrupts, 1)
+        self.assertEqual(StubComfy.deletes, [['stub-2']])     # the waiting one left the queue
+        self.assertEqual(StubComfy.running_ids, [])           # the executing one was stopped
+
+    def test_cancel_route_refuses_unknown_finished_and_missing_jobs(self):
+        StubComfy.mode = 'hang'
+        web.JOB_TIMEOUT = 0.4
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'unknown')
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.post(f'/api/job/{job["id"]}/cancel')
+        self.assertEqual(e.exception.code, 409)               # unknown: reconcile/dismiss instead
+        done = web.new_job('enhance', ['upscale'], project=self.slug, scene=self.ids[1])
+        web.run_job(done, lambda *a: None)
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.post(f'/api/job/{done["id"]}/cancel')
+        self.assertEqual(e.exception.code, 409)
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.post('/api/job/nope000000000000/cancel')
+        self.assertEqual(e.exception.code, 404)
+
     # ---------------------------------------------------------------- enhance
 
     def test_enhance_finishes_and_releases_the_take(self):
