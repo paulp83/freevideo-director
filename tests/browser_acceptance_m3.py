@@ -484,6 +484,9 @@ def main():
                         "return !q.open ? document.activeElement.id : null;})()", timeout=5)
         check('flow 8: drawer closed; focus back on the Queue button',
               closed == 'openQueue', str(closed))
+        time.sleep(3.6)   # a poll lands inside this window: restored focus must ride through the redraw
+        held = d.js("return document.activeElement.id;")
+        check('flow 8: the Queue button keeps focus through the following redraw', held == 'openQueue', str(held))
         check(f'flow completes in <= 8 user actions (counted {actions})', actions <= 8, str(actions))
         check('flow end: still no scroll at 1440x900', z() == [0, 0], str(z()))
 
@@ -678,6 +681,10 @@ def main():
         f = afocus()
         check('keys: comparison opens with Enter and Escape closes it, focus back on Compare',
               bool(cmpopen) and f['id'] == 'bCompare', json.dumps(f))
+        time.sleep(3.6)   # the next poll re-renders the inspector: focus must ride through it
+        f = afocus()
+        check('keys: focus stays on Compare through the following poll',
+              f['id'] == 'bCompare', json.dumps(f))
         d.js("document.getElementById('bAnother').focus(); return 1;")
         n0 = len(POSTS)
         d.key('\ue007')                                    # Enter -> reroll + render (real /prompt)
@@ -702,9 +709,18 @@ def main():
         gone = d.wait("document.getElementById('queueCount').textContent === '1'", timeout=15)   # only unknown stays
         check('keys: Cancel… -> confirm dialog -> Enter cancels the job (only the unknown one stays live)',
               cask and gone, json.dumps([cask, gone]))
+        f = afocus()                                          # the Cancel… row was rebuilt: focus must stay
+        inq = d.js("return document.getElementById('queueDrawer').contains(document.activeElement)          "
+                   "&& document.activeElement.tagName === 'BUTTON' && document.activeElement.isConnected;")  # on a live drawer control
+        check('keys: cancel hands focus back to a live control in the open drawer (its row was rebuilt)',
+              f['tag'] == 'BUTTON' and inq, json.dumps([f, inq]))
         d.key('\ue00c')                                    # Escape closes the drawer
         f = afocus()
         check('keys: Escape closes the drawer, focus returns to Queue',
+              f['id'] == 'openQueue', json.dumps(f))
+        time.sleep(3.6)
+        f = afocus()
+        check('keys: focus stays on Queue through the following redraw',
               f['id'] == 'openQueue', json.dumps(f))
         d.js("document.getElementById('openSettings').focus(); return 1;")
         d.key('\ue007')
@@ -714,6 +730,10 @@ def main():
         d.key('\ue00c')
         f = afocus()
         check('keys: Escape closes Settings, focus returns', f['id'] == 'openSettings', json.dumps(f))
+        time.sleep(3.6)
+        f = afocus()
+        check('keys: focus stays on Settings through the following redraw',
+              f['id'] == 'openSettings', json.dumps(f))
         # arrows only act inside the navigator (real page semantics): focus the selected row, then walk down
         d.js("document.querySelector('#navigator .navitem[aria-selected=\"true\"]').focus(); return 1;")
         for _ in range(6):
@@ -722,6 +742,18 @@ def main():
                 break
             d.key('\ue014')                                # ArrowDown steps the selection toward scene 3
             time.sleep(0.25)
+        d.js("document.getElementById('unkReconcile').focus(); return 1;")
+        d.key('\ue007')                                    # Reconcile: the notice re-renders with a result line
+        rec = d.wait("(() => {const m = document.getElementById('unkMsg'); return m && m.textContent ? 1 : null;})()", timeout=8)
+        time.sleep(3.6)                                    # the next poll redraws the inspector
+        f = afocus()
+        check('keys: Reconcile rebuilds the notice and hands focus back to Reconcile (job stays unknown)',
+              bool(rec) and f['id'] == 'unkReconcile', json.dumps(f))
+        api = get_json(f'http://127.0.0.1:{WEB_PORT}/api/p/{slug}')
+        check('keys: Reconcile against the stub proves nothing; the job stays unknown',
+              (api['scenes'][2].get('job') or {}).get('state') == 'unknown'
+              and not (api['scenes'][2].get('job') or {}).get('resolved'),
+              json.dumps(api['scenes'][2].get('job'))[:200])
         d.js("document.getElementById('unkDismiss').focus(); return 1;")
         d.key('\ue007')
         dask = d.wait("!!(document.getElementById('dismissAsk').open)", timeout=5)
@@ -734,6 +766,10 @@ def main():
         ustate = (api['scenes'][2].get('job') or {}).get('state')
         check('keys: Escape closes Dismiss, focus returns to Dismiss…; the job stays unknown',
               f['id'] == 'unkDismiss' and ustate == 'unknown', json.dumps([f, ustate]))
+        time.sleep(3.6)
+        f = afocus()
+        check('keys: focus stays on Dismiss… through the following poll and readiness refresh',
+              f['id'] == 'unkDismiss', json.dumps(f))
         check('keys: focus never landed on <body> after any close', never_body)
 
         # ================ 1920x1080 spot ================
@@ -855,7 +891,8 @@ def main():
                 d.js(f"document.querySelectorAll('#navigator .navitem')[2].click(); return 1;")
                 d.wait("!document.getElementById('unkJob').hidden", timeout=6)
             elif p == 'dismiss':
-                d.js("document.getElementById('unkDismiss').click(); return 1;")
+                d.js("""const b = document.getElementById('unkDismiss');   // a real click focuses its button,
+                        b.focus(); b.click(); return 1;                    // so close can restore it""")
                 d.wait("!!(document.getElementById('dismissAsk').open)", timeout=5)
             elif p == 'whys':
                 # each reason span surfaces in exactly one reachable state; visit those states
@@ -922,6 +959,7 @@ def main():
                   'whys', 'hist', 'stale', 'batch', 'queue', 'others', 'cancelask', 'new']
         seen = set()
         fails = []
+        dismiss_focus = None
         for panel in PANELS:
             tokens = [t for r in rows for t in r['walk'] if TOK_PROC.get(t, 'scene') == panel and t not in seen]
             if not tokens:
@@ -965,6 +1003,8 @@ def main():
                 # Dismiss… -> Dismiss: resolve the unknown job for real
                 d.js("document.getElementById('dismissGo').click(); return 1;")
                 d.wait("!document.getElementById('dismissAsk').open", timeout=5)
+                time.sleep(3.6)                      # the poll now removes the resolved notice
+                dismiss_focus = afocus()             # focus must land on the primary action
             elif panel == 'batch':
                 # Cancel… acts for real: the flag is set and assemble's monitor kills the live
                 # encode; re-opening the gate afterwards keeps every later ffmpeg fast.
@@ -988,6 +1028,8 @@ def main():
         check('phone: Dismiss… + Dismiss acted for real (job resolved as dismissed, holds freed)',
               (u4.get('resolved') or {}).get('verdict') == 'dismissed' and (u4.get('resolved') or {}).get('by') == 'user',
               json.dumps(u4)[:200])
+        check('phone: Dismiss confirm hands focus to the primary action after the job block is removed',
+              dismiss_focus is not None and dismiss_focus['id'] == 'bPrimary', json.dumps(dismiss_focus))
         # batch cancel button acted for real: the worker aborts at its next checkpoint
         deadline = time.time() + 120
         bstate = api.get('batch') or {}

@@ -273,7 +273,8 @@ def main():
         check('the running scene names "scene has a running job" once and carries it on every disabled action',
               all(x['t'] == 'scene has a running job' for x in why['m'])
               and sum(1 for x in why['m'] if x['vis']) == 1
-              and all(b[0] and b[1] == 'scene has a running job' for b in why['btns']), json.dumps(why))
+              and all(b[0] and (b[1] == 'scene has a running job'
+                                or b[1].endswith(' — scene has a running job')) for b in why['btns']), json.dumps(why))
         select(5)   # Dusk: still a single take; scene 4 gained its second take for the acceptance walk
         few = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
         check('a one-take scene explains the disabled comparison',
@@ -431,6 +432,11 @@ def main():
         check('Escape returns to the single viewer and hands focus back to the compare button', bool(esc),
               str(d.js("return [document.getElementById('cmpWrap').hidden, document.activeElement.id, "
                        "document.getElementById('bCompare').textContent];")))
+        time.sleep(4)   # a poll (3 s) lands inside this window: focus must ride through the redraw
+        stays = d.js("return [document.activeElement.id, document.getElementById('bCompare').disabled, "
+                     "document.getElementById('bCompare').isConnected];")
+        check('focus stays on the compare button through the following poll and readiness refresh',
+              stays[0] == 'bCompare' and not stays[1] and stays[2], json.dumps(stays))
 
         # ---------- continuity: changing upstream does not rewrite downstream, and says so ----------
         select(0)
