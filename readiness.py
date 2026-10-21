@@ -35,6 +35,7 @@ from pathlib import Path
 import config
 import director
 import enhance
+import finishing
 import project
 
 CHECKS = ('prompt', 'video', 'finishing')
@@ -264,11 +265,23 @@ def _ffmpeg_item(hard, affects, why):
 
 def _finishing_graph():
     try:
+        # always the FULL legacy pipeline: a stage a project switched off still gets its
+        # dependency probed, so the report can say which setting avoids it
         g = enhance.graph('video.mp4', 'readiness-probe')
         return g if isinstance(g, dict) else None
     except Exception:
         return None
 
+
+# which finishing switch drops a family's dependency (stage names = _FAMILIES affects)
+_STAGE_OFF = {'upscale': ('Upscaling', lambda s: s['upscale']['enabled']),
+              'interpolation': ('frame interpolation', lambda s: s['interpolation']['enabled'])}
+
+
+def _stage_on(settings, stage):
+    """Is a family's stage needed by these settings? (No settings asked = every stage.)"""
+    off = _STAGE_OFF.get(stage)
+    return settings is None or not off or off[1](settings)
 
 _FAMILIES = (
     ('SeedVR2 upscaler not installed', lambda c: 'SEEDVR2' in c.upper(), 'upscale'),
@@ -277,7 +290,7 @@ _FAMILIES = (
 )
 
 
-def _finishing_nodes_item(info, confirmed=True):
+def _finishing_nodes_item(info, confirmed=True, settings=None):
     g = _finishing_graph()
     if g is None:
         return [_item('finishing node set', False, short='finishing graph not enumerable',
@@ -294,13 +307,25 @@ def _finishing_nodes_item(info, confirmed=True):
         fam = [c for c in classes if matches(c)]
         known.update(fam)
         missing = [c for c in fam if c not in info]
-        if missing:
+        if missing and not _stage_on(settings, affects):
+            label = _STAGE_OFF[affects][0]
+            items.append(_item(short, True, short=f'{short} not needed',
+                                      detail=f'{", ".join(missing)} not installed in ComfyUI, but '
+                                      f'{label} is switched off in the finishing settings of '
+                                      f'this project, so this project does not need it',
+                               how_to_fix=f'install the node pack, or keep {label} switched off '
+                                          'in Project settings \u2192 Finishing',
+                               affects=affects))
+        elif missing:
+            label = _STAGE_OFF.get(affects, (None,))[0]
             items.append(_item(f'{short}', False, short=short,
                                detail=f'{", ".join(missing)} not installed in ComfyUI '
                                       f'(affects {affects})',
                                how_to_fix='install the node pack into ComfyUI '
                                           '(ComfyUI-SeedVR2_VideoUpscaler / RIFE / VideoHelperSuite, '
-                                          'see README and docs/troubleshooting.md)',
+                                          'see README and docs/troubleshooting.md)'
+                                          + (f', or turn {label} off in Project settings '
+                                             '\u2192 Finishing to drop the dependency' if label else ''),
                                hard=True, affects=affects))
     other = [c for c in classes if c not in known and c not in info]
     if other:
@@ -325,7 +350,7 @@ def _file_leaves(node, cls, out):
             _file_leaves(v, cls, out)
 
 
-def _finishing_files_item(info, confirmed=True):
+def _finishing_files_item(info, confirmed=True, settings=None):
     g = _finishing_graph()
     if g is None:
         return []
@@ -339,6 +364,9 @@ def _finishing_files_item(info, confirmed=True):
             _file_leaves(node.get('inputs'), str(node.get('class_type')), leaves)
     items = []
     for cls, fname in leaves:
+        stage = ('upscale' if 'SEEDVR2' in cls.upper()
+                 else 'interpolation' if 'RIFE' in cls.upper() else 'encode')
+        label = _STAGE_OFF.get(stage, (None,))[0]
         options = _options(info, cls) if info is not None else None
         if options is None:
             items.append(_item(f'model file {fname}', False, short=f'{fname} unconfirmed',
@@ -347,12 +375,22 @@ def _finishing_files_item(info, confirmed=True):
                                hard=False, affects='upscale, interpolation'))
         elif fname in options:
             items.append(_item(f'model file {fname}', True, detail=f'offered by {cls}'))
+        elif not _stage_on(settings, stage):
+            items.append(_item(f'model file {fname}', True, short=f'{fname} not needed',
+                               detail=f'{fname} (used by {cls}) is not installed, but {label} '
+                                      'is switched off in the finishing settings of this '
+                                      'project, so this project does not need it',
+                               how_to_fix=f'install the model, or keep {label} switched off in '
+                                          'Project settings \u2192 Finishing',
+                               affects=stage))
         else:
             items.append(_item(f'model file {fname}', False, short=f'{fname} not installed',
                                detail=f'{fname} (used by {cls}) is not among the models that '
                                       'ComfyUI offers for it',
                                how_to_fix='download the model into the folder that node pack '
-                                          'reads (docs/troubleshooting.md has the names)',
+                                          'reads (docs/troubleshooting.md has the names)'
+                                          + (f', or turn {label} off in Project settings '
+                                             '\u2192 Finishing to drop the dependency' if label else ''),
                                hard=True, affects='upscale, interpolation'))
     return items
 
@@ -440,10 +478,10 @@ PROBES = {
 
 
 
-def _guarded(fn, mode, info_fut=None, confirmed_fut=None):
+def _guarded(fn, mode, info_fut=None, confirmed_fut=None, settings=None):
     try:
         if mode == 'confirmed':                         # knows whether the server answered
-            return fn(info_fut.result(), confirmed_fut.result())
+            return fn(info_fut.result(), confirmed_fut.result(), settings=settings)
         if mode == 'info':
             return fn(info_fut.result())
         return fn()
@@ -470,14 +508,14 @@ def _assemble(name, items):
             'checked_at': time.time()}
 
 
-def _build(name):
+def _build(name, settings=None):
     probes = PROBES[name]
     with ThreadPoolExecutor(max_workers=len(probes) + 1) as pool:
         server_fut = pool.submit(_comfy_up) if any(m == 'server' for _fn, m in probes) else None
         info_fut = pool.submit(_object_info) if any(m in ('info', 'confirmed') for _fn, m in probes) else None
         confirmed_fut = (pool.submit(lambda: bool(server_fut.result())) if server_fut and info_fut
                          else None)
-        futs = [pool.submit(_guarded, fn, mode, info_fut, confirmed_fut) for fn, mode in probes]
+        futs = [pool.submit(_guarded, fn, mode, info_fut, confirmed_fut, settings) for fn, mode in probes]
         items = [i for f in futs for i in f.result()]
     return _assemble(name, items)
 
@@ -494,19 +532,25 @@ def forget():
         _cache.clear()
 
 
-def check(name, refresh=False):
-    """One readiness check: {name, ok, level, summary, reason, items, checked_at}."""
+def check(name, refresh=False, settings=None):
+    """One readiness check: {name, ok, level, summary, reason, items, checked_at}.
+
+    `settings` (finishing.py's canonical per-project finishing settings) scores the
+    finishing check for ONE project: dependencies of stages those settings switch off are
+    reported as satisfied -- and named -- instead of blocking. Without settings every
+    stage counts, which is what the header chips and /api/readiness show."""
     if name not in CHECKS:
         raise KeyError(name)
+    key = name if settings is None else (name, finishing.settings_key(settings))
     ttl = float(config.value('readiness_cache'))
     if not refresh and ttl > 0:
         with _cache_lock:
-            hit = _cache.get(name)
+            hit = _cache.get(key)
             if hit is not None and time.monotonic() - hit[0] < ttl:
                 return hit[1]
-    result = _build(name)
+    result = _build(name, settings)
     with _cache_lock:
-        _cache[name] = (time.monotonic(), result)
+        _cache[key] = (time.monotonic(), result)
     return result
 
 
@@ -520,9 +564,11 @@ def report():
     return {'ok': any(c['ok'] for c in checks.values()), 'checks': checks}
 
 
-def require(*names):
-    """Raise NotReady(reason) if any check is unavailable; degraded passes through."""
+def require(*names, settings=None):
+    """Raise NotReady(reason) if any check is unavailable; degraded passes through. With
+    finishing `settings` the scoring is that project's: a stage it switched off does not
+    block the action even if that stage's nodes are missing."""
     for n in names:
-        c = check(n)
+        c = check(n, settings=settings)
         if c['level'] == 'unavailable':
             raise NotReady(c['reason'] or f'{LABEL[n]} unavailable')
