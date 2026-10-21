@@ -81,11 +81,19 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 .badge.final { border-color: var(--ok); color: var(--ok); }
 .badge.accent { border-color: var(--accent); color: var(--accent); }
 .badge.err { border-color: var(--err); color: var(--err); }
+.badge.stale { border-color: var(--warn); color: var(--warn); }
+.badge.soft { border-style: dashed; }
+.flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.flags:empty { display: none; }
 .takes { display: flex; gap: 10px; overflow-x: auto; margin-top: 10px; padding-bottom: 4px; }
 .take { flex: 0 0 220px; border: 1.5px solid var(--line); border-radius: 10px; padding: 6px; }
 .take.chosen { border-color: var(--accent); }
 .take video { width: 100%; border-radius: 6px; background: #000; display: block; }
 .take .meta { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+.take-details { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; font-size: 12.5px; }
+.take-details .trow { display: flex; gap: 6px; align-items: baseline; }
+.take-details .trow b { color: var(--muted); font-weight: 600; min-width: 84px; flex: 0 0 auto; }
+.take-details .trow span { overflow-wrap: anywhere; }
 .job { font-size: 13px; color: var(--muted); margin-top: 8px; }
 .stagechips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .chip { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
@@ -479,6 +487,7 @@ async function open(s) {
   st = autosaveState(s); viewToken++;   // the old draft is dropped; in-flight responses fail asStale
   $('newBox').hidden = true; $('projBox').hidden = false; $('picker').value = s;
   $('scenes').replaceChildren(); $('scenes').dataset.ids = '';
+  takeOpen.clear(); takeData.clear();   // open Details panels and fetched provenance belong to the film being left
   await refresh(true);
   if (proj && typeof proj.rev === 'number') st.rev = proj.rev;
 }
@@ -734,6 +743,7 @@ function buildScene(s) {
         el('button', {class: 'btn ghost small', title: 'Move down', onclick: () => move(id, 1)}, '↓'), ' ',
         el('button', {class: 'btn ghost small', title: 'Delete scene', onclick: () => remove(id)}, '✕'))),
     el('div', {style: 'margin-top:8px'}, input('action', {rows: 3, placeholder: 'What happens in this scene (shot, action, sound, dialogue)…'}, 'textarea')),
+    el('div', {class: 'flags', 'data-k': 'flags'}),   // validity badges; execution state stays in [data-k=job]
     el('details', {'data-k': 'details'},
       el('summary', {}, 'H3 prompt ', el('span', {class: 'badge', 'data-k': 'mode'}), ' ', el('span', {class: 'badge', 'data-k': 'check'})),
       input('prompt', {rows: 12, class: 'mono', placeholder: 'Click "Write prompt", or paste your own.'}, 'textarea')),
@@ -770,6 +780,7 @@ function updateScene(s, i) {
   q(card, 'mode').textContent = s.prompt ? (s.prompt_mode || 'custom').toUpperCase() : 'not written';
   const ck = q(card, 'check'); ck.textContent = checkLabel(s.prompt_check); ck.hidden = !s.prompt_check; ck.classList.toggle('err', !!(s.prompt_check && s.prompt_check.final_failures.length)); ck.title = s.prompt_check && s.prompt_check.first_failures.length ? 'first reply failed: ' + s.prompt_check.first_failures.join(', ') : '';
   const hs = s.history || []; q(card, 'hist').hidden = !hs.length; q(card, 'histSum').textContent = historyTitle(hs.length); const hl = q(card, 'histList'), hsig = hs.map(x => x.time).join('|'); if (hl.dataset.sig !== hsig) { hl.dataset.sig = hsig; hl.replaceChildren(); historyRows(hs).forEach(row => hl.append(el('div', {class: 'row'}, el('span', {class: 'badge'}, row.source), el('span', {style: 'flex:1'}, row.text), el('button', {class: 'btn ghost small', onclick: () => sceneAct('restore_prompt', {scene: s.id, index: row.index})}, 'Restore')))); }
+  updateFlags(card, s, i);   // redrawn only when the derived validity data changed (see FLAG_LABEL)
   const job = s.job, running = job && !job.done;
   ['bPrompt', 'bDraft', 'bReroll', 'bVariants', 'vCount', 'bFinal', 'bEnhance'].forEach(k => q(card, k).disabled = running || busy());
   q(card, 'bEnhance').hidden = !s.takes.length;
@@ -782,30 +793,131 @@ function updateScene(s, i) {
     jb.append(chips);
     if (job.error) jb.append(el('div', {class: 'err'}, job.error));
   }
-  // takes
+  // takes: rebuild only when the take set or the resolved choice moves. An open Details panel,
+  // its fetched provenance and any playback survive polls whose signature is unchanged; a rebuild
+  // restores the panel from takeOpen/takeData instead of refetching it.
   const tk = q(card, 'takes');
   const sig = s.takes.map(t => t.run + (t.final ? 'F' : '') +
               (t.run === s.chosen ? (s.selection === 'explicit' ? '*' : 'a') : '')).join('|');
   if (tk.dataset.sig !== sig) {
     tk.dataset.sig = sig; tk.replaceChildren();
-    [...s.takes].reverse().forEach(t => {
-      const chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
-      tk.append(el('div', {class: 'take' + (chosen ? ' chosen' : '')},
-        el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'metadata'}),
-        el('div', {class: 'meta'},
-          el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'final 1080p48' : t.preset),
-          el('span', {class: 'badge'}, 'seed ' + t.seed),
-          ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
-          ...(chosen ? [el('span', {class: 'badge'}, explicit ? '★ chosen' : 'latest (auto)')] : []),
-          el('button', {'data-k': 'bChoose', class: 'btn small ' + (chosen && explicit ? '' : 'ghost'),
-            title: 'Use this take for the animatic, Finals and Continue scenes',
-            onclick: () => sceneAct('star', {scene: s.id, take: t.id || t.run})},
-            chosen && explicit ? '★ chosen' : '☆ choose'),
-          ...(chosen && explicit ? [el('button', {'data-k': 'bAuto', class: 'btn ghost small',
-            title: 'Stop pinning this take; the scene follows its latest take again',
-            onclick: () => sceneAct('star', {scene: s.id, auto: true})}, 'auto')] : []))));
-    });
+    [...s.takes].reverse().forEach(t => tk.append(buildTake(t, s)));
   }
+}
+
+// Validity badges, straight from the derived scene.status (project.py scene_status): each flag
+// reading 'changed' is a DIRECTLY outdated scene and gets a text badge; a continuation also carries
+// a de-emphasised "would be affected" badge for its upstream scene, which claims nothing is wrong
+// yet. Execution state (running/failed/...) is job state and lives apart, in [data-k=job].
+const FLAG_LABEL = {prompt_changed: 'prompt changed', refs_changed: 'references changed',
+                    settings_changed: 'settings changed', continuity_outdated: 'continuity outdated',
+                    instructions_changed: 'instructions changed'};
+function updateFlags(card, s, i) {
+  const box = q(card, 'flags'); if (!box || !s.status) return;
+  const prev = i > 0 && s.connect === 'continue' ? proj.scenes[i - 1] : null;
+  const dtext = prev && prev.status ? (prev.status.downstream_of.find(d => d.id === s.id) || {}).text : null;
+  const sig = JSON.stringify([s.status.provenance, s.status.outdated,
+                              s.status.outdated.map(f => (s.status.flags[f] || {}).reason || ''),
+                              prev ? (prev.title || prev.id) + '\u0000' + (dtext || '') : '']);
+  if (box.dataset.sig === sig) return;   // a poll with identical data touches nothing
+  box.dataset.sig = sig; box.replaceChildren();
+  for (const f of s.status.outdated) {
+    const fl = s.status.flags[f] || {};
+    box.append(el('span', {class: 'badge stale', title: (fl.text || '') + (fl.reason ? ' — ' + fl.reason : '')},
+                  FLAG_LABEL[f] || f));
+  }
+  if (s.status.provenance === 'legacy')
+    box.append(el('span', {class: 'badge soft',
+      title: 'This take predates generation records: what it was generated with was never saved, so it can be neither shown nor checked. Nothing was invented to fill the gap.'},
+      'legacy - provenance unavailable'));
+  if (prev)
+    box.append(el('span', {class: 'badge soft',
+      title: dtext || `This scene starts from a frame of "${prev.title || prev.id}". Nothing is wrong with this scene unless its own badges say so.`,
+      }, `would be affected if ${prev.title || prev.id} is regenerated`));
+}
+// Take Details: fetched lazily (GET /api/p/<slug>/take?id=...) the first time a panel opens, once
+// per take. Open state and the payload live outside the DOM so a take-strip rebuild restores them
+// without a new request.
+let takeOpen = new Set(), takeData = new Map();
+function buildTake(t, s) {
+  const chosen = t.run === s.chosen, explicit = s.selection === 'explicit';
+  const ref = t.id || t.run;
+  const box = el('div', {class: 'take-details', 'data-k': 'tDetails'});
+  const btn = el('button', {class: 'btn ghost small', 'data-k': 'bDetails', 'data-t': ref,
+    'aria-expanded': String(takeOpen.has(ref)), title: 'Show exactly what this take was generated with',
+    onclick: () => {
+      takeOpen.has(ref) ? takeOpen.delete(ref) : takeOpen.add(ref);
+      btn.setAttribute('aria-expanded', String(takeOpen.has(ref)));
+      box.hidden = !takeOpen.has(ref);
+      if (takeOpen.has(ref)) loadTakeDetails(box, ref);
+    }}, 'Details');
+  box.hidden = !takeOpen.has(ref);
+  if (takeOpen.has(ref)) loadTakeDetails(box, ref);   // strip rebuilt while open: restore from cache
+  return el('div', {class: 'take' + (chosen ? ' chosen' : '')},
+    el('video', {src: (t.final_url || t.url) + '#t=0.5', controls: '', preload: 'none'}),  // nothing preloaded eagerly (M3 tunes this)
+    el('div', {class: 'meta'},
+      el('span', {class: 'badge' + (t.final ? ' final' : '')}, t.final ? 'final 1080p48' : t.preset),
+      el('span', {class: 'badge'}, 'seed ' + t.seed),
+      ...(t.variant ? [el('span', {class: 'badge'}, 'v' + t.variant[0] + '/' + t.variant[1])] : []),
+      ...(chosen ? [el('span', {class: 'badge'}, explicit ? '★ chosen' : 'latest (auto)')] : []),
+      el('button', {'data-k': 'bChoose', 'data-t': ref, class: 'btn small ' + (chosen && explicit ? '' : 'ghost'),
+        title: 'Use this take for the animatic, Finals and Continue scenes',
+        onclick: () => sceneAct('star', {scene: s.id, take: ref})},
+        chosen && explicit ? '★ chosen' : '☆ choose'),
+      ...(chosen && explicit ? [el('button', {'data-k': 'bAuto', class: 'btn ghost small',
+        title: 'Stop pinning this take; the scene follows its latest take again',
+        onclick: () => sceneAct('star', {scene: s.id, auto: true})}, 'auto')] : [])),
+    btn, box);
+}
+async function loadTakeDetails(box, ref) {
+  if (takeData.has(ref)) return renderTakeDetails(box, takeData.get(ref));
+  if (box.dataset.loading) return;
+  box.dataset.loading = '1'; box.textContent = 'Loading…';
+  const requestSlug = slug;
+  try {
+    const d = await api(`/api/p/${requestSlug}/take?id=${encodeURIComponent(ref)}`);
+    if (slug !== requestSlug) return;                        // the film was switched while it was out
+    takeData.set(ref, d);
+    renderTakeDetails(box, d);
+  } catch (e) { if (slug === requestSlug) box.textContent = 'Details unavailable: ' + e.message; }
+  finally { if (slug === requestSlug) delete box.dataset.loading; }
+}
+function renderTakeDetails(box, d) {
+  box.replaceChildren();
+  const t = d.take, sn = d.snapshot || {}, rows = [];
+  const row = (k, v) => { if (v !== null && v !== undefined && v !== '') rows.push(el('div', {class: 'trow'}, el('b', {}, k), el('span', {}, String(v)))); };
+  if (d.provenance === 'legacy') {
+    box.append(el('div', {class: 'hint'}, 'Legacy: provenance unavailable — this take predates generation records, so what it was made with was never saved. Only what its own record holds is shown; nothing is invented.'));
+    row('run', t.run);
+    row('made', new Date(t.created * 1000).toLocaleString());
+    row('preset', t.preset); row('seed', t.seed);
+    if (t.source_take) row('from take', sourceTakeText(t.source_take));
+    row('video', t.path); row('enhanced', t.final);
+    box.append(...rows);
+    return;
+  }
+  row('provenance', 'recorded');
+  row('take id', t.id || sn.take_id); row('job id', t.job || sn.id); row('run', t.run);
+  row('preset', t.preset || sn.preset); row('mode', sn.mode);
+  row('seed', sn.seed ?? t.seed);                            // seed 0 renders as 0, never dropped
+  row('size', sn.width != null ? `${sn.width}x${sn.height}` : '');
+  row('seconds', sn.seconds);
+  row('two-pass', sn.two_pass ? 'on' : 'off');
+  const refs = [...(sn.refs || [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  refs.forEach((r, n) => row(`ref ${n + 1}`, `${r.name} sha ${String(r.sha256).slice(0, 12)}`));
+  if (sn.first) row('start frame', `${sn.first.name} sha ${String(sn.first.sha256).slice(0, 12)}`);
+  if (t.source_take) row('source take', sourceTakeText(t.source_take));
+  row('loras', (sn.loras || []).map(l => `${l.name} ×${l.strength}${l.enabled ? '' : ' (off)'}`).join(', ') || 'none');
+  row('finishing', sn.finishing ? Object.entries(sn.finishing).map(([k, v]) => `${k}=${v}`).join(' · ') : 'none');
+  if (sn.director && (sn.director.model || sn.director.skill_revision))
+    row('director', `${sn.director.model || '?'} · skill ${sn.director.skill_revision || '?'}`);
+  row('prompt', sn.prompt);
+  row('video', t.path); row('enhanced', t.final);
+  box.append(...rows);
+}
+function sourceTakeText(st) {
+  return `take ${st.take || '?'} (scene ${st.scene || '?'}, run ${st.run || '?'})` +
+         (st.frame_sha256 ? `, frame sha ${String(st.frame_sha256).slice(0, 12)}` : '');
 }
 
 /* ---------- actions ---------- */
