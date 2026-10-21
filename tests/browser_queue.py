@@ -231,6 +231,21 @@ web.fail(f, "ComfyUI unreachable at http://127.0.0.1:1: <urlopen error Connectio
 o = web.new_job("enhance", ["upscale"], project="other-film", scene="zz1")
 web.reserve(o, [web.scene_key("other-film", "zz1")])
 web.transition(o, "preparing")
+# a retried pair naming the unused scene 1: rr lost its submit (retry_allowed),
+# tt is the queued replay. Neither holds a reservation: the scene must stay
+# free for the suite's later take-comparison checks. The plain unknown
+# render-final job has no scene: its submit never landed.
+rr = web.new_job("enhance", ["upscale", "smooth", "encode"], project=slug, scene=ids[0])
+rr["retry_allowed"] = True
+web.unknown(rr, "the submit was not answered; ComfyUI has no record of the prompt ids. Nothing was resubmitted.")
+tt = web.new_job("enhance", ["upscale", "smooth", "encode"], project=slug, scene=ids[0])
+tt["retry_of"] = rr["id"]
+web.db_note(tt)
+rr["retried_as"] = tt["id"]
+web.release_resolved(rr, "retried", by="user")
+r = web.new_job("render-final", ["render"], project=slug)
+r["retry_allowed"] = True
+web.unknown(r, "the submit was not answered; ComfyUI never saw this request. Nothing was resubmitted; Retry is available.")
 project.recover_interrupted()
 web.sweep_enhance_tmp()
 threading.Thread(target=web.reconcile_loop, daemon=True).start()
@@ -238,7 +253,7 @@ threading.Thread(target=web.ws_listen, daemon=True).start()
 ThreadingHTTPServer(("127.0.0.1", %d), web.Handler).serve_forever()
 """
 
-NOTE = 'Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically.'
+NOTE = 'Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically — an unconfirmed submit can be retried by hand.'
 
 
 def main():
@@ -264,8 +279,8 @@ def main():
         def select(i):
             d.js(f"document.querySelectorAll('#navigator .navitem')[{i}].click(); return 1;")
             time.sleep(0.3)
-        got4 = d.wait("document.getElementById('queueCount').textContent === '3'")
-        check('the Queue button counts only the three live jobs in text (unknown/finished are not live)', bool(got4),
+        got4 = d.wait("document.getElementById('queueCount').textContent === '4'")
+        check('the Queue button counts only the four live jobs in text (unknown/finished/retried are not live)', bool(got4),
               d.js("return document.getElementById('queueCount').textContent;"))
 
         # ---------- drawer: keyboard open, focus trap, Escape restores focus ----------
@@ -294,8 +309,8 @@ def main():
                           btns: [...r.querySelectorAll('button')].map(b => b.textContent)}));""")
         byk = {(r['kind'], r['state'].split(' · ')[0]): r for r in rows}
         states = set(s for _k, s in byk)
-        check('the drawer lists all six of this film\'s jobs (live first, then finished/failed/unknown)',
-              len(rows) == 6, json.dumps([r['state'] for r in rows]))
+        check('the drawer lists all nine of this film\'s jobs (live first, then finished/failed/unknown)',
+              len(rows) == 9, json.dumps([r['state'] for r in rows]))
         check('states are carried by words, not colours: each row spells its state',
               {'running', 'preparing', 'state unknown', 'finished', 'failed'} <= states,
               json.dumps(sorted(states)))
@@ -326,10 +341,53 @@ def main():
         check('the unknown job offers Reconcile and Dismiss in the drawer, and names the missing prompts',
               'Reconcile' in unk['btns'] and 'Dismiss…' in unk['btns'] and
               'ComfyUI may still be executing' in d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
-                        .find(r => r.textContent.includes('state unknown')); return r.textContent;"""),
+                        .find(r => r.textContent.includes('lost track')); return r.textContent;"""),
               json.dumps(unk))
         check('the finished job on scene 2 offers Details to open its take', 'Details' in byk[('enhance', 'finished')]['btns'],
               json.dumps(byk[('enhance', 'finished')]))
+        unkbtns = d.js("""return [...document.querySelectorAll('#queueMine .qrow')]
+                    .filter(r => r.querySelector('.qstate').textContent.split(' · ')[0] === 'state unknown')
+                    .map(r => [...r.querySelectorAll('button')].map(b => b.textContent));""")
+        check('only the unknown job whose submit provably never landed offers Retry…',
+              sum(1 for b in unkbtns if 'Retry…' in b) == 1 and sum(1 for b in unkbtns if 'Reconcile' in b) == 2,
+              json.dumps(unkbtns))
+        retr = d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
+                        .find(r => r.textContent.includes('Resolved: retried'));
+                      return r ? r.textContent : '';""")
+        check('the retried original reads "Resolved: retried (as job ...)" instead of offering Retry again',
+              'Resolved: retried (as job' in retr and 'Retry…' not in retr, retr[:140])
+        d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
+                  .find(r => r.textContent.includes('render-final'));
+                [...r.querySelectorAll('button')].find(b => b.textContent === 'Retry…').click(); return 1;""")
+        ropen = d.wait("document.getElementById('retryAsk').open", timeout=5)
+        rcopy = d.js("""return [document.querySelector('#retryAsk b').textContent,
+                                document.getElementById('retryAskWhat').textContent,
+                                document.getElementById('retryGo').textContent,
+                                document.getElementById('retryNo').textContent];""")
+        check('Retry… opens its own confirm dialog stating the evidence and that it is never automatic',
+              bool(ropen) and 'recorded request' in rcopy[0] and 'never automatic' in rcopy[1] and
+              're-checks ComfyUI first' in rcopy[1] and rcopy[2] == 'Submit the retry' and
+              rcopy[3] == 'Keep it unknown', json.dumps(rcopy))
+        h0r = d.js("return window.__hits('/retry');")
+        d.key('\ue00c')   # a real Escape on the retry dialog
+        rclosed = d.wait("!document.getElementById('retryAsk').open && document.getElementById('queueDrawer').open", timeout=5)
+        check('Escape on the retry dialog submits nothing and leaves the drawer open',
+              bool(rclosed) and d.js("return window.__hits('/retry');") == h0r)
+        d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
+                  .find(r => r.textContent.includes('render-final'));
+                [...r.querySelectorAll('button')].find(b => b.textContent === 'Retry…').click(); return 1;""")
+        d.wait("document.getElementById('retryAsk').open")
+        d.js("document.getElementById('retryGo').click(); return 1;")
+        rfail = d.wait("document.getElementById('saveStatus').textContent.includes('not answering')", timeout=10)
+        check('with ComfyUI down the retry is refused before anything submits: the page says so, once',
+              bool(rfail) and 'Retry failed' in d.js("return document.getElementById('saveStatus').textContent;") and
+              d.js("return window.__hits('/retry');") == h0r + 1,
+              str(d.js("return document.getElementById('saveStatus').textContent;")))
+        runknown = d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
+                             .find(r => r.textContent.includes('render-final'));
+                           return r.textContent.includes('state unknown') && !r.textContent.includes('Resolved:') &&
+                                  [...r.querySelectorAll('button')].some(b => b.textContent === 'Retry…');""")
+        check('the refused retry leaves the job unknown, unresolved, and retryable', bool(runknown))
         au = d.js(AUDIT)
         check('DOM audit with the drawer open: no clipped visible text, no sideways page', au == [], json.dumps(au))
         fl = flat(d)
@@ -406,7 +464,7 @@ def main():
 
         # ---------- Details: the drawer hands a job's take to the viewer ----------
         d.js("document.getElementById('openQueue').click(); return 1;")
-        d.wait("document.querySelectorAll('#queueMine .qrow').length === 6")
+        d.wait("document.querySelectorAll('#queueMine .qrow').length === 9")
         d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
                   .find(r => r.textContent.includes('finished'));
                 [...r.querySelectorAll('button')].find(b => b.textContent === 'Details').click(); return 1;""")
@@ -452,13 +510,14 @@ def main():
         check('focused navigator item keeps focus through the polls',
               d.js("return document.activeElement === window.__nav;"))
         d.js("document.getElementById('openQueue').click(); return 1;")
-        d.wait("document.querySelectorAll('#queueMine .qrow').length === 6")
+        d.wait("document.querySelectorAll('#queueMine .qrow').length === 9")
         d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
-                  .find(r => r.textContent.includes('state unknown'));
+                  .find(r => r.textContent.includes('state unknown') && !r.textContent.includes('Resolved:'));
                 window.__qrow = r; return r.querySelector('.qtime').textContent;""")
         time.sleep(4.0)   # two drawer polls at least
         q = d.js("""return {same: window.__qrow.isConnected && window.__qrow ===
-                              [...document.querySelectorAll('#queueMine .qrow')].find(r => r.textContent.includes('state unknown')),
+                              [...document.querySelectorAll('#queueMine .qrow')].find(
+                                  r => r.textContent.includes('state unknown') && !r.textContent.includes('Resolved:')),
                               t: window.__qrow.querySelector('.qtime').textContent};""")
         check('a queue row is never rebuilt while its data is unchanged, yet its times tick',
               q['same'] and q['t'].startswith('queued for'), json.dumps(q))
@@ -501,7 +560,7 @@ def main():
                         return !!r;""")
         check('cancel without ComfyUI proof says so and does NOT pretend the job is gone',
               bool(warn) and still, str(d.js("return document.getElementById('queueFlash').textContent;")))
-        cnt3 = d.wait("document.getElementById('queueCount').textContent === '2'")
+        cnt3 = d.wait("document.getElementById('queueCount').textContent === '3'")
         check('the header count follows the real job states', bool(cnt3),
               d.js("return document.getElementById('queueCount').textContent;"))
         check('the live video and the caret are still untouched after two cancelling round-trips',
@@ -546,7 +605,7 @@ def main():
         # ---------- the same data on the /queue page, as a table ----------
         d.go(f'http://127.0.0.1:{WEB_PORT}/queue')
         d.js(HOOK)
-        d.wait("document.querySelectorAll('#queueBody tr').length === 7", timeout=15)
+        d.wait("document.querySelectorAll('#queueBody tr').length === 10", timeout=15)
         head = d.js("return [...document.querySelectorAll('#queueTable th')].map(t => t.textContent);")
         check('the queue table labels both times as separate columns',
               'Queued for' in head and 'Running for' in head, json.dumps(head))
@@ -573,12 +632,24 @@ def main():
                              .map(r => r.children[5].textContent);""")
         check('the preparing job shows "not started" in the running column',
               notstart == ['not started'], json.dumps(notstart))
-        d.js("""const tr = [...document.querySelectorAll('#queueBody tr')].find(r => r.children[2].textContent.includes('state unknown'));
+        qgate = d.js("""const trs = [...document.querySelectorAll('#queueBody tr')];
+                        const fnd = kind => trs.find(r => r.children[0].textContent === kind &&
+                                                       r.children[2].textContent.includes('state unknown'));
+                        const rr = fnd('render-final'), uu = fnd('render-draft');
+                        return {rbtn: [...rr.querySelectorAll('button')].map(b => b.textContent),
+                                ubtn: [...uu.querySelectorAll('button')].map(b => b.textContent),
+                                retried: trs.some(r => r.textContent.includes('retried as job'))};""")
+        check('on /queue only the provably-lost job gets Retry…, and the retried original says "retried as job"',
+              'Retry…' in qgate['rbtn'] and 'Retry…' not in qgate['ubtn'] and qgate['retried'],
+              json.dumps(qgate))
+        d.js("""const tr = [...document.querySelectorAll('#queueBody tr')]
+                  .find(r => [...r.querySelectorAll('button')].some(b => b.textContent === 'Reconcile'));
                 [...tr.querySelectorAll('button')].find(b => b.textContent === 'Reconcile').click(); return 1;""")
         rmsg = d.wait("""[...document.querySelectorAll('#queueBody tr')]
                           .some(r => r.textContent.includes('ComfyUI cannot tell'))""", timeout=15)
         check('Reconcile on /queue answers honestly that ComfyUI cannot tell', bool(rmsg))
-        d.js("""const tr = [...document.querySelectorAll('#queueBody tr')].find(r => r.children[2].textContent.includes('state unknown'));
+        d.js("""const tr = [...document.querySelectorAll('#queueBody tr')]
+                  .find(r => [...r.querySelectorAll('button')].some(b => b.textContent === 'Dismiss…'));
                 [...tr.querySelectorAll('button')].find(b => b.textContent === 'Dismiss…').click(); return 1;""")
         dq = d.wait("document.getElementById('askBox').open", timeout=5)
         d.js("document.getElementById('askGo').click(); return 1;")
@@ -609,7 +680,7 @@ def main():
         d.wait("document.querySelectorAll('#navigator .navitem').length === 6", timeout=20)
         d.resize(1440, 900)
         d.js("document.getElementById('openQueue').click(); return 1;")
-        d.wait("document.querySelectorAll('#queueMine .qrow').length === 6")
+        d.wait("document.querySelectorAll('#queueMine .qrow').length === 9")
         time.sleep(0.6)
         SHOTS.mkdir(parents=True, exist_ok=True)
         n = d.screenshot(SHOTS / 'b2-queue-drawer-1440x900.png')

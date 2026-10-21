@@ -60,7 +60,7 @@ dialog .row { display: flex; gap: 8px; margin-top: 10px; }
       </table>
     </div>
     <p class="hint">Estimates are the median of your last 20 runs of the same kind; they appear after a first run.</p>
-    <p class="hint">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically.</p>
+      <p class="hint">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically — an unconfirmed submit can be retried by hand.</p>
   </section>
 </main>
 
@@ -92,7 +92,7 @@ const qword = s => ({queued: 'queued', preparing: 'preparing', submitted: 'runni
                      unknown: 'state unknown'})[s] || s;
 
 const qMsg = new Map();          // one reconcile/cancel message per job id, survives refreshes
-let askJob = null;               // {kind: 'cancel'|'dismiss', id} while the confirm dialog is open
+let askJob = null;               // {kind: 'cancel'|'dismiss'|'retry', id} while the confirm dialog is open
 
 function queueRows(data) {
   const jobs = ((data && data.jobs) || []).map(j => ({
@@ -100,7 +100,8 @@ function queueRows(data) {
     where: j.project ? (j.project_name || j.project) + (j.scene_title ? ' · ' + j.scene_title : '') : 'single shot',
     state: qword(j.state), stage: j.stage || '', error: j.error || '',
     times: [j.created, j.started, j.ended], eta: j.eta != null ? fmtSecs(j.eta) : '–',
-    prompt_ids: j.prompt_ids || [], resolved: !!j.resolved, live: !!j.live}));
+    prompt_ids: j.prompt_ids || [], resolved: j.resolved || null, live: !!j.live,
+    retry_allowed: !!j.retry_allowed, retried_as: j.retried_as || ''}));
   for (const b of ((data && data.batches) || [])) {
     jobs.push({id: 'b' + b.project + b.label, jid: null, kind: b.label,
                where: (b.project_name || b.project) + (b.scene ? ' · scene ' + (b.scene) : ''),
@@ -139,7 +140,9 @@ function buildRow(j) {
       const rv = document.createElement('span'); rv.className = 'qerr';
       rv.textContent = j.resolved.verdict === 'dismissed'
         ? ' · dismissed without proof: the scene is free again, but the prompt may still be running'
-        : ' · ComfyUI confirmed ' + j.resolved.verdict;
+        : j.resolved.verdict === 'retried'
+          ? ' · retried as job ' + (j.retried_as || '') + ': the recorded request was re-submitted'
+          : ' · ComfyUI confirmed ' + j.resolved.verdict;
       stCell.append(rv);
     } else {
       const why = document.createElement('span'); why.className = 'qmsg';
@@ -147,19 +150,29 @@ function buildRow(j) {
       act.append(why, ' ');
       const rec = document.createElement('button'); rec.className = 'btn'; rec.textContent = 'Reconcile';
       rec.onclick = () => reconcile(j.jid);
+      const rt = document.createElement('button'); rt.className = 'btn'; rt.textContent = 'Retry…';
+      rt.onclick = () => { askJob = {kind: 'retry', id: j.jid};
+        $('askNo').textContent = 'Keep it unknown';
+        $('askTitle').textContent = "Re-submit this job's recorded request?";
+        $('askWhat').textContent = retryText(j);
+        $('askGo').textContent = 'Submit the retry'; $('askBox').showModal(); };
       const dis = document.createElement('button'); dis.className = 'btn ghost'; dis.textContent = 'Dismiss…';
       dis.onclick = () => { askJob = {kind: 'dismiss', id: j.jid};
+        $('askNo').textContent = 'Keep it as it is';
         $('askTitle').textContent = 'Dismiss this unknown job without proof?';
         $('askWhat').textContent = 'Reconciling could not prove the prompt stopped. Dismissing frees the scene for ' +
           'new work anyway — if ComfyUI is still running that prompt, new work now could generate a duplicate take.';
         $('askGo').textContent = 'Dismiss without proof'; $('askBox').showModal(); };
-      act.append(rec, ' ', dis);
+      act.append(rec, ' ');
+      if (j.retry_allowed) act.append(rt, ' ');
+      act.append(dis);
     }
     const m = document.createElement('span'); m.className = 'qmsg'; m.textContent = qMsg.get(j.jid) || '';
     act.append(' ', m);
   } else if (j.live && !j.resolved) {
     const can = document.createElement('button'); can.className = 'btn ghost'; can.textContent = 'Cancel…';
     can.onclick = () => { askJob = {kind: 'cancel', id: j.jid};
+      $('askNo').textContent = 'Keep it as it is';
       $('askTitle').textContent = 'Cancel this job?';
       $('askWhat').textContent = `${j.kind} · ${j.where} — ${j.state}${j.stage ? ' · ' + j.stage : ''}. ` +
         'Cancelling asks ComfyUI to stop; the job only counts as cancelled once the stop is proven.';
@@ -168,6 +181,16 @@ function buildRow(j) {
   }
   tr.append(act);
   return tr;
+}
+
+// the exact honesty story of a retry, from what ComfyUI does NOT know about this job
+function retryText(j) {
+  return (j.prompt_ids.length ? 'ComfyUI has no record of prompt ids ' + j.prompt_ids.join(', ') +
+          ' — it may never have received them. '
+          : 'The original submit was never answered: nothing confirms the request reached ComfyUI. ') +
+    'Retry re-checks ComfyUI first — if the original prompt turns up running or finished it is ' +
+    'adopted, not duplicated — then submits the recorded request again as a new job. A retry is ' +
+    'never automatic.';
 }
 
 async function reconcile(id) {
@@ -195,8 +218,11 @@ async function askGo() {
     if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
     qMsg.set(a.id, a.kind === 'cancel'
       ? (d.proved ? 'Cancelled: the stop is proven.' : (d.warning || 'Cancel asked; the job stays live until the stop is proven.'))
+      : a.kind === 'retry'
+        ? (d.already ? 'Already retried as job ' + d.job.id + ' — nothing was submitted again'
+                     : (d.warning || 'The recorded request is being re-submitted as a new job.'))
       : `Job dismissed (${d.proved || 'no proof'}): the scene is free again, but the prompt may still be running`);
-  } catch (e) { qMsg.set(a.id, (a.kind === 'cancel' ? 'Cancel' : 'Dismiss') + ' failed: ' + e.message); }
+  } catch (e) { qMsg.set(a.id, (a.kind === 'cancel' ? 'Cancel' : a.kind === 'retry' ? 'Retry' : 'Dismiss') + ' failed: ' + e.message); }
   await refresh();
 }
 $('askGo').onclick = askGo;
@@ -211,7 +237,8 @@ async function refresh() {
     const body = $('queueBody');
     // rebuild only when a row's data actually changes; the times tick in place otherwise
     const sig = JSON.stringify([rows.map(x => [x.id, x.state, x.stage, x.error, x.eta,
-                                               x.prompt_ids.join(','), x.resolved]),
+                                               x.prompt_ids.join(','), !!x.resolved,
+                                               x.retry_allowed, x.retried_as]),
                                 [...qMsg.entries()]]);
     if (body.dataset.sig !== sig) {
       body.dataset.sig = sig;

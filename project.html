@@ -537,6 +537,19 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   </div>
 </dialog>
 
+<!-- retrying an unknown job is a NEW submit: it goes through its own native dialog, with the
+     evidence (what ComfyUI does not know) spelled out before anything is sent -->
+<dialog id="retryAsk">
+  <div style="padding:14px 16px">
+    <b>Re-submit this job's recorded request?</b>
+    <p class="hint" style="margin-top:8px" id="retryAskWhat"></p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="retryGo">Submit the retry</button>
+      <button class="btn ghost" id="retryNo">Keep it unknown</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- queue drawer: a native dialog (Esc closes, focus returns to the button built in), fed
      from /api/queue. This film's jobs first; other films' jobs collapse behind a summary. -->
 <dialog id="queueDrawer" aria-labelledby="queueHeadTitle">
@@ -548,7 +561,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   <div id="queueBody">
     <div id="queueMine"></div>
     <details id="queueOthersWrap" hidden><summary id="queueOthersSum"></summary><div id="queueOthers"></div></details>
-    <p class="qnote">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically.</p>
+    <p class="qnote">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically — an unconfirmed submit can be retried by hand.</p>
   </div>
 </dialog>
 
@@ -660,7 +673,7 @@ function asResolveConflict(st, keepMine) {
 let st = autosaveState(slug);
 let saveTimer = null, saveBusy = null, saveAgain = false, viewToken = 0;
 let selId = null, previewRef = null, viewMode = 'scene';   // selected scene, take previewed in the viewer, viewer mode
-let cmpPair = null, cmpTimer = null, cmpAudioSide = 'A', dismissJobId = null;   // comparison view + unknown-job dialog
+let cmpPair = null, cmpTimer = null, cmpAudioSide = 'A', dismissJobId = null, retryJobId = null;   // comparison view + unknown-job dialogs
 
 /* ---------- helpers ---------- */
 async function api(path, body) {
@@ -1591,7 +1604,7 @@ function updateJob(s) {
   }
   const wantUn = !!(job && job.state === 'unknown' && !job.resolved);
   const un = jb.querySelector(':scope > #unkJob');
-  const usig = wantUn ? JSON.stringify([job.id, (job.prompt_ids || []).join(','), unkMsg.get(job.id) || '']) : '';
+  const usig = wantUn ? JSON.stringify([job.id, (job.prompt_ids || []).join(','), !!job.retry_allowed, unkMsg.get(job.id) || '']) : '';
   if (!wantUn) { if (un) un.remove(); return; }
   if (un && un.dataset.sig === usig) return;
   if (un) un.remove();
@@ -1602,6 +1615,8 @@ function updateJob(s) {
     el('span', {}, 'The scene stays reserved until ComfyUI proves the prompt stopped or you dismiss it — new work now could generate a duplicate take.'),
     el('div', {class: 'row'},
       el('button', {class: 'btn', id: 'unkReconcile', onclick: () => reconcileUnknown(job)}, 'Reconcile'),
+      ...(job.retry_allowed ? [el('button', {class: 'btn', id: 'unkRetry',
+        onclick: () => { retryJobId = job.id; $('retryAskWhat').textContent = retryText(job); $('retryAsk').showModal(); }}, 'Retry…')] : []),
       el('button', {class: 'btn ghost', id: 'unkDismiss', onclick: () => { dismissJobId = job.id; $('dismissAsk').showModal(); }}, 'Dismiss…'),
       el('span', {id: 'unkMsg'}, unkMsg.get(job.id) || ''))));
 }
@@ -1944,7 +1959,7 @@ $('cmpAudio').onclick = () => {
 $('bCompare').onclick = () => selScene() && (viewMode === 'compare' ? closeCompare() : openCompare());
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && viewMode === 'compare' && !$('settings').open && !$('dismissAsk').open &&
-      !$('queueDrawer').open && !$('cancelAsk').open) closeCompare();
+      !$('queueDrawer').open && !$('cancelAsk').open && !$('retryAsk').open) closeCompare();
 });
 
 /* unknown-job dismissal behind the native dialog; only "without proof" ever lands here */
@@ -1958,6 +1973,20 @@ $('dismissGo').onclick = async () => {
   await refresh(false);
 };
 $('dismissNo').onclick = () => $('dismissAsk').close();
+
+/* the retry confirmation: POST /retry is this page's only retry door, and it never fires
+   by itself -- the warning spells out that ComfyUI is re-checked before anything is sent */
+$('retryGo').onclick = async () => {
+  const id = retryJobId; retryJobId = null; $('retryAsk').close();
+  if (!id) return;
+  try {
+    const d = await api(`/api/job/${id}/retry`, {});
+    flash(d.already ? 'Already retried as job ' + d.job.id + ' — nothing was submitted again'
+                    : (d.warning || 'The recorded request is being re-submitted as a new job.'));
+  } catch (e) { flash('Retry failed: ' + e.message, true); }
+  await refresh(false);
+};
+$('retryNo').onclick = () => $('retryAsk').close();
 
 /* ---------- queue drawer: the same real jobs /queue shows, this film's first ----------
    Two separate times per job, worded for the user: how long the job waited before ComfyUI
@@ -1974,6 +2003,16 @@ function qflash(msg, err) {
   f.textContent = msg || '';
   f.classList.toggle('err', !!err);
 }
+
+// the evidence a retry rests on, worded the same in the inspector and the drawer
+function retryText(r) {
+  const ids = r.prompt_ids || [];
+  return (ids.length ? `ComfyUI has no record of prompt ids ${ids.join(', ')} — it may never have received them. `
+                     : 'The original submit was never answered: nothing confirms the request reached ComfyUI. ') +
+    'Retry re-checks ComfyUI first — if the original prompt turns up running or finished it is ' +
+    'adopted, not duplicated — then submits the recorded request again as a new job. A retry is ' +
+    'never automatic.';
+}
 function queueRow(r) {
   const kids = [el('b', {class: 'qkind'}, r.kind),
                 el('span', {}, r.project_name || r.project || 'single shot')];
@@ -1982,11 +2021,15 @@ function queueRow(r) {
   kids.push(el('span', {class: 'qtime', 'data-times': JSON.stringify([r.created, r.started, r.ended])}));
   if (r.error) kids.push(el('span', {class: 'qerr'}, r.error));
   if (r.resolved) kids.push(el('span', {class: 'qresolved'}, 'Resolved: ' + (r.resolved.verdict || 'dismissed') +
-    (r.resolved.verdict === 'dismissed' ? ' (no proof; the prompt may still be running)' : '')));
+    (r.resolved.verdict === 'dismissed' ? ' (no proof; the prompt may still be running)'
+     : r.resolved.verdict === 'retried' ? ` (as job ${r.retried_as || ''})` : '')));
   if (r.state === 'unknown' && !r.resolved) {
     kids.push(el('span', {}, 'ComfyUI may still be executing' +
       (r.prompt_ids && r.prompt_ids.length ? ` (prompt ids ${r.prompt_ids.join(', ')})` : '')));
     kids.push(el('button', {class: 'btn ghost', onclick: () => qReconcile(r.id)}, 'Reconcile'));
+    if (r.retry_allowed)      // the button only exists where the submit provably never landed
+      kids.push(el('button', {class: 'btn ghost',
+        onclick: () => { retryJobId = r.id; $('retryAskWhat').textContent = retryText(r); $('retryAsk').showModal(); }}, 'Retry…'));
     kids.push(el('button', {class: 'btn ghost',
       onclick: () => { dismissJobId = r.id; $('dismissAsk').showModal(); }}, 'Dismiss…'));
     const m = qMsg.get(r.id);
@@ -2029,7 +2072,8 @@ function qsig(q) {
   // must keep its identity through the poll — the times are ticked in place instead
   return JSON.stringify([slug,
     q.jobs.map(r => [r.id, r.kind, r.state, r.project, r.project_name || '', r.scene || '', r.scene_title || '',
-                     r.stage || '', r.error || '', !!r.resolved, r.take || '', (r.prompt_ids || []).join(',')]),
+                     r.stage || '', r.error || '', !!r.resolved, r.take || '', (r.prompt_ids || []).join(','),
+                     !!r.retry_allowed, r.retried_as || '']),
     [...qMsg.entries()]]);
 }
 function renderQueue(q, force) {

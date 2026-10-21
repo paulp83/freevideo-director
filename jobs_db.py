@@ -13,6 +13,9 @@ are the crash window; they are never pruned and never resubmitted automatically.
 markers ride on every row: `retry_allowed` (an unconfirmed submit the user may retry by hand)
 and `recovering_at` (the epoch a recovery pass last found ComfyUI unreachable for this job;
 it clears when a pass resolves it). Neither changes the state column.
+A hand retry also links the two rows: the new job's `retry_of` names the unknown job it
+replays, and that job's `retried_as` names the one job that replayed it -- one retry per
+unknown job, idempotent.
 
 Every write is its own transaction on a short connection, serialised by a process lock. The
 functions here raise JobDbError on a real database failure; the caller decides who may log and
@@ -23,7 +26,7 @@ import json, os, sqlite3, threading, time
 from pathlib import Path
 
 FILE = Path(os.environ.get('JOBS_DB') or Path(__file__).resolve().parent / 'jobs.db')
-VERSION = 2
+VERSION = 3
 SUBMITTING = 'submitting'                     # persisted-only (see docstring)
 TERMINAL = ('finished', 'failed', 'cancelled', 'unknown')
 KEEP_TERMINAL = 500                           # retention: the last 500 terminal jobs...
@@ -43,7 +46,7 @@ def _connect():
 
 def _migrate(conn):
     """Walk the schema up to VERSION (PRAGMA user_version). Version 1: the jobs table.
-    Version 2: the recovery markers."""
+    Version 2: the recovery markers. Version 3: the hand-retry link columns."""
     version = conn.execute('PRAGMA user_version').fetchone()[0]
     if version == 0:
         conn.executescript("""
@@ -77,6 +80,9 @@ def _migrate(conn):
     if version < 2:
         conn.execute('ALTER TABLE jobs ADD COLUMN retry_allowed INTEGER NOT NULL DEFAULT 0')
         conn.execute('ALTER TABLE jobs ADD COLUMN recovering_at REAL')
+    if version < 3:
+        conn.execute('ALTER TABLE jobs ADD COLUMN retry_of TEXT')
+        conn.execute('ALTER TABLE jobs ADD COLUMN retried_as TEXT')
     conn.execute(f'PRAGMA user_version = {VERSION}')
     conn.commit()
 
@@ -129,13 +135,14 @@ def _row(job, state=None, backend=None, take_id=None, snapshot_path=None, result
         'retry_allowed': 1 if (retry_allowed if retry_allowed is not None
                                else job.get('retry_allowed')) else 0,
         'recovering_at': recovering_at if recovering_at is not None else job.get('recovering_at'),
+        'retry_of': job.get('retry_of'), 'retried_as': job.get('retried_as'),
     }
 
 
 COLUMNS = ('id', 'kind', 'project', 'scene', 'state', 'created', 'started', 'ended', 'backend',
            'prompt_ids', 'correlation', 'snapshot_path', 'result_path', 'take_id', 'run', 'error',
            'resolved_by', 'resolved_verdict', 'resolved_at', 'workdir', 'holds',
-           'retry_allowed', 'recovering_at')
+           'retry_allowed', 'recovering_at', 'retry_of', 'retried_as')
 
 
 def _put(conn, r):
@@ -240,6 +247,22 @@ def get(job_id):
         conn = _connect()
         try:
             row = conn.execute('SELECT * FROM jobs WHERE id = ?', (job_id,)).fetchone()
+        except sqlite3.Error as e:
+            raise JobDbError(str(e))
+        finally:
+            conn.close()
+    return _decode(row) if row else None
+
+
+def find_retry(old_id):
+    """The one job (if any) already recorded as the retry of `old_id`: the idempotency door
+    for a second retry click, working even after the old row left memory."""
+    init()
+    with LOCK:
+        conn = _connect()
+        try:
+            row = conn.execute('SELECT * FROM jobs WHERE retry_of = ? ORDER BY created LIMIT 1',
+                               (old_id,)).fetchone()
         except sqlite3.Error as e:
             raise JobDbError(str(e))
         finally:

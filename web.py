@@ -710,7 +710,8 @@ def write_enhance_snapshot(job, run):
         'scene': job.get('scene') or scene_id,
         'source': {'take': take and take.get('id'), 'run': run,
                    'provenance': projects.take_provenance(take) if take else 'unknown'},
-        'finishing': job_finishing(), 'instructions': projects.instructions_of(p)})
+        'finishing': job_finishing(), 'instructions': projects.instructions_of(p),
+        **({'retry_of': job['retry_of']} if job.get('retry_of') else {})})
 
 
 def write_job_result(job, take_id=None):
@@ -911,6 +912,7 @@ def _rebuilt_job(row):
             'project': row['project'], 'scene': row['scene'], 'holds': [],
             'correlation': row['correlation'], 'workdir': row['workdir'],
             'take_id': row['take_id'], 'retry_allowed': bool(row['retry_allowed']),
+            'retry_of': row['retry_of'], 'retried_as': row['retried_as'],
             'recovering_at': None}       # the store's marker is not copied onto the live job
 
 
@@ -1050,6 +1052,33 @@ def _chain_verdict(job, out, msg, enhance_side=False):
     return 'unknown'
 
 
+def prep_late_record(job, snap):
+    """Identity and late-proof plumbing every non-live render/enhance needs: the take_id it
+    will record and the callback that records a proven finish whenever the proof arrives --
+    live, from a recovery settle, or from a reconcile triggered by the retry route. Shared by
+    _settle and the retry route's display-only rebuild so the two can never drift."""
+    if job['kind'].startswith('render'):
+        preset_name = 'final' if job['kind'] == 'render-final' else 'draft'
+        finish_after = PRESETS[preset_name]['finish']
+        take_id = job['take_id'] or (snap or {}).get('take_id') or projects.new_take_id()
+        job['take_id'] = take_id
+        slug, scene_id = job['project'], job['scene']
+        on_take = (take_recorder(slug, scene_id, job['id'], take_id, preset_name,
+                                 (snap or {}).get('seed'), (snap or {}).get('variant') or None,
+                                 source_take_of(snap) if snap else None)
+                   if slug and scene_id else None)
+        on_final = (final_recorder(slug, scene_id, lambda: job['take']['run'])
+                    if slug and scene_id else None)
+        job['late_record'] = render_late_record(job, on_take, on_final, take_id, finish_after)
+        return {'render': True, 'take_id': take_id, 'finish_after': finish_after,
+                'on_take': on_take, 'on_final': on_final}
+    run = (job['take'] or {}).get('run') or ((snap or {}).get('source') or {}).get('run')
+    on_final = (final_recorder(job['project'], job['scene'], lambda: run)
+                if job['project'] and job['scene'] and run else None)
+    job['late_record'] = enhance_late_record(job, on_final)
+    return {'render': False, 'run': run, 'on_final': on_final}
+
+
 def _settle(job, row, snap, details):
     """ComfyUI's queue holds nothing of this job any more: its history gives the verdict, and
     the job moves to the terminal state -- and makes exactly the records -- the live worker
@@ -1058,24 +1087,13 @@ def _settle(job, row, snap, details):
     if any(o is None for o, _ in details):
         raise ComfyWentAway()
     render = kind.startswith('render')
+    prep = prep_late_record(job, snap)
     if render:
-        preset_name = 'final' if kind == 'render-final' else 'draft'
-        finish_after = PRESETS[preset_name]['finish']
-        take_id = job['take_id'] or (snap or {}).get('take_id') or projects.new_take_id()
-        job['take_id'] = take_id
-        on_take = (take_recorder(slug, scene_id, job['id'], take_id, preset_name,
-                                 (snap or {}).get('seed'), (snap or {}).get('variant') or None,
-                                 source_take_of(snap) if snap else None)
-                   if slug and scene_id else None)
-        on_final = (final_recorder(slug, scene_id, lambda: job['take']['run'])
-                    if slug and scene_id else None)
-        job['late_record'] = render_late_record(job, on_take, on_final, take_id, finish_after)
+        take_id, finish_after = prep['take_id'], prep['finish_after']
+        on_take, on_final = prep['on_take'], prep['on_final']
     else:
-        run = (job['take'] or {}).get('run') or ((snap or {}).get('source') or {}).get('run')
+        run, on_final = prep['run'], prep['on_final']
         take_id = job.get('take_id')
-        on_final = (final_recorder(slug, scene_id, lambda: run)
-                    if slug and scene_id and run else None)
-        job['late_record'] = enhance_late_record(job, on_final)
 
     def finish_recorded():
         job['state'] = 'preparing'        # legal stand-in: finish() cannot close a 'queued' job
@@ -1254,8 +1272,8 @@ def loadable_job(job_id):
     """Routes keep answering persisted jobs after a restart: live and settled jobs are in
     memory; an open store row nothing has loaded yet is loaded -- and reconciled against
     ComfyUI -- on demand, so Reconcile works on a job recovery has not reached. Terminal rows
-    stay display-only, and while ComfyUI is unreachable an open row answers 404: the honest
-    step-2 limit until Retry (step 3) gives the user the other door."""
+    stay display-only; while ComfyUI is unreachable an open row answers nothing HERE, but the
+    retry route has its own door (_retryable_row) and answers the honest 409 instead."""
     job = JOBS.get(job_id)
     if job:
         return job
@@ -1272,12 +1290,191 @@ def loadable_job(job_id):
     return JOBS.get(job_id)
 
 
+# ---------------------------------------------------------------- explicit retry
+# The other door for an unknown job: when the submit provably never reached ComfyUI
+# (retry_allowed), the user may ask for the RECORDED request to be submitted again -- once.
+# The new job is linked through the store (retry_of / retried_as), a second click finds the
+# first answer (find_retry), and the route re-checks ComfyUI first: a prompt that in the
+# meantime turned up running or finished is adopted, never duplicated. Nothing here ever
+# calls itself: the /api/job/<id>/retry route is retry_job()'s only caller.
+
+RETRY_LOCK = threading.Lock()         # two simultaneous clicks must not create two replays
+
+
+def retry_warning(job, verdict):
+    """What the retry tells the user it is doing, from the same evidence that made Retry
+    honest: a prompt id ComfyUI was never seen to acknowledge, or a submit never answered."""
+    if verdict == 'failed':
+        return ('ComfyUI reported the original prompt failed; its recorded request is '
+                'submitted again as a new job.')
+    if verdict == 'interrupted':
+        return ('ComfyUI shows the original prompt was interrupted; its recorded request is '
+                'submitted again as a new job.')
+    if not job['prompt_ids']:
+        return ('the submit was never answered: the request may never have reached ComfyUI, or '
+                'ComfyUI may still be executing it. The recorded request is submitted again as '
+                'a new job -- if the original did reach ComfyUI this may generate a second take.')
+    ids = ', '.join(job['prompt_ids'])
+    if job.get('correlation') == 'client-supplied':
+        return (f'ComfyUI has no record of prompt {ids}: it may never have reached ComfyUI. The '
+                'recorded request is submitted again as a new job; this may generate a second take.')
+    return (f'ComfyUI has no record of prompt {ids} although the submit left this machine '
+            'awaiting an answer: the work may never have arrived. The recorded request is '
+            'submitted again as a new job; this may generate a second take.')
+
+
+def recorded_inputs(job):
+    """What the recorded request pins down for a replay: (args, run, snap) rebuilt from the
+    job's own request record -- prompt, seed and content-addressed pictures the original
+    submit was built from, which the scene may since have changed. Busy whenever a piece is
+    gone: a retry must never quietly substitute today's settings for the recorded ones."""
+    slug, snap = job.get('project'), recovery_snapshot(job)
+    if job['kind'] == 'enhance':
+        run = ((snap or {}).get('source') or {}).get('run') or (job.get('take') or {}).get('run')
+        if not run:
+            raise Busy('the recorded inputs are no longer available: this enhance names no source take')
+        try:
+            enhance.run_dir_of(run)
+        except FileNotFoundError:
+            raise Busy(f'the recorded inputs are no longer available: the source take {run} is no '
+                       'longer in the output folder')
+        return None, run, snap
+    if not snap:
+        raise Busy('the recorded inputs are no longer available: this job left no request record to replay')
+    refs = []
+    for r in sorted(snap.get('refs') or [], key=lambda r: r.get('index') or 0):
+        try:
+            raw = projects.path(slug, r['store']).read_bytes()
+        except OSError:
+            raise Busy(f'the recorded inputs are no longer available: reference picture {r["name"]} is gone')
+        refs.append((r['name'], raw))
+    first = None
+    if snap.get('first'):
+        f = snap['first']
+        try:
+            raw = projects.path(slug, f['store']).read_bytes()
+        except OSError:
+            raise Busy(f'the recorded inputs are no longer available: the recorded first frame {f["name"]} is gone')
+        first = (f['name'], raw)
+    args = dict(prompt=snap['prompt'], seconds=snap['seconds'], width=snap['width'],
+                height=snap['height'], seed=snap['seed'], refs=refs, first=first, last=None,
+                two_pass=snap['two_pass'], loras=snap.get('loras') or [])
+    return args, None, snap
+
+
+def retry_render_job(job, slug, scene_id, snap, take_id, args):
+    """Thread body of a retried render: rebuild the graph from the RECORDED request (not from
+    whatever the scene says now), write this job's own snapshot -- carrying retry_of -- then
+    run exactly like a fresh render: reserve, submit, record through the same recorders."""
+    reserve(job, [scene_key(slug, scene_id)])
+    graph = build_graph(**args)
+    preset_name = snap['preset']
+    snapshot = render_snapshot(job, slug, scene_id, take_id, preset_name, snap['variant'],
+                               args, graph, (snap.get('director') or {}).get('model'),
+                               (snap.get('first') or {}).get('source'))
+    snapshot['retry_of'] = job['retry_of']
+    projects.write_job_snapshot(slug, snapshot)
+    on_take = take_recorder(slug, scene_id, job['id'], take_id, preset_name, snap['seed'],
+                            snap['variant'], source_take_of(snapshot))
+    on_final = final_recorder(slug, scene_id, lambda: job['take']['run'])
+    job['late_record'] = render_late_record(job, on_take, on_final, take_id, PRESETS[preset_name]['finish'])
+    do_render(job, graph, PRESETS[preset_name]['finish'], on_take, on_final)
+    write_job_result(job, take_id)
+
+
+def retry_job(job):
+    """The user's explicit Retry of an unknown job (the route proved state unknown, unresolved,
+    retry_allowed). ComfyUI is re-checked first: a prompt that turned up running is adopted
+    (_recover_one reattaches it); one that proved finished already recorded its take through
+    reconcile -- either way NOTHING is submitted and the caller gets a Busy. Otherwise the
+    recorded request goes out as a NEW job linked through the store, the old row resolves
+    'retried' by 'user', and a second click finds the first answer (find_retry). RETRY_LOCK
+    keeps two simultaneous clicks from racing past that check."""
+    with RETRY_LOCK:
+        try:
+            prior = jobs_db.find_retry(job['id'])
+        except jobs_db.JobDbError as e:
+            raise Busy(f'the job store cannot be read: {e}')      # nothing submitted
+        if prior:
+            live = JOBS.get(prior['id'])
+            return {'retry_of': job['id'], 'already': True,
+                    'job': public(live) if live else
+                    {'id': prior['id'], 'kind': prior['kind'], 'state': prior['state'],
+                     'project': prior['project'], 'scene': prior['scene']}}
+        q = comfy_queue()
+        if q is None:
+            raise Busy(f'ComfyUI is not answering at {COMFY}: a retry cannot first check whether '
+                       'the original submit survived; try again once ComfyUI answers')
+        verdict = reconcile(job) if job['prompt_ids'] else None
+        if verdict == 'running':
+            old_id = job['id']
+            release(job)                       # _recover_one re-reserves from the durable row
+            try:
+                row = jobs_db.get(old_id)
+            except jobs_db.JobDbError:
+                row = None
+            if row and not row['resolved']:
+                _recover_one(row, q[0] | q[1])
+            raise Busy('the original job turned up in ComfyUI: it is reattached to its existing '
+                       'prompt and nothing was submitted')
+        if verdict == 'finished':
+            raise Busy('the original job completed in ComfyUI and its take was recorded from the '
+                       'prompt; nothing was submitted')
+        args, run, snap = recorded_inputs(job)
+        new = new_job(job['kind'], scene_stage_keys(job['kind']),
+                      project=job.get('project'), scene=job.get('scene'))
+        new['retry_of'] = job['id']
+        if job['kind'] != 'enhance':
+            new['take_id'] = projects.new_take_id()
+        db_note(new)                           # the retry link is durable before any thread starts
+        job['retried_as'] = new['id']
+        release_resolved(job, 'retried', by='user')   # frees the holds the replay re-reserves
+        if job['kind'] == 'enhance':
+            slug, scene_id = job.get('project'), job.get('scene')
+            keys = [scene_key(slug, scene_id)] if slug and scene_id else []
+            on_final = final_recorder(slug, scene_id, lambda: run) if slug and scene_id else None
+            threading.Thread(target=run_job, args=(new, enhance_job, run, on_final, keys),
+                             daemon=True).start()
+        else:
+            threading.Thread(target=run_job,
+                             args=(new, retry_render_job, job['project'], job['scene'],
+                                   snap, new['take_id'], args),
+                             daemon=True).start()
+        return {'job': public(new), 'retry_of': job['id'], 'warning': retry_warning(job, verdict)}
+
+
+def _retryable_row(job_id):
+    """The retry route's fallback when loadable_job cannot help (ComfyUI unreachable, so its
+    reconcile-first answers nothing): a persisted unresolved row -- 'unknown' or still in an
+    open pre-terminal state a recovery pass could not settle -- rebuilt display-only with the
+    late-record plumbing _settle would have set. retry_allowed follows the same evidence
+    _lost_message uses (an open row with no prompt ids proves nothing ever landed), because
+    retry_job() itself refuses the moment ComfyUI cannot be re-checked first."""
+    try:
+        row = jobs_db.get(job_id)
+    except jobs_db.JobDbError:
+        return None
+    if not row or row['resolved']:
+        return None
+    if row['state'] != 'unknown' and row['state'] not in RECOVER_STATES:
+        return None
+    job = _rebuilt_job(row)
+    job['retry_allowed'] = (bool(row['retry_allowed']) or not row['prompt_ids']
+                            or row['state'] == jobs_db.SUBMITTING)
+    job.update(state='unknown', done=True, ended=row['ended'] or time.time(),
+               holds=[tuple(k) for k in (row['holds'] or [])])
+    prep_late_record(job, recovery_snapshot(job))
+    return job
+
+
 def public(job):
     now = time.time()
     out = {k: job[k] for k in ('id', 'kind', 'error', 'done', 'state', 'take', 'final')}
     out['prompt_ids'] = list(job['prompt_ids'])
     out['resolved'] = job.get('resolved')
     out['retry_allowed'] = bool(job.get('retry_allowed'))
+    out['retry_of'] = job.get('retry_of')
+    out['retried_as'] = job.get('retried_as')
     out['stages'] = [{**s, 'seconds': round((s['ended'] or now) - s['started']) if s['started'] else None}
                      for s in job['stages']]
     out['elapsed'] = round(now - job['created'])
@@ -1769,7 +1966,8 @@ def queue_view():
                'created': job.get('created'), 'started': started, 'ended': job.get('ended'),
                'queued_for': round((started or end) - job['created']),
                'running_for': round(end - started) if started else None,
-               'retry_allowed': bool(job.get('retry_allowed')), 'recovering': bool(job.get('recovering_at'))}
+               'retry_allowed': bool(job.get('retry_allowed')), 'recovering': bool(job.get('recovering_at')),
+               'retry_of': job.get('retry_of'), 'retried_as': job.get('retried_as')}
         (live if row['live'] else done).append(row)
     live.sort(key=lambda r: r['created'] or 0)             # oldest live job first
     done.sort(key=lambda r: -(r['ended'] or 0))           # newest verdict first
@@ -1795,7 +1993,8 @@ def queue_view():
                          'queued_for': round((started or end) - (row['created'] or end)),
                          'running_for': round(end - started) if started else None,
                          'correlation': row['correlation'], 'persisted': True,
-                         'retry_allowed': bool(row['retry_allowed']), 'recovering': False})
+                         'retry_allowed': bool(row['retry_allowed']), 'recovering': False,
+                         'retry_of': row['retry_of'], 'retried_as': row['retried_as']})
     except Exception as e:
         print(f'jobs: durable queue history unavailable: {e}')  # a broken store never breaks the board
     # a recovery pass that could not reach ComfyUI leaves its rows in the store marked
@@ -1816,7 +2015,8 @@ def queue_view():
                          'take': row['run'], 'created': row['created'], 'started': row['started'],
                          'ended': None, 'queued_for': None, 'running_for': None,
                          'correlation': row['correlation'], 'persisted': True,
-                         'retry_allowed': bool(row['retry_allowed']), 'recovering': True})
+                         'retry_allowed': bool(row['retry_allowed']), 'recovering': True,
+                         'retry_of': row['retry_of'], 'retried_as': row['retried_as']})
     except Exception as e:
         print(f'jobs: durable recovery rows unavailable: {e}')  # a broken store never breaks the board
     batches = []
@@ -2055,6 +2255,24 @@ class Handler(BaseHTTPRequestHandler):
                 # ask ComfyUI and report; unlike /resolve this never dismisses on its own --
                 # only a proven verdict releases the holds (reconcile(), web.py)
                 return self.reply(200, {'job': public(job), 'proved': reconcile(job)})
+            m = re.match(r'^/api/job/([^/]+)/retry$', self.path)
+            if m:
+                # the explicit door for an unknown job whose submit provably never landed
+                # (retry_allowed): replay its RECORDED request, once. Never automatic -- this
+                # route is retry_job()'s one and only caller.
+                old = loadable_job(m.group(1)) or _retryable_row(m.group(1))
+                if not old:
+                    return self.reply(404, {'error': 'unknown job'})
+                if not old['done']:
+                    return self.reply(409, {'error': 'the job is still running; cancel it instead'})
+                if old['state'] != 'unknown' or old.get('resolved'):
+                    return self.reply(400, {'error': 'only a job whose ComfyUI state is unknown can be retried'})
+                if not old.get('retry_allowed'):
+                    return self.reply(409, {'error': "no retry: ComfyUI had acknowledged this job's submit, "
+                                                     'so the work may have completed and been purged or be '
+                                                     'still running; resubmitting on that guess could double '
+                                                     'the GPU work. Reconcile or dismiss it instead'})
+                return self.reply(200, retry_job(old))
             m = re.match(r'^/api/job/([^/]+)/cancel$', self.path)
             if m:
                 job = loadable_job(m.group(1))

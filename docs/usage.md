@@ -55,6 +55,17 @@ A tracker shows each stage live (step counts, elapsed time), and the take plays 
 
 ![Queue](queue.png)
 
+**After a restart:** the director re-checks ComfyUI for every unfinished job. Jobs it cannot
+confirm stay **unknown**: their scene stays reserved and they are never resubmitted automatically.
+**Reconcile** asks ComfyUI again whether the prompt exists. When the evidence proves the submit
+never reached ComfyUI (no prompt id was ever recorded, or a client-assigned id is absent from
+ComfyUI's queue and history), a **Retry…** button appears. Retry re-checks ComfyUI first — if the
+original prompt turns out to be running or finished it is adopted, not duplicated — and then
+re-submits the *recorded* request (the prompt, seed, size and length exactly as first submitted)
+as a new job, once. A retried job cannot be retried again, and a job whose submit ComfyUI
+acknowledged never gets a Retry: resubmitting that on a guess could double the GPU work, so
+reconcile or dismiss it instead.
+
 ## Film projects
 
 Open **Film project →** (`/project`). A film is a set of scenes planned together, with a shared

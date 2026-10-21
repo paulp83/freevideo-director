@@ -186,7 +186,7 @@ dialog { border: 1px solid var(--line); border-radius: 12px; color: var(--ink); 
     <h2>Queue</h2>
     <ul class="takes" id="queueJobs"></ul>
     <p class="hint">Estimates are the median of your last 20 runs of the same kind; they appear after a first run.</p>
-    <p class="hint">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically.</p>
+    <p class="hint">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically — an unconfirmed submit can be retried by hand.</p>
   </section>
 </main>
 
@@ -430,6 +430,16 @@ function fmt2(s) {
 }
 const qMsg = new Map();
 let askJob = null;
+
+// the exact honesty story of a retry, from what ComfyUI does NOT know about this job
+function retryText(r) {
+  return (r.prompt_ids.length ? 'ComfyUI has no record of prompt ids ' + r.prompt_ids.join(', ') +
+          ' — it may never have received them. '
+          : 'The original submit was never answered: nothing confirms the request reached ComfyUI. ') +
+    'Retry re-checks ComfyUI first — if the original prompt turns up running or finished it is ' +
+    'adopted, not duplicated — then submits the recorded request again as a new job. A retry is ' +
+    'never automatic.';
+}
 function qReconcile(id) {
   qMsg.set(id, 'Asking ComfyUI…'); drawQueue(lastQ, true);
   fetch(`/api/job/${id}/reconcile`, {method: 'POST'}).then(r => r.json().then(d => ({ok: r.ok, d}))).then(({ok, d}) => {
@@ -442,9 +452,12 @@ function qReconcile(id) {
 }
 function qAsk(kind, id, what) {
   askJob = {kind, id};
-  $('askTitle').textContent = kind === 'cancel' ? 'Cancel this job?' : 'Dismiss this unknown job without proof?';
+  $('askNo').textContent = kind === 'retry' ? 'Keep it unknown' : 'Keep it as it is';
+  $('askTitle').textContent = kind === 'cancel' ? 'Cancel this job?'
+    : kind === 'retry' ? "Re-submit this job's recorded request?" : 'Dismiss this unknown job without proof?';
   $('askWhat').textContent = what;
-  $('askGo').textContent = kind === 'cancel' ? 'Cancel job' : 'Dismiss without proof';
+  $('askGo').textContent = kind === 'cancel' ? 'Cancel job'
+    : kind === 'retry' ? 'Submit the retry' : 'Dismiss without proof';
   $('askBox').showModal();
 }
 $('askGo').onclick = () => {
@@ -454,8 +467,11 @@ $('askGo').onclick = () => {
     if (!ok) throw new Error(d.error || 'failed');
     qMsg.set(a.id, a.kind === 'cancel'
       ? (d.proved ? 'Cancelled: the stop is proven.' : (d.warning || 'Cancel asked; the job stays live until the stop is proven.'))
+      : a.kind === 'retry'
+        ? (d.already ? 'Already retried as job ' + d.job.id + ' — nothing was submitted again'
+                     : (d.warning || 'The recorded request is being re-submitted as a new job.'))
       : `Job dismissed (${d.proved || 'no proof'}): the scene is free again, but the prompt may still be running`);
-  }).catch(e => qMsg.set(a.id, (a.kind === 'cancel' ? 'Cancel' : 'Dismiss') + ' failed: ' + e.message)).finally(refreshQueue);
+  }).catch(e => qMsg.set(a.id, (a.kind === 'cancel' ? 'Cancel' : a.kind === 'retry' ? 'Retry' : 'Dismiss') + ' failed: ' + e.message)).finally(refreshQueue);
 };
 $('askNo').onclick = () => $('askBox').close();
 let lastQ = null;
@@ -463,7 +479,8 @@ function drawQueue(q, force) {
   const rows = (q && q.jobs) || [];
   $('queueBox').hidden = !rows.length;
   const sig = JSON.stringify([rows.map(r => [r.id, r.kind, r.state, r.project || '', r.project_name || '', r.scene_title || '',
-                                             r.stage || '', r.error || '', !!r.resolved, (r.prompt_ids || []).join(',')]),
+                                             r.stage || '', r.error || '', !!r.resolved, (r.prompt_ids || []).join(','),
+                                             !!r.retry_allowed, r.retried_as || '']),
                               [...qMsg.entries()]]);
   if (!force && $('queueJobs').dataset.sig === sig) { tickQueue(); return; }
   $('queueJobs').dataset.sig = sig;
@@ -477,6 +494,10 @@ function drawQueue(q, force) {
     st.textContent = qword(r.state) + (r.stage ? ' · ' + r.stage : '') + (r.error ? ': ' + r.error : '');
     if (r.error) st.className = 'qerr';
     li.append(st);
+    if (r.resolved && r.resolved.verdict === 'retried') {
+      const rv = document.createElement('span'); rv.className = 'qmsg';
+      rv.textContent = ' · retried as job ' + (r.retried_as || ''); li.append(rv);
+    }
     const t = document.createElement('span'); t.className = 'when'; li.append(' ', t);
     if (r.eta != null && r.live) { const e = document.createElement('span'); e.className = 'when'; e.textContent = ' · about ' + fmt2(r.eta) + ' left'; li.append(e); }
     if (r.state === 'unknown' && !r.resolved) {
@@ -485,7 +506,13 @@ function drawQueue(q, force) {
       const rec = document.createElement('button'); rec.className = 'btn ghost'; rec.textContent = 'Reconcile'; rec.onclick = () => qReconcile(r.id);
       const dis = document.createElement('button'); dis.className = 'btn ghost'; dis.textContent = 'Dismiss…';
       dis.onclick = () => qAsk('dismiss', r.id, 'Reconciling could not prove the prompt stopped. Dismissing frees the scene for new work anyway — if ComfyUI is still running that prompt, new work now could generate a duplicate take.');
-      li.append(' ', why, ' ', rec, ' ', dis);
+      li.append(' ', why, ' ', rec, ' ');
+      if (r.retry_allowed) {                                    // only when the submit provably never landed
+        const rt = document.createElement('button'); rt.className = 'btn ghost'; rt.textContent = 'Retry…';
+        rt.onclick = () => qAsk('retry', r.id, retryText(r));
+        li.append(rt, ' ');
+      }
+      li.append(dis);
       const m = qMsg.get(r.id);
       if (m) { const s2 = document.createElement('span'); s2.className = 'qmsg'; s2.textContent = m; li.append(' ', s2); }
     } else if (r.live && !r.resolved) {

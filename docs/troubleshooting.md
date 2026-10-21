@@ -4,6 +4,7 @@
 |---|---|
 | UI or CLI says **no director model is up** | None of the default endpoints answered. Start a director model, or point at one with `DIRECTOR_URL` and `DIRECTOR_MODEL` (see [usage](usage.md#configuration)). |
 | UI says **ComfyUI is unreachable** | Start the FreeVideo ComfyUI workspace on `127.0.0.1:8190`. Writing prompts works without it; rendering does not. |
+| A job shows **state unknown** after a restart | The director could not prove what ComfyUI is doing with it; nothing was resubmitted and the scene stays reserved. Use **Reconcile** to ask ComfyUI again. If the submit provably never arrived, **Retry…** re-submits the recorded request once, after re-checking ComfyUI first; if ComfyUI had acknowledged the submit, resubmitting on a guess could double the GPU work — reconcile or dismiss instead ([usage](usage.md#web-ui)). |
 | Out of memory, or the engine won't start | Something else is using the render GPU. Check `nvidia-smi`. |
 | A Final fails at **Upscale** with out of memory | SeedVR2 needs about 17 GB at 1080p. Check nothing else is on the GPU. Keep `decode_tiled: True` in `enhance.py` (untiled decode runs out of memory at 1080p on 32 GB), or lower `batch_size` (21 → 13; it must be 4n+1). Then retry with **Enhance this take**: the render is kept. |
 | Vertical bars in **VLC**, clean in the browser | VLC's hardware decoding. Tools → Preferences → Input/Codecs → Hardware-accelerated decoding → Disable. If that doesn't help, set Video → Output → OpenGL. The file is fine. |

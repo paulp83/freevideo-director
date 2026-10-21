@@ -84,7 +84,7 @@ class Store(unittest.TestCase):
         self.assertIn('jobs', names)
         self.assertIn('leftovers', names)
 
-    def test_a_v1_database_gains_the_recovery_markers_without_losing_rows(self):
+    def test_a_v1_database_gains_the_recovery_and_retry_markers_without_losing_rows(self):
         path = self.root / 'v1.db'                        # exactly the pre-marker (version 1) schema
         con = sqlite3.connect(path)
         con.executescript("""
@@ -125,8 +125,11 @@ class Store(unittest.TestCase):
         con.close()
         self.assertIn('retry_allowed', cols)              # added by ALTER, not by recreation
         self.assertIn('recovering_at', cols)
+        self.assertIn('retry_of', cols)
+        self.assertIn('retried_as', cols)
         row = jobs_db.get('abc123')                       # the old row survives the migration
         self.assertEqual((row['state'], row['retry_allowed']), ('running', False))
+        self.assertIsNone(row['retry_of'])
         jobs_db.init(self.db)
 
     def test_save_get_roundtrip(self):
