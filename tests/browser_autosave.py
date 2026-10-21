@@ -76,11 +76,12 @@ class Driver:
 
 
 HOOK = """
-window.__log = []; window.__mode = 'pass'; window.__delay = 0;
+window.__log = []; window.__mode = 'pass'; window.__delay = 0; window.__freeze = false;
 const real = window.fetch.bind(window);
 window.fetch = async (url, opts) => {
   const u = String(url); const isSave = u.endsWith('/save');
   window.__log.push({url: u, body: opts && opts.body});
+  if (window.__freeze && !isSave && u.includes('/api/p/')) return new Promise(function () {});
   if (isSave && window.__mode === 'fail') return new Response(JSON.stringify({error: 'disk on fire'}), {status: 500, headers: {'Content-Type': 'application/json'}});
   if (isSave && window.__delay) await new Promise(r => setTimeout(r, window.__delay));
   return real(url, opts);
@@ -177,10 +178,10 @@ def main():
 
         # 4. two tabs: stale tab must conflict, refuse to overwrite, and reload the server copy on Cancel
         d.go(url(beta)); d.wait("document.getElementById('pTitle')"); tab1 = d.s('GET', '/window')
-        tab2 = d.new_tab(); d.go(url(beta)); d.wait("document.getElementById('pTitle')")
+        tab2 = d.new_tab(); d.go(url(beta)); d.wait("document.getElementById('pTitle')"); d.js(HOOK)
         d.switch(tab1); type_into(d, '#pTitle', ' one'); time.sleep(2.0)
         t1 = server_project(beta)['title']
-        d.switch(tab2); type_into(d, '#pTitle', ' two'); time.sleep(2.0)
+        d.switch(tab2); d.js("window.__freeze = true"); type_into(d, '#pTitle', ' two'); d.js("window.__freeze = false"); time.sleep(2.0)
         text = d.alert_text()
         check('4 conflict dialog appears in stale tab', bool(text), text)
         check('4 server keeps first tab edit while dialog open', server_project(beta)['title'] == t1, server_project(beta)['title'])
@@ -210,7 +211,7 @@ def main():
         p['scenes'][0]['takes'] = [take_rec(1, 'aaaa0001'), take_rec(2, 'bbbb0002')]
         projects.save(p)
         d.go(url(alpha))
-        d.wait("document.querySelector('#scene-" + sid + " .take [data-k=bChoose]')")
+        d.wait("document.querySelectorAll('#scene-" + sid + " .take [data-k=bChoose]').length === 2")
         badges = d.js("return [...document.querySelectorAll('#scene-" + sid + " .take .badge')].map(b => b.textContent)")
         check('6 latest take is the automatic choice', 'latest (auto)' in badges and '★ chosen' not in badges, badges)
         d.js("document.querySelectorAll('#scene-" + sid + " .take [data-k=bChoose]')[1].click()")  # pin the older take
@@ -260,8 +261,10 @@ def main():
         projects.save(p)
         takes_now = len(p['scenes'][0]['takes'])
         d.go(url(alpha)); d.wait("document.getElementById('pTitle')"); d.js(HOOK)
+        d.js("window.__freeze = true")          # no poll may adopt the new rev before the draft is dirty
         projects.save_editor(alpha, {'title': 'from-elsewhere'})   # another editor wins the title first
         type_into(d, '#pTitle', ' mine')
+        d.js("window.__freeze = false")
         text = wait_alert(d)
         check('7 a 409 opens the conflict dialog naming the field', bool(text) and 'title' in text, text)
         d.s('POST', '/alert/accept')                               # OK = Keep mine
@@ -273,8 +276,10 @@ def main():
               len(sp['takes']) == takes_now and sp['takes'][-1]['id'] == 'dddd0009', sp['takes'])
 
         # 7b. Cancel (Reload) discards the draft and adopts the server revision
+        d.js("window.__freeze = true")
         projects.save_editor(alpha, {'title': 'server-won'})
         type_into(d, '#pTitle', ' mine2')
+        d.js("window.__freeze = false")
         text = wait_alert(d)
         check('7b a second conflict opens the dialog again', bool(text), text)
         d.s('POST', '/alert/dismiss')                              # Cancel = Reload
