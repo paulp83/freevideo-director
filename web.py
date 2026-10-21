@@ -2,7 +2,8 @@
 """Browser UI for the FreeVideo director.  http://127.0.0.1:8192
 
 Idea + images -> H3 prompt (director.direct) -> render on the FreeVideo ComfyUI (:8190) ->
-optional Final finishing (enhance.py: SeedVR2 upscale, RIFE 48 fps, CRF 16). Every render is a
+optional Final finishing (enhance.py runs the project's finishing.py settings: upscaling,
+frame rate, encoding quality). Every render is a
 job with visible stages and live progress (ComfyUI websocket). Stdlib only.
 """
 import argparse, base64, json, os, re, socket, struct, subprocess, threading, time, urllib.error, \
@@ -30,8 +31,8 @@ FFMPEG = config.value('ffmpeg')
 PRESETS = config.value('presets')
 STAGES = {
     'render': 'Render',
-    'upscale': 'Upscale to 1080p',
-    'smooth': 'Smooth to 48 fps',
+    'upscale': 'Upscale',
+    'smooth': 'Smooth',
     'encode': 'Encode',
 }
 # The upscale/smooth labels follow the project's finishing settings (finishing.stage_label);
