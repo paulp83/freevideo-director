@@ -25,12 +25,12 @@ page (loads ids/handler names below).
 | Film title `#pTitle` | global section | header shows name; editing input `#pTitle` in Project settings drawer | moved to Project settings | browser_layout (typing → /save) |
 | Film length/aspect (`#nSeconds`, `#nAspect`) | New film | New film view; Project settings shows read-only `#pSizeText` (aspect + render size) — size was never editable per-film | kept | — |
 | Pruning `#freeSpace` → POST `/api/p/<slug>/prune` | Scenes header | Project settings drawer (same id) | moved to Project settings | browser_layout (dry-run request) |
-| Project re-plan `replan()` → POST `storyboard` | stepper step 1 | stage chip "Re-plan…" (same handler) | kept | browser_layout (chip fires confirm+POST) |
-| Write missing prompts `run('prompts',{only_missing:true})` | stepper step 2 | stage chip | kept | browser_layout (click → POST) |
-| Draft missing (`draft-all`) | stepper step 3 | stage chip | kept | browser_layout |
-| Assemble animatic (`assemble {kind:'animatic'}`) | stepper step 4 | "Preview film" button (`#bPreviewFilm`) + stage chip | kept, label fixed | browser_layout (POST) |
-| Enhance ★ takes (`enhance-starred`) | stepper step 5 | stage chip (Project-level batch) | kept | browser_layout |
-| Assemble film (`assemble {kind:'film'}`) | stepper step 6 | "Export film" button (`#bExportFilm`) + stage chip | kept, label fixed | browser_layout (POST) |
+| Project re-plan `replan()` → POST `storyboard` | stepper step 1 | stage pill's caret menu "Re-plan…" (same handler) | kept | browser_layout (pill → menu → POST) |
+| Write missing prompts `run('prompts',{only_missing:true})` | stepper step 2 | stage pill's caret menu | kept | browser_layout (menu button → POST) |
+| Draft missing (`draft-all`) | stepper step 3 | stage pill's caret menu | kept | browser_layout |
+| Assemble animatic (`assemble {kind:'animatic'}`) | stepper step 4 | "Preview film" button (`#bPreviewFilm`, viewer row) + stage pill's caret menu | kept, label fixed | browser_layout (POST) |
+| Enhance ★ takes (`enhance-starred`) | stepper step 5 | stage pill's caret menu (Project-level batch) | kept | browser_layout |
+| Assemble film (`assemble {kind:'film'}`) | stepper step 6 | "Export film" button (`#bExportFilm`, viewer row) + stage pill's caret menu | kept, label fixed | browser_layout (POST) |
 | Batch progress bar `#batch`/`#batchText`/`#batchBar` + `#batchCancel` → POST `cancel` | stepper card | header batch bar (same ids) | kept | browser_layout (fixture has no live batch; handler checked) |
 | Per-scene cancellation | (same batch cancel) | inspector: header batch bar `#batchCancel` cancels the film's jobs (unchanged API) | kept | browser_layout |
 | Timeline `#timeline` + legend | section | below viewer; click selects scene instead of scrolling | kept | browser_layout |
@@ -42,7 +42,7 @@ page (loads ids/handler names below).
 | Delete scene `remove()` | per scene header row | inspector `#bDeleteScene` | moved | browser_layout (confirm + save) |
 | Scene title/seconds/connect/transition inputs (`data-k`) | per scene card | inspector (`#scTitle`/`#scSeconds`/`#scConnect`/`#scTransition`) | moved | browser_layout (typing → /save) |
 | Scene action/intent textarea (`data-k=action`) | per scene card | inspector `#scAction` | moved | browser_layout |
-| H3 prompt textarea + `mode`/`check` badges (details) | per scene card | inspector expandable (same key `prompt`) | moved | browser_layout (typing → /save) |
+| H3 prompt textarea + `mode`/`check` badges (details) | per scene card | inspector, always visible above the fold (no details wrapper); badges in the status line | moved | browser_layout (typing → /save; textarea fully visible with `scrollTop==0`) |
 | Prompt history `#hist`/`historyRows` + Restore → POST `restore_prompt` | per scene card | inspector expandable "Prompt history" | moved | browser_layout (Restore posts) |
 | Rewrite/Write prompt `bPrompt` (`scenePrompt()` → POST `prompt`) | per scene button | inspector **Create prompt** (`#bCreatePrompt`, same flow incl. elapsed tick) | moved, label fixed | browser_layout (POST) |
 | Draft render `bDraft` (POST `render` preset draft) | per scene button | inspector **Generate preview** (`#bPreview`) | moved, label fixed | browser_layout (POST) |
@@ -53,10 +53,10 @@ page (loads ids/handler names below).
 | Compare takes | — (did not exist) | inspector **Compare takes**, disabled with reason "Stage B" | not yet — Stage B (comparison UI is the next M3 step) | browser_layout (disabled + reason shown) |
 | Job progress chips `data-k=job` (stages) | per scene card | inspector status line ("Running · upscale …") + take-strip state text | kept (words, not colour) | browser_layout (fixture has no live job; text states checked) |
 | Validity badges `updateFlags` (`.flags .badge.stale`/`.soft`, FLAG_LABEL texts) | per scene card | inspector status line + navigator state text (same flag words from `scene.status`) | kept (words/icons) | browser_status.py (classic); browser_layout (new, fixture text) |
-| Take strip videos (`preload=none`, `.take`) | per scene card | viewer take strip (same `preload=none`, poster/thumb first) | kept + lazy poster | browser_status.py #10 (classic); browser_layout (new) |
+| Take strip videos (`preload=none`, `.take`) | per scene card | take strip cards: poster `<img>` from GET `poster?id=` (ffmpeg, cached in `frames/`), placeholder + play overlay; **zero** `<video>` elements in the strip — card click loads the take into the single viewer | moved | browser_layout (0 videos, 2 posters, click → viewer `/files/` src); test_poster.py (endpoint) |
 | Take badges (preset/final, seed, variant, chosen) | take meta | take strip card meta + viewer info | kept | browser_layout |
-| Choose take `bChoose` (POST `star {scene,take}`) | take meta | take strip **Use this take** + inspector `#bUseTake` | kept, label fixed | browser_layout (POST) |
-| Release to auto `bAuto` (POST `star {auto:true}`) | take meta | inspector button beside Use this take | kept | browser_layout |
+| Choose take `bChoose` (POST `star {scene,take}`) | take meta | take strip card **Use this take**; the inspector's single primary action offers the same when the viewer take is unpinned | kept, one control per card | browser_layout (POST, badge "pinned") |
+| Release to auto `bAuto` (POST `star {auto:true}`) | take meta | the pinned card's own button (the one release control; no duplicate in the inspector) | moved | browser_layout (exactly one visible "Release to auto") |
 | Take Details (GET `/api/p/<slug>/take?id=…`, `.trow` provenance rows, legacy honesty) | take card | inspector expandable "Technical details" (lazy, per-take cache `takeOpen/takeData`) | kept | browser_status.py (classic); browser_layout (opens + rows) |
 | Save-status flows: `pump/doSave/flushEdits`, 409 Reload/Keep-mine | script | script (unchanged except DOM glue) | kept | autosave_check.js, browser_autosave.py |
 | Poll `setInterval(refresh, 3000)` + `setIfIdle` focus guard | script | script (same) | kept | browser_autosave.py (classic), browser_layout (new: typing focus survives poll) |
@@ -74,6 +74,8 @@ page (loads ids/handler names below).
   visible reason "Stage B".
 - **Queue drawer**: the header links to the existing `/queue` page (real jobs, real times); an in-page
   drawer is Stage B.
-- **Per-take thumbnails in real projects**: the page renders `take.thumb_url` when a take record carries
-  one (the fixture demonstrates this); no server code writes thumbnails yet, so real projects fall back to
-  a `preload="none"` video box — nothing eager loads.
+- **Per-take posters in real projects**: the strip renders `take.thumb_url` when a record carries one
+  (fixture-only — real `project.json` takes never do); otherwise the card asks
+  `GET /api/p/<slug>/poster?id=`, which extracts a frame with ffmpeg and caches it as
+  `frames/<take id>-poster.jpg`. If no media is on disk the card falls back to a plain placeholder —
+  nothing eager loads and the strip still holds no `<video>` elements.

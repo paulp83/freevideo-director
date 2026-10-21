@@ -3,11 +3,14 @@ raw WebDriver HTTP API, against the six-scene fixture from tests/fixtures/make_f
 (real media, no ComfyUI, no director model).
 
 Layout is asserted with numbers, not vibes: at >=1100 px the viewer box keeps >=50% of the
-viewport width and >=40% of its height; below that the workspace stacks and the navigator
-becomes a horizontal strip; at <=600 px every visible tap target is >=44 px tall and text
-stays >=14 px. Status comes from words (badges, the "Renderer unavailable" chip), never from
-colour alone. Screenshots at five viewport sizes land in docs/screenshots/m3-stage-a/ for
-human review.
+viewport width and >=40% of its height and starts within 150 px of the top; the header plus the
+stage nav together stay <=110 px (<=190 px on a phone) and the next-action button is fully
+inside the viewport at every size, wrapping instead of clipping; below 1100 px the workspace
+stacks and the navigator becomes a horizontal strip; at <=600 px every visible tap target is
+>=44 px tall (the tiny caret inside a stage pill is exempt - the menu button it opens obeys)
+and text stays >=14 px. Status comes from words (badges, the "Renderer unavailable" chip),
+never from colour alone. Screenshots at five viewport sizes land in docs/screenshots/m3-stage-a/
+for human review.
 
 Needs `geckodriver` and `firefox` on PATH. Starts its own web.py on a spare port against a
 throwaway projects dir; never touches real projects.
@@ -128,10 +131,13 @@ window.__hits = (frag) => window.__log.filter(l => l.url.includes(frag)).length;
 """
 
 TARGETS = """
-  // visible interactive elements: buttons, inputs, selects, and the clickable strip/nav tiles
+  // visible interactive elements: buttons, inputs, selects, and the clickable strip/nav tiles;
+  // .stage .caret is exempt - it is the icon inside a pill whose clickable area is the whole
+  // pill, and the menu button it opens is measured by the same rule
   const els = [...document.querySelectorAll('button, input, select, textarea, .navitem, .take')];
-  const bad = [], big = [];
+  const bad = [];
   for (const e of els) {
+    if (e.matches('.stage .caret')) continue;
     if (!e.offsetParent || e.disabled && e.offsetHeight === 0) continue;
     const r = e.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) continue;            // zero-size decorations do not count
@@ -173,7 +179,11 @@ def main():
               const vw = window.innerWidth, vh = window.innerHeight;
               const v = document.getElementById('viewer').getBoundingClientRect();
               const nav = document.getElementById('navigator'), insp = document.getElementById('inspector');
-              return {vw, vh, w: v.width, h: v.height,
+              const na = document.getElementById('nextAction').getBoundingClientRect();
+              return {vw, vh, w: v.width, h: v.height, top: v.top,
+                      naIn: na.height > 0 && na.left >= 0 && na.right <= vw && na.bottom <= vh,
+                      naFit: (e => e.scrollWidth <= e.clientWidth + 1)(document.getElementById('nextAction')),
+                      hdrH: document.getElementById('hdr').offsetHeight + document.getElementById('stages').offsetHeight,
                       hscroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
                       navdir: getComputedStyle(nav).flexDirection,
                       inspScroll: insp.scrollHeight > insp.clientHeight};""")
@@ -182,8 +192,12 @@ def main():
             check(f'{tag}: viewer >= 40% of viewport height', m['h'] >= 0.4 * m['vh'], f"{m['h']:.0f} vs {m['vh']}")
             check(f'{tag}: no horizontal document scroll', m['hscroll'])
             check(f'{tag}: navigator is a vertical column', m['navdir'] == 'column', m['navdir'])
+            check(f'{tag}: next action fully inside the viewport', m['naIn'], str(m)[:120])
+            check(f'{tag}: next action wraps instead of clipping', m['naFit'], str(m)[:120])
+            check(f'{tag}: header + stage nav together <= 110 px', m['hdrH'] <= 110, f"{m['hdrH']} px")
+            check(f'{tag}: viewer starts within 150 px of the top', m['top'] <= 150, f"{m['top']:.0f} px")
         d.resize(1100, 600)          # short desktop window: the inspector column must overflow here
-        d.js("document.getElementById('promptBox').open = true; return 1;")
+        d.js("document.getElementById('scSettings').open = true; return 1;")
         insp = d.js("""const i = document.getElementById('inspector'); i.scrollTop = 500;
                        return {top: i.scrollTop, scroll: i.scrollHeight > i.clientHeight,
                                ovf: getComputedStyle(i).overflowY,
@@ -211,17 +225,57 @@ def main():
         st = d.js("return {text: document.getElementById('scStatus').textContent, pinned: [...document.querySelectorAll('#takeStrip .badge')].map(b => b.textContent)};")
         check('status line names what is in use and how it was picked', 'in use' in st['text'] and any('pinned' in b for b in st['pinned']), str(st))
 
-        # ---------- takes: lazy media, pinned selection, Stage B placeholder ----------
-        pre = d.js("""return [...document.querySelectorAll('#takeStrip video')].map(v => v.preload);""")
-        check('take strip videos preload none', all(p == 'none' for p in pre), str(pre))
+        # ---------- inspector: prompt always visible, one primary action ----------
+        for (w, h) in [(1440, 900), (1920, 1080)]:
+            d.resize(w, h)
+            p = d.js("""const i = document.getElementById('inspector');
+                        i.querySelectorAll('details').forEach(x => x.open = false);   // initial state
+                        i.scrollTop = 0;
+                        const ir = i.getBoundingClientRect(), pr = document.getElementById('scPrompt').getBoundingClientRect();
+                        const btns = [...i.querySelectorAll('button')].filter(b => {
+                          if (!b.offsetParent) return false;
+                          const r = b.getBoundingClientRect();
+                          return r.top < ir.bottom && r.bottom > ir.top && r.height > 2 && r.width > 2; });
+                        const prim = [...i.querySelectorAll('button')].filter(b => b.offsetParent &&
+                          ['Create prompt', 'Generate preview', 'Use this take', 'Generate another take'].includes(b.textContent.trim()));
+                        return {above: pr.top >= ir.top - 1 && pr.bottom <= ir.bottom + 1,
+                                scroll: i.scrollTop, nbtn: btns.length, prim: prim.length,
+                                det: [...i.querySelectorAll('details')].map(x => x.id + ':' + x.open).join(','),
+                                ids: btns.map(b => b.id || b.textContent.trim()).join(',')};""")
+            tag = f'{w}x{h}'
+            check(f'{tag}: prompt textarea fully visible without scrolling', p['above'] and p['scroll'] == 0, str(p))
+            check(f'{tag}: at most 8 visible buttons in the inspector viewport', p['nbtn'] <= 8, str(p))
+            check(f'{tag}: exactly one primary take action visible', p['prim'] == 1, str(p))
+
+        # ---------- takes: posters never videos, pinned selection, Stage B placeholder ----------
+        d.resize(1100, 900)
+        cards = d.js("""return {vids: document.querySelectorAll('#takeStrip video').length,
+                                boxes: document.querySelectorAll('#takeStrip .posterBox').length,
+                                imgs: document.querySelectorAll('#takeStrip .posterBox img').length,
+                                ov: document.querySelectorAll('#takeStrip .playOv').length};""")
+        check('take strip shows zero inline <video> players', cards['vids'] == 0, str(cards))
+        check('every take card has a poster and a play affordance',
+              cards['boxes'] == 2 and cards['imgs'] == 2 and cards['ov'] == 2, str(cards))
+        rows = d.js("""const t = document.querySelector('#takeStrip .take');
+                       const bs = [...t.querySelectorAll('.takeActions button')].map(b => Math.round(b.getBoundingClientRect().top));
+                       return {uniq: new Set(bs).size, n: bs.length};""")
+        check('card action buttons sit on one row at 1100 px', rows['n'] >= 2 and rows['uniq'] == 1, str(rows))
+        d.js("""const c = document.querySelector('#takeStrip .take:not(.chosen)');
+                window.__before = document.getElementById('viewer').currentSrc || document.getElementById('viewer').src;
+                c.click(); return 1;""")
+        vs = d.js("return [document.getElementById('viewer').currentSrc || document.getElementById('viewer').src, window.__before];")
+        check('clicking a take card plays it in the viewer', vs[0] != vs[1] and '/files/' in vs[0], str(vs)[:160])
         check('viewer video preloads metadata',
               d.js("return document.getElementById('viewer').preload;") == 'metadata')
         cmp = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
         check('Compare takes is disabled with its Stage B reason visible', cmp[0] and cmp[1] == 'Stage B', str(cmp))
         d.js("document.querySelector('#takeStrip .take [data-k=bUse]').click();")
         d.wait("window.__hits('/star') > 0")
-        check('Use this take pins the take (star)',
-              bool(d.wait("[...document.querySelectorAll('#takeStrip .badge')].some(b => b.textContent === '★ in use (pinned)')")))
+        check('Use this take pins the take (one badge: pinned)',
+              bool(d.wait("[...document.querySelectorAll('#takeStrip .badge')].some(b => b.textContent === 'pinned')")))
+        check('exactly one Release to auto control when pinned',
+              d.js("""return [...document.querySelectorAll('button')].filter(b =>
+                      b.offsetParent && b.textContent.trim() === 'Release to auto').length;""") == 1)
 
         # ---------- autosave glue on the new ids ----------
         d.js("""const i = document.getElementById('scAction'); i.value = i.value + ' and the wind drops.';
@@ -233,7 +287,7 @@ def main():
         # ---------- one take, one provenance fetch ----------
         before = d.js("return window.__hits('/take?id=');")
         d.js("document.querySelector('#takeStrip .take [data-k=bDetails]').click();")
-        d.wait("!document.getElementById('techBox').hidden")
+        d.wait("!document.getElementById('techDetails').hidden && document.getElementById('techDetails').open")
         rows = d.js("""const rows = {};
             for (const r of document.querySelectorAll('#techBox .trow'))
                 rows[r.querySelector('b').textContent] = r.querySelector('span').textContent;
@@ -242,9 +296,26 @@ def main():
         check('provenance is fetched exactly once', d.js("return window.__hits('/take?id=');") == before + 1)
         time.sleep(4)   # a poll cycle must not refetch or close the open panel
         check('a poll does not refetch provenance', d.js("return window.__hits('/take?id=');") == before + 1
-              and not d.js("return document.getElementById('techBox').hidden;"))
+              and d.js("return document.getElementById('techDetails').open;"))
         d.js("document.querySelector('#takeStrip .take [data-k=bDetails]').click();")
-        check('Details toggles closed', d.js("return document.getElementById('techBox').hidden;"))
+        check('Details toggles closed', d.js("return !document.getElementById('techDetails').open;"))
+
+        # ---------- stage nav: every stage action is reachable through its menu ----------
+        d.resize(1440, 900)
+        d.js("document.querySelectorAll('#stageChips .stage')[1].click(); return 1;")
+        check('a stage pill opens its action menu',
+              bool(d.wait("!!document.getElementById('stageMenu')")))
+        mbtn = d.js("""const b = document.querySelector('#stageMenu button');
+                       const r = b.getBoundingClientRect();
+                       return {txt: b.textContent, dis: b.disabled,
+                               in: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.height >= 32};""")
+        check('the menu action is visible, enabled and full-size', not mbtn['dis'] and mbtn['in'], str(mbtn))
+        m_before = d.js("return window.__hits('/prompts');")
+        d.js("document.querySelector('#stageMenu button').click(); return 1;")
+        check('the menu action reaches the server', bool(d.wait("window.__hits('/prompts') > " + str(m_before), timeout=5)))
+        check('clicking the menu closes it', d.js("return !document.getElementById('stageMenu');"))
+        d.go(f'http://127.0.0.1:{WEB_PORT}/project?p={slug}')   # clean slate after the failed director job
+        d.wait("document.querySelectorAll('#navigator .navitem').length === 6", timeout=20)
 
         # ---------- stacked tablet: navigator becomes a strip ----------
         for (w, h) in [(1024, 768), (768, 1024)]:
@@ -252,14 +323,19 @@ def main():
             m = d.js("""const nav = document.getElementById('navigator');
                         const first = document.querySelector('#navigator .navitem').getBoundingClientRect();
                         const second = document.querySelectorAll('#navigator .navitem')[1].getBoundingClientRect();
+                        const na = document.getElementById('nextAction').getBoundingClientRect();
                         return {navdir: getComputedStyle(nav).flexDirection, side: second.left > first.left,
                                 hscroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
                                 hdrFirst: document.querySelector('header').getBoundingClientRect().top <= 1,
                                 navTop: nav.getBoundingClientRect().top,
+                                naIn: na.height > 0 && na.left >= 0 && na.right <= innerWidth && na.bottom <= innerHeight,
+                                naFit: (e => e.scrollWidth <= e.clientWidth + 1)(document.getElementById('nextAction')),
                                 viewTop: document.getElementById('viewerBox').getBoundingClientRect().top};""")
             tag = f'{w}x{h}'
             check(f'{tag}: navigator is a horizontal strip', m['navdir'] == 'row' and m['side'], str(m))
             check(f'{tag}: header above the viewer, no horizontal scroll', m['hdrFirst'] and m['viewTop'] >= m['navTop'] and m['hscroll'], str(m))
+            check(f'{tag}: viewer starts within 260 px of the top', m['viewTop'] <= 260, f"{m['viewTop']:.0f} px")
+            check(f'{tag}: next action fully inside the viewport, wrapping not clipping', m['naIn'] and m['naFit'], str(m))
 
         # ---------- phone: order and tap targets ----------
         # headless firefox clamps real windows to >= 500 css px wide, and geckodriver's
@@ -281,6 +357,25 @@ def main():
                         return {hdr: y('header'), view: y('#viewerBox'), insp: y('#inspector'), nav: y('#navigator')};""")
         check('phone order: header, viewer, inspector, navigator chips',
               order['hdr'] < order['view'] < order['insp'] < order['nav'], str(order))
+        hdr = d.js("""window.scrollTo(0, 0);
+                      const kids = [...document.querySelectorAll('#hdr > *')].filter(e =>
+                        e.offsetParent && e.getBoundingClientRect().height > 2);
+                      const rows = new Set(kids.map(e => Math.round(e.getBoundingClientRect().top / 6) * 6)).size;
+                      const na = document.getElementById('nextAction').getBoundingClientRect();
+                      const seen = id => document.getElementById(id) && document.getElementById(id).offsetParent !== null;
+                      return {rows,
+                              vis: seen('openSettings') && seen('backend') &&
+                                   !!document.querySelector('#hdr .btn-shot') &&
+                                   [...document.querySelectorAll('#hdr a')].every(a => a.offsetParent !== null),
+                              naIn: na.height > 0 && na.left >= 0 && na.right <= innerWidth && na.bottom <= innerHeight,
+                              naFit: (e => e.scrollWidth <= e.clientWidth + 1)(document.getElementById('nextAction')),
+                              hdrH: document.getElementById('hdr').offsetHeight + document.getElementById('stages').offsetHeight,
+                              viewTop: document.getElementById('viewerBox').getBoundingClientRect().top};""")
+        check('phone: header controls stay on at most 2 rows', hdr['rows'] <= 2, str(hdr))
+        check('phone: settings, queue, single-shot and the backend chip are visible', hdr['vis'], str(hdr))
+        check('phone: next action fully inside the viewport, wrapping not clipping', hdr['naIn'] and hdr['naFit'], str(hdr))
+        check('phone: header + stage nav together <= 190 px', hdr['hdrH'] <= 190, str(hdr))
+        check('phone: viewer starts within 260 px of the top', hdr['viewTop'] <= 260, f"{hdr['viewTop']:.0f} px")
         r = d.js(TARGETS, 44)
         check('phone: every visible tap target is >= 44 px tall', not r['bad'], '; '.join(r['bad']))
         fonts = d.js("""
