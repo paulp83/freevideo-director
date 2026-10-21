@@ -52,6 +52,9 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 .badge.soft { border-style: dashed; }
 .flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .flags:empty { display: none; }
+/* inspector-header badges are full sentences at times: they wrap inside the column instead of
+   being cut off mid-word by the single-line .badge default */
+#scFlags .badge, #animFlag, #filmFlag { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 
 /* header: one wrapping row; the controls stay under ~32 px so the phone header is 2 rows */
 #hdr { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px 4px; }
@@ -61,6 +64,10 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 #hdr a { font-size: 14px; white-space: nowrap; }
 #nameTitle { font-size: 17px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #saveStatus, #backend { font-size: 14px; color: var(--muted); }
+/* the flash line takes a shrinkable slot in the header row: a long message truncates instead of
+   squeezing the controls or growing the header; the full text stays in the aria-live textContent
+   (CSS ellipsis never touches it) and in the title; empty, it claims no width (basis 0) */
+#saveStatus { flex: 1 1 auto; min-width: 0; max-width: 34ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #backend { max-width: 26ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #backend.err { color: var(--err); }
 /* stage nav: a compact row of items; each item's action sits in a small menu, the next action
@@ -89,10 +96,10 @@ label.inline { color: var(--muted); display: inline-flex; gap: 6px; align-items:
 main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10px; padding: 0 12px 12px;
        height: calc(100% - var(--hdrh, 0px)); min-height: 0; }
 #navigator { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-#center { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+#center { min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
 #inspector { min-height: 0; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 #center > * { flex: 0 0 auto; }
-#viewerBox { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center;
+#viewerBox { flex: 1 1 auto; min-height: max(40vh, 240px); display: flex; align-items: center; justify-content: center;
              background: #000; border-radius: 12px; overflow: hidden; }
 #viewer { width: 100%; height: 100%; object-fit: contain; background: #000; }
 #viewerInfo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--muted); padding: 6px 2px; }
@@ -102,7 +109,7 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 .navitem .navimg { flex: 0 0 56px; width: 56px; height: 32px; border-radius: 6px; background: #000; object-fit: cover; }
 .navitem .navtxt { min-width: 0; flex: 1; }
 .navitem b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.navitem .navstate { font-size: 14px; color: var(--muted); }
+.navitem .navstate { font-size: 14px; color: var(--muted); white-space: nowrap; }
 .navitem .navwarn { font-size: 14px; color: var(--warn); }
 
 /* take strip: poster cards; a take is only ever loaded into the main viewer, never inline */
@@ -121,12 +128,11 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 
 /* timeline */
 #timelineRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
-.timeline { display: flex; gap: 3px; min-height: 36px; flex: 1 1 240px; min-width: 0; }
+.timeline { display: flex; gap: 3px; min-height: 36px; flex: 1 1 240px; min-width: 0; overflow-x: auto; }
 .tl { border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      font-size: 14px; overflow: hidden; padding: 1px 6px; color: var(--ink); cursor: pointer; min-width: 28px; border: 0; font-family: inherit; }
+      font-size: 14px; overflow: hidden; padding: 1px 6px; color: var(--ink); cursor: pointer; min-width: 68px; border: 0; font-family: inherit; }
 .tl .tlk { white-space: nowrap; line-height: 1.25; }
-.tl .tls { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
-.tl .tle { font-style: normal; opacity: .85; }
+.tl .tls { white-space: nowrap; line-height: 1.25; }
 .tl.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tl.none { background: var(--s-none); } .tl.prompt { background: var(--s-prompt); }
 .tl.draft { background: var(--s-draft); } .tl.final { background: var(--s-final); }
@@ -141,7 +147,8 @@ main { display: grid; grid-template-columns: 170px minmax(0, 1fr) 300px; gap: 10
 #cmpBar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--muted); padding: 4px 2px; }
 #cmpBar[hidden] { display: none; }
 #cmpSeek { flex: 1 1 140px; min-width: 100px; }
-#cmpDiff { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+#cmpDiff { display: inline-flex; gap: 6px; flex-wrap: wrap; max-width: 100%; min-width: 0; }
+#cmpDiff .badge { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 #cmpSync { font-size: 14px; }
 
 /* the chips get their own scroll window (the next action beside them never scrolls); this plus
@@ -245,7 +252,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <select id="picker" style="width:auto"></select>
     <button class="btn ghost" id="newBtn">+ New<span class="wide"> film</span></button>
     <h1 id="nameTitle">FreeVideo Film</h1>
-    <span class="status" id="saveStatus"></span>
+    <span class="status" id="saveStatus" role="status"></span>
     <span class="spacer"></span>
     <span id="backend" class="status" role="status"></span>
     <button class="btn ghost" id="openSettings" hidden title="Project settings">Settings</button>
@@ -322,7 +329,6 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <input type="range" id="cmpSeek" min="0" max="0" step="0.01" value="0" aria-label="Comparison position (seconds)">
       <button class="btn ghost" id="cmpAudio" title="Only one take can be audible at a time">audio: A</button>
       <span id="cmpDiff"></span>
-      <button class="btn ghost" id="cmpClose">Close comparison</button>
       <span class="hint" id="cmpSync"></span>
     </div>
     <div id="viewerInfo"></div>
@@ -609,7 +615,7 @@ function formatBytes(n) {
   return (i ? v.toFixed(1) : String(v)) + ' ' + u[i];
 }
 
-function flash(msg, isErr) { $('saveStatus').textContent = msg; $('saveStatus').classList.toggle('err', !!isErr); }
+function flash(msg, isErr) { const s = $('saveStatus'); s.textContent = msg; s.title = msg; s.classList.toggle('err', !!isErr); }
 
 /* ---------- project list ---------- */
 async function loadList() {
@@ -795,6 +801,33 @@ function failReason(err) {
   if (/director model/i.test(e)) return 'director unavailable';
   return e.length > 80 ? e.slice(0, 80) + '…' : e;
 }
+
+/* one short word for a scene's state, sized for the navigator row and the timeline chip; the
+   full validity+execution wording lives in the inspector header, the row title/aria-label and
+   the chip tooltips (never colour alone: these are words) */
+function shortBadge(s) {
+  const job = s.job;
+  if (busy()) return 'Busy';
+  if (job && !job.done) return job.state === 'queued' ? 'Queued' : job.state === 'preparing' ? 'Preparing' : 'Running';
+  if (job && job.state === 'unknown') return job.resolved ? 'Resolved' : 'Unknown';
+  if (job && job.state === 'failed') return 'Failed';
+  if (job && job.state === 'cancelled') return 'Cancelled';
+  const out = ((s.status || {}).outdated) || [];
+  if (out.length) return 'Outdated';
+  if (s.status && s.status.provenance === 'legacy') return 'Legacy';
+  if (!(s.takes || []).length) return sceneState(s) === 'none' ? 'No prompt' : 'Prompt ready';
+  return s.selection === 'explicit' ? 'Selected' : 'Ready';
+}
+function tlMark(s) {
+  const job = s.job;
+  if (busy()) return 'batch';
+  if (job && !job.done) return job.state === 'queued' ? 'queued' : job.state === 'preparing' ? 'prep' : 'run';
+  if (job && job.state === 'unknown') return job.resolved ? 'done' : 'unk';
+  if (job && job.state === 'failed') return 'fail';
+  if (job && job.state === 'cancelled') return 'cancel';
+  if ((((s.status || {}).outdated) || []).length) return 'old';
+  return {none: 'none', prompt: 'prompt', draft: 'draft', final: 'final'}[sceneState(s)];
+}
 function busy() { return proj.batch && !proj.batch.done; }
 function selScene() { return proj ? proj.scenes.find(s => s.id === selId) || null : null; }
 function sceneIndex(s) { return proj.scenes.findIndex(x => x.id === s.id); }
@@ -949,14 +982,17 @@ function drawNavigator(p, force) {
     const thumb = (t && t.thumb_url) || refs0;
     const ex = execText(s), val = (s.takes || []).length ? validityText(s)
       : ({none: 'no prompt', prompt: 'prompt ready'})[sceneState(s)];
-    const item = el('button', {class: 'navitem', 'data-scene': s.id, onclick: () => selectScene(s.id)},
+    // one short badge word in the row (rows stay one line tall); the full validity+execution
+    // wording rides on the row's title/aria-label and stays spelled out in the inspector
+    const full = `${val}${ex ? ' · ' + ex : ''}`;
+    const item = el('button', {class: 'navitem', 'data-scene': s.id, title: full,
+      'aria-label': `${i + 1}. ${s.title || 'Scene'} - ${full}`, onclick: () => selectScene(s.id)},
       thumb ? el('img', {class: 'navimg', src: thumb, alt: ''}) : el('span', {class: 'navimg'}),
       el('span', {class: 'navtxt'},
         el('b', {title: `${i + 1}. ${s.title || 'Scene'}`}, `${i + 1}. ${s.title || 'Scene'}`),
-        el('span', {class: 'navstate', title: `${val}${ex ? ' · ' + ex : ''}`},
+        el('span', {class: 'navstate'},
           s.status && s.status.outdated.length ? el('span', {class: 'navwarn', title: (s.status.flags[s.status.outdated[0]] || {}).text || ''}, '! ') : null,
-          val,
-          ex ? el('span', {class: 'navexec'}, ' · ' + ex) : null)));
+          shortBadge(s))));
     box.append(item);
   });
   highlightNav();
@@ -971,9 +1007,10 @@ function drawTimeline(p) {
   p.scenes.forEach((s, i) => {
     const val = validityText(s), ex = execText(s);
     tl.append(el('button', {class: 'tl ' + sceneState(s) + (s.id === selId ? ' sel' : ''), style: `flex:${s.seconds}`,
-      title: `${s.title || 'Scene'} — ${val}${ex ? ' · ' + ex : ''}`, onclick: () => selectScene(s.id)},
+      title: `${s.title || 'Scene'} — ${val}${ex ? ' · ' + ex : ''}`,
+      'aria-label': `${i + 1}. ${s.title || 'Scene'}: ${val}${ex ? ' · ' + ex : ''}`, onclick: () => selectScene(s.id)},
       el('span', {class: 'tlk'}, `${s.connect === 'continue' ? '↪ ' : ''}${i + 1} · ${s.seconds}s`),
-      el('span', {class: 'tls'}, val, ex ? el('i', {class: 'tle'}, ' · ' + ex) : null)));
+      el('span', {class: 'tls'}, tlMark(s))));
   });
   const drafted = p.scenes.filter(s => s.takes.length).length;
   $('bPreviewFilm').disabled = busy() || drafted < p.scenes.length;
@@ -1311,18 +1348,24 @@ function drawInspector(p) {
   prim.textContent = primary.t; prim.onclick = primary.fn;
   const block = busy() || !!(s.job && !s.job.done);
   prim.disabled = block;
-  $('primaryWhy').textContent = block ? sceneBlockReason(s) : ''; $('primaryWhy').hidden = !block;
+  const blockWhy = block ? sceneBlockReason(s) : '';
+  $('primaryWhy').textContent = blockWhy; $('primaryWhy').hidden = !blockWhy;
   $('bAnother').hidden = primary.t === 'Generate another take';   // never the same action twice
-  const why = (id, r) => { const w = $(id); w.textContent = r || ''; w.hidden = !r; };
+  // a shared reason is written once near the controls it blocks: every span still carries its
+  // text (and every disabled button its title), only repeats of an already-shown string stay hidden
+  const shownWhy = new Set(blockWhy ? [blockWhy] : []);
+  const why = (id, r) => { const w = $(id); w.textContent = r || ''; w.hidden = !r || shownWhy.has(r); if (r) shownWhy.add(r); };
   why('anotherWhy', $('bAnother').hidden ? null : actionReason(s, 'reroll'));
   why('enhanceWhy', actionReason(s, 'enhance'));   // a take-less scene says 'no take to enhance', never silence
   why('renderWhy', actionReason(s, 'final') || actionReason(s, 'variants'));
   why('compareWhy', actionReason(s, 'compare'));
-  $('bAnother').disabled = !!actionReason(s, 'reroll');
-  $('bVariants').disabled = !!actionReason(s, 'variants');
-  $('bFinal').disabled = !!actionReason(s, 'final');
-  $('bEnhanceSel').disabled = !!actionReason(s, 'enhance');
+  const dis = (id, r) => { const b = $(id); b.disabled = !!r; b.title = r || ''; };
+  dis('bAnother', actionReason(s, 'reroll'));
+  dis('bVariants', actionReason(s, 'variants'));
+  dis('bFinal', actionReason(s, 'final'));
+  dis('bEnhanceSel', actionReason(s, 'enhance'));
   $('bCompare').disabled = viewMode === 'compare' ? false : !!actionReason(s, 'compare');
+  $('bCompare').title = viewMode === 'compare' ? '' : actionReason(s, 'compare') || '';
   $('bCompare').textContent = viewMode === 'compare' ? 'Close comparison' : 'Compare takes';
   drawTech();
 }
@@ -1331,10 +1374,11 @@ function updateStatus(s, i) {
   const job = s.job, running = job && !job.done;
   const t = (s.takes || []).find(t => t.run === s.chosen);
   const ex = execText(s);
-  $('scStatus').replaceChildren(el('span', {id: 'scValidity'}, validityText(s)),
+  // filter(Boolean): a null child would reach replaceChildren as the string "null"
+  $('scStatus').replaceChildren(...[el('span', {id: 'scValidity'}, validityText(s)),
     t ? el('span', {id: 'scInuse'}, ` · in use: ${t.final ? 'enhanced take' : 'draft take'} seed ${t.seed}` +
         (s.selection === 'explicit' ? ' (pinned)' : ' (latest, auto)')) : null,
-    ex ? el('span', {id: 'scExec', 'data-exec': ex}, ' · ' + ex) : null);
+    ex ? el('span', {id: 'scExec', 'data-exec': ex}, ' · ' + ex) : null].filter(Boolean));
   const box = $('scFlags');
   const dtext = prev && prev.status ? (prev.status.downstream_of.find(d => d.id === s.id) || {}).text : null;
   const contBox = $('contBox'), out = (s.status && s.status.outdated) || [];
@@ -1731,7 +1775,6 @@ $('cmpAudio').onclick = () => {
   for (const side of ['A', 'B']) { const e = cmpVid(side); if (e) e.muted = side !== cmpAudioSide; }
   $('cmpAudio').textContent = 'audio: ' + cmpAudioSide;
 };
-$('cmpClose').onclick = () => closeCompare();
 $('bCompare').onclick = () => selScene() && (viewMode === 'compare' ? closeCompare() : openCompare());
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && viewMode === 'compare' && !$('settings').open && !$('dismissAsk').open) closeCompare();

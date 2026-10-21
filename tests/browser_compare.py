@@ -132,6 +132,30 @@ window.fetch = (url, opts) => { window.__log.push({url: String(url)}); return re
 window.__hits = (frag) => window.__log.filter(l => l.url.includes(frag)).length;
 """
 
+# DOM audit run before screenshots and in every dense state: visible text must not be clipped by
+# a container that cannot scroll, and the document itself must never scroll sideways. Inline boxes
+# cannot clip (their text re-wraps in the parent), and clientWidth/scrollWidth are meaningless on
+# them, so only block-level boxes are audited. execute/sync discards a bare expression's value,
+# so the IIFE needs an explicit return.
+AUDIT = """return (() => {
+  const out = [];
+  const idof = e => e.id ? '#' + e.id : (e.className ? '.' + String(e.className).split(' ')[0] : e.tagName.toLowerCase());
+  for (const e of document.querySelectorAll('body *')) {
+    if (e.offsetParent === null) continue;
+    const r = e.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue;
+    const cs = getComputedStyle(e);
+    if (cs.display === 'inline') continue;
+    if (cs.overflowX === 'visible' && e.scrollWidth > e.clientWidth + 1 && e.textContent.trim())
+      out.push('clipped-text:' + idof(e));
+  }
+  if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) out.push('doc-hscroll');
+  return out;
+})()"""
+
+def flat(d):
+    return d.js("return [document.documentElement.scrollWidth, document.documentElement.clientWidth];")
+
 # real jobs registered through the real job API before the server starts answering;
 # the launcher also reproduces web.py's __main__ startup block so the process behaves identically
 LAUNCHER = """
@@ -188,12 +212,39 @@ def main():
         check('scene 1 states its validity ("Selected · settings changed") with no execution claim',
               d.js("return [document.getElementById('scValidity').textContent, !!document.getElementById('scExec')];")
               == ['Selected · settings changed', False])
+        check('scene 1 prints no literal "null" in its status line',
+              'null' not in d.js("return document.getElementById('scStatus').textContent;"),
+              d.js("return document.getElementById('scStatus').textContent;"))
         select(1)
         run = d.js("""const ex = document.getElementById('scExec');
-                      const nav = document.querySelectorAll('#navigator .navitem')[1].querySelector('.navstate').textContent;
-                      return {exec: ex && ex.getAttribute('data-exec'), nav: nav, val: document.getElementById('scValidity').textContent};""")
+                      const item = document.querySelectorAll('#navigator .navitem')[1];
+                      const nav = item.querySelector('.navstate').textContent.trim();
+                      return {exec: ex && ex.getAttribute('data-exec'), nav: nav, navTitle: item.title,
+                              aria: item.getAttribute('aria-label'), val: document.getElementById('scValidity').textContent};""")
         check('scene 2 running enhance reads "Running · upscale" in inspector and navigator',
-              run['exec'] == 'Running · upscale' and 'Running · upscale' in run['nav'] and run['val'] == 'Ready', json.dumps(run))
+              run['exec'] == 'Running · upscale' and run['val'] == 'Ready'
+              and run['nav'] == 'Running' and len(run['nav']) <= 14
+              and 'Running · upscale' in run['navTitle'] and 'Running · upscale' in run['aria'], json.dumps(run))
+        geom = d.js("""const vh = innerHeight;
+                       const vr = document.getElementById('viewer').getBoundingClientRect();
+                       const rows = [...document.querySelectorAll('#navigator .navitem')].map(b => b.getBoundingClientRect().height);
+                       const badges = [...document.querySelectorAll('#navigator .navstate')].map(e => e.textContent.trim());
+                       const chips = [...document.querySelectorAll('#timeline .tl')].map(b => ({w: b.getBoundingClientRect().width,
+                                   t: b.querySelector('.tls').getBoundingClientRect().height}));
+                       const quiet = ['scStatus', 'scJob'].map(id => document.getElementById(id).textContent).join(' ') +
+                                     ' ' + document.getElementById('navigator').innerText + ' ' + document.getElementById('timelineRow').innerText;
+                       const tl = document.getElementById('timeline');
+                       return {vh, vr, rows, badges, chips, quiet, tlScroll: tl.scrollWidth >= tl.clientWidth};""")
+        check('dense state: the viewer still gets at least 40% of the viewport height',
+              geom['vr']['height'] >= 0.4 * geom['vh'], f"{geom['vr']['height']} of {geom['vh']}")
+        check('dense navigator: every row stays one line tall with a badge word of at most 14 chars',
+              all(h <= 64 for h in geom['rows']) and all(len(b) <= 14 for b in geom['badges']), json.dumps(geom['badges']))
+        check('timeline chips carry short state words: at least 56 px wide, never a wrapped sentence',
+              all(c['w'] >= 56 and c['t'] <= 55 for c in geom['chips']), json.dumps(geom['chips']))
+        check('the timeline scrolls on its own when scenes do not fit', bool(geom['tlScroll']))
+        check('status, job line and lists print no literal null/undefined',
+              'null' not in geom['quiet'] and 'undefined' not in geom['quiet'], geom['quiet'][:200])
+        check('the document itself does not scroll sideways at 1440x900', flat(d)[0] <= flat(d)[1], json.dumps(flat(d)))
         select(4)
         legacy = d.js("""return {val: document.getElementById('scValidity').textContent,
                                  exec: document.getElementById('scExec').getAttribute('data-exec')};""")
@@ -208,10 +259,16 @@ def main():
 
         # ---------- a disabled control never sits next to silence ----------
         select(1)
-        why = d.js("""const w = id => { const e = document.getElementById(id); return e && !e.hidden ? e.textContent : null; };
-                      return [w('anotherWhy'), w('enhanceWhy'), w('renderWhy'), w('compareWhy'), w('primaryWhy')];""")
-        check('every disabled action on the running scene names the same reason',
-              why == ['scene has a running job'] * 5, json.dumps(why))
+        why = d.js("""const w = id => { const e = document.getElementById(id);
+                                  return {t: e.textContent, vis: !e.hidden && e.offsetParent !== null}; };
+                      const ids = ['anotherWhy', 'enhanceWhy', 'renderWhy', 'compareWhy', 'primaryWhy'];
+                      const btns = ['bAnother', 'bVariants', 'bFinal', 'bEnhanceSel'].map(b => {
+                          const e = document.getElementById(b); return [e.disabled, e.title]; });
+                      return {m: ids.map(w), btns};""")
+        check('the running scene names "scene has a running job" once and carries it on every disabled action',
+              all(x['t'] == 'scene has a running job' for x in why['m'])
+              and sum(1 for x in why['m'] if x['vis']) == 1
+              and all(b[0] and b[1] == 'scene has a running job' for b in why['btns']), json.dumps(why))
         select(3)
         few = d.js("return [document.getElementById('bCompare').disabled, document.getElementById('compareWhy').textContent];")
         check('a one-take scene explains the disabled comparison',
@@ -237,6 +294,14 @@ def main():
         check('Reconcile reports honestly that ComfyUI cannot tell, and keeps the notice',
               bool(told) and bool(d.js("return document.getElementById('unkJob')"))
               and d.js("return window.__hits('/reconcile');") == 1)
+        dup = d.js("""const ids = ['primaryWhy', 'anotherWhy', 'enhanceWhy', 'compareWhy', 'renderWhy'];
+                      return ids.map(id => { const e = document.getElementById(id);
+                              return !e.hidden && e.offsetParent !== null ? e.textContent : null; })
+                          .filter(t => t);""")
+        check('the shared reason beside the blocked controls appears once, never repeated',
+              len(dup) == 1 and 'job' in dup[0], json.dumps(dup))
+        au1 = d.js(AUDIT)
+        check('DOM audit at the unknown-job state: no clipped visible text, no sideways page', au1 == [], json.dumps(au1))
         SHOTS.mkdir(parents=True, exist_ok=True)
         n = d.screenshot(SHOTS / 'b1-unknown-job-1440x900.png')
         check('screenshot b1-unknown-job-1440x900 written under 400 KB', 0 < n < 400 * 1024, f'{n} bytes')
@@ -255,6 +320,17 @@ def main():
               and after['why'] == 'ComfyUI not reachable'
               and after['flash'] == 'Job dismissed (no proof): the scene is free again, but the prompt may still be running'
               and after['hits'] == 1, json.dumps(after))
+        hdr = d.js("""const h = document.querySelector('header');
+                      const s = document.getElementById('saveStatus');
+                      const over = [...document.getElementById('hdr').children]
+                          .filter(e => e.offsetParent !== null).some(e => e.getBoundingClientRect().right > innerWidth + 1);
+                      return {h: h.getBoundingClientRect().height, cw: s.clientWidth, sw: s.scrollWidth,
+                              t: s.textContent, title: s.title, role: s.getAttribute('role'), over};""")
+        check('the long dismiss flash keeps the header inside its 110 px budget and squeezes no control',
+              hdr['h'] <= 110 and not hdr['over'], json.dumps(hdr))
+        check('the full flash text stays in the aria-live region and in its title',
+              hdr['role'] == 'status' and hdr['t'] == after['flash'] and hdr['title'] == after['flash']
+              and hdr['sw'] > hdr['cw'], json.dumps(hdr))
 
         # ---------- take comparison: the full surface ----------
         select(2)
@@ -279,6 +355,25 @@ def main():
                                'rendered for 7 s vs 6 s',
                                'length 7.0 s vs 6.0 s — A is 1.0 s longer',
                                'B is the enhanced (finished) file'], json.dumps(cmp['diffs']))
+        geo = d.js("""const vh = innerHeight, vw = innerWidth;
+                      const vb = document.getElementById('viewerBox').getBoundingClientRect();
+                      const vids = [...document.querySelectorAll('#cmpWrap video')].map(v => {
+                          const r = v.getBoundingClientRect(); return [r.width, r.height]; });
+                      const closers = [...document.querySelectorAll('button')].filter(b =>
+                          b.textContent === 'Close comparison' && b.offsetParent !== null).length;
+                      const quiet = ['scStatus', 'scJob'].map(id => document.getElementById(id).textContent).join(' ') +
+                                    ' ' + document.getElementById('navigator').innerText + ' ' + document.getElementById('timelineRow').innerText;
+                      return {vh, vw, vb, vids, closers, quiet};""")
+        check('comparison keeps the viewer box at >=40% of the viewport height',
+              geo['vb']['height'] >= 0.4 * geo['vh'], f"{geo['vb']['height']} of {geo['vh']}")
+        check('each comparison player keeps >=22% of the width and >=25% of the height',
+              all(w >= 0.22 * geo['vw'] and h >= 0.25 * geo['vh'] for w, h in geo['vids']), json.dumps(geo['vids']))
+        check('exactly one visible control says "Close comparison"', geo['closers'] == 1, str(geo['closers']))
+        check('comparison state prints no literal null/undefined',
+              'null' not in geo['quiet'] and 'undefined' not in geo['quiet'], geo['quiet'][:200])
+        check('the document does not scroll sideways in comparison at 1440x900', flat(d)[0] <= flat(d)[1], json.dumps(flat(d)))
+        au2 = d.js(AUDIT)
+        check('DOM audit at 1440x900 comparison: no clipped visible text', au2 == [], json.dumps(au2))
         n = d.screenshot(SHOTS / 'b1-compare-1440x900.png')
         check('screenshot b1-compare-1440x900 written under 400 KB', 0 < n < 400 * 1024, f'{n} bytes')
 
@@ -338,32 +433,55 @@ def main():
         time.sleep(1.2)
         select(1)
         cont = d.js("""const cb = document.getElementById('contBox');
+                       const item = document.querySelectorAll('#navigator .navitem')[1];
                        return {val: document.getElementById('scValidity').textContent,
-                               nav: document.querySelectorAll('#navigator .navitem')[1].querySelector('.navstate').textContent,
+                               nav: item.querySelector('.navstate').textContent.trim(), navTitle: item.title,
                                hidden: cb.hidden, text: cb.textContent,
                                regen: !!document.getElementById('contRegen') && document.getElementById('contRegen').disabled};""")
         check('the downstream scene is flagged current-but-outdated, not broken',
-              cont['val'] == 'Ready · continuity outdated' and 'continuity outdated' in cont['nav'], json.dumps(cont))
+              cont['val'] == 'Ready · continuity outdated'
+              and cont['nav'].startswith('! ') and len(cont['nav']) <= 14
+              and cont['nav'].endswith(('Running', 'Outdated'))
+              and 'continuity outdated' in cont['navTitle'], json.dumps(cont)[:400])
         check('the continuity box says the take is kept and only a regenerate continues from the new one',
               not cont['hidden']
               and 'continued from an earlier take of the previous scene' in cont['text']
               and 'Using another take upstream does not rewrite this scene' in cont['text']
               and 'Regenerate from current take' in cont['text'], json.dumps(cont)[:220])
         check('the regenerate action is withheld while the scene has a running job', cont['regen'])
+        geoc = d.js("""const vh = innerHeight;
+                       const vr = document.getElementById('viewer').getBoundingClientRect();
+                       const rows = [...document.querySelectorAll('#navigator .navitem')].map(b => b.getBoundingClientRect().height);
+                       const sf = document.getElementById('scFlags');
+                       return {vh, h: vr.height, rows, clipped: sf.scrollWidth > sf.clientWidth + 1};""")
+        check('outdated scene: the viewer still gets at least 40% of the viewport height',
+              geoc['h'] >= 0.4 * geoc['vh'], f"{geoc['h']} of {geoc['vh']}")
+        check('outdated scene: navigator rows stay one line tall (<=64 px)',
+              all(h <= 64 for h in geoc['rows']), json.dumps(geoc['rows']))
+        check('the affected-scenes badge wraps inside the inspector instead of being cut off',
+              not geoc['clipped'], json.dumps(geoc))
+        au3 = d.js(AUDIT)
+        check('DOM audit at the continuity state: no clipped visible text, no sideways page', au3 == [], json.dumps(au3))
         n = d.screenshot(SHOTS / 'b1-continuity-outdated-1440x900.png')
         check('screenshot b1-continuity-outdated-1440x900 written under 400 KB', 0 < n < 400 * 1024, f'{n} bytes')
         # ---------- a brand-new scene: reasons before a prompt, then renderer availability ----------
         d.js("document.getElementById('bAddScene').click(); return 1;")
         d.wait("document.querySelectorAll('#navigator .navitem').length === 7")
         select(6)
-        fresh = d.js("""const w = id => { const e = document.getElementById(id); return e && !e.hidden ? e.textContent : null; };
+        fresh = d.js("""const w = id => document.getElementById(id).textContent;
+                        const vis = ids => ids.filter(id => { const e = document.getElementById(id);
+                                return !e.hidden && e.offsetParent !== null; })
+                            .map(id => document.getElementById(id).textContent);
                         return {val: document.getElementById('scValidity').textContent,
                                 another: w('anotherWhy'), enhance: w('enhanceWhy'), render: w('renderWhy'),
+                                shown: vis(['anotherWhy', 'primaryWhy', 'enhanceWhy', 'compareWhy', 'renderWhy']),
                                 primary: document.getElementById('bPrimary').textContent};""")
-        check('a new scene without a prompt says what is missing for each action',
+        check('a new scene without a prompt says what is missing for each action, each reason shown once',
               fresh['val'] == 'nothing generated yet' and fresh['another'] == 'Create a prompt first'
               and fresh['enhance'] == 'no take to enhance' and fresh['render'] == 'Create a prompt first'
-              and fresh['primary'] == 'Create prompt', json.dumps(fresh))
+              and fresh['primary'] == 'Create prompt'
+              and sorted(fresh['shown']) == sorted(['Create a prompt first', 'no take to enhance',
+                                                    'this scene has fewer than two takes']), json.dumps(fresh))
         h2 = d.js("return window.__hits('/save');")
         d.js("""const ta = document.getElementById('scPrompt'); ta.value = 'a lantern swings twice';
                 ta.dispatchEvent(new Event('input')); return 1;""")
@@ -382,7 +500,14 @@ def main():
         frame = d.s('POST', '/element', {'using': 'css selector', 'value': '#__f'})
         fid = list(frame.values())[0]
         d.s('POST', '/frame', {'id': frame})
-        d.wait("document.querySelectorAll('#navigator .navitem').length === 6", timeout=20)
+        d.wait("document.querySelectorAll('#navigator .navitem').length === 7", timeout=20)
+        pf = flat(d)
+        check('phone 390 default: the page never scrolls sideways', pf[0] <= pf[1], json.dumps(pf))
+        d.js("document.querySelectorAll('#navigator .navitem')[1].click(); return 1;")   # dense: running-job scene
+        time.sleep(0.4)
+        pf = flat(d)
+        pa = d.js(AUDIT)
+        check('phone 390 dense: flat page and no clipped visible text', pf[0] <= pf[1] and pa == [], json.dumps([pf, pa]))
         d.js("document.querySelectorAll('#navigator .navitem')[2].click(); return 1;")
         d.js("document.getElementById('bCompare').click(); return 1;")
         phone = d.wait("!document.getElementById('cmpWrap').hidden && "
@@ -401,12 +526,50 @@ def main():
                                 barInView: bar.left >= 0 && bar.right <= cw + 1 && seek.width >= 100};""")
         check('phone: the two panes stack inside 390 px with the shared bar fully visible below them',
               stack['stacked'] and stack['inView'] and stack['barBelow'] and stack['barInView'], json.dumps(stack))
+        pf = flat(d)
+        pa = d.js(AUDIT)
+        check('phone 390 comparison: flat page and no clipped visible text', pf[0] <= pf[1] and pa == [], json.dumps([pf, pa]))
         d.js("document.getElementById('cmpWrap').scrollIntoView({block: 'start'}); return 1;")
         time.sleep(0.6)
         d.s('POST', '/frame', {'id': None})
         time.sleep(0.4)
         n = d.element_screenshot(fid, SHOTS / 'b1-compare-390x844.png')
         check('screenshot b1-compare-390x844 written under 400 KB', 0 < n < 400 * 1024, f'{n} bytes')
+
+        # ---------- 768x1024: the dense states stay flat ----------
+        d.resize(768, 1024)
+        d.go(f'http://127.0.0.1:{WEB_PORT}/project?p={slug}')
+        d.wait("document.querySelectorAll('#navigator .navitem').length === 7", timeout=20)
+        time.sleep(0.5)
+        tf = flat(d)
+        check('768 default: the page never scrolls sideways', tf[0] <= tf[1], json.dumps(tf))
+        d.js("document.querySelectorAll('#navigator .navitem')[1].click(); return 1;")
+        time.sleep(0.4)
+        tf = flat(d)
+        ta = d.js(AUDIT)
+        check('768 dense (running job): flat page and no clipped visible text', tf[0] <= tf[1] and ta == [], json.dumps([tf, ta]))
+        d.js("document.querySelectorAll('#navigator .navitem')[2].click(); return 1;")
+        time.sleep(0.3)
+        d.js("document.getElementById('bCompare').click(); return 1;")
+        d.wait("!document.getElementById('cmpWrap').hidden")
+        time.sleep(1)
+        wd = d.js("""const vb = document.getElementById('viewerBox').getBoundingClientRect();
+                     const vids = [...document.querySelectorAll('#cmpWrap video')].map(v => v.getBoundingClientRect().height);
+                     return {vb: vb.height, vids};""")
+        tf = flat(d)
+        ta = d.js(AUDIT)
+        check('768 comparison: the stacked viewer keeps its floor and both panes stay watchable',
+              wd['vb'] >= 300 and all(h >= 120 for h in wd['vids']), json.dumps(wd))
+        check('768 comparison: flat page and no clipped visible text', tf[0] <= tf[1] and ta == [], json.dumps([tf, ta]))
+
+        # ---------- pixel audit: every screenshot matches its viewport exactly ----------
+        want = {'b1-unknown-job-1440x900.png': (1440, 900), 'b1-compare-1440x900.png': (1440, 900),
+                'b1-continuity-outdated-1440x900.png': (1440, 900), 'b1-compare-390x844.png': (390, 844)}
+        for name, (w, h) in want.items():
+            raw = (SHOTS / name).read_bytes()
+            dims = ((int.from_bytes(raw[16:20], 'big'), int.from_bytes(raw[20:24], 'big'))
+                    if raw[:8] == b'\x89PNG\r\n\x1a\n' else None)
+            check(f'pixel audit: {name} is exactly {w}x{h} px', dims == (w, h), str(dims))
         print(f'screenshots -> {SHOTS}')
     finally:
         if d: d.close()
