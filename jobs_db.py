@@ -9,7 +9,10 @@ no answer to the /prompt POST yet) visible instead of silently resubmitting.
 
 State column = the in-memory state machine's states PLUS one persisted-only value, 'submitting':
 the prompt id is durably recorded but the POST /prompt has not been answered. Rows in that state
-are the crash window; they are never pruned and never resubmitted automatically.
+are the crash window; they are never pruned and never resubmitted automatically. Two recovery
+markers ride on every row: `retry_allowed` (an unconfirmed submit the user may retry by hand)
+and `recovering_at` (the epoch a recovery pass last found ComfyUI unreachable for this job;
+it clears when a pass resolves it). Neither changes the state column.
 
 Every write is its own transaction on a short connection, serialised by a process lock. The
 functions here raise JobDbError on a real database failure; the caller decides who may log and
@@ -20,7 +23,7 @@ import json, os, sqlite3, threading, time
 from pathlib import Path
 
 FILE = Path(os.environ.get('JOBS_DB') or Path(__file__).resolve().parent / 'jobs.db')
-VERSION = 1
+VERSION = 2
 SUBMITTING = 'submitting'                     # persisted-only (see docstring)
 TERMINAL = ('finished', 'failed', 'cancelled', 'unknown')
 KEEP_TERMINAL = 500                           # retention: the last 500 terminal jobs...
@@ -39,7 +42,8 @@ def _connect():
 
 
 def _migrate(conn):
-    """Walk the schema up to VERSION (PRAGMA user_version). Version 1: the jobs table."""
+    """Walk the schema up to VERSION (PRAGMA user_version). Version 1: the jobs table.
+    Version 2: the recovery markers."""
     version = conn.execute('PRAGMA user_version').fetchone()[0]
     if version == 0:
         conn.executescript("""
@@ -69,11 +73,12 @@ def _migrate(conn):
             CREATE INDEX IF NOT EXISTS jobs_state_ended ON jobs (state, ended);
             CREATE INDEX IF NOT EXISTS jobs_project     ON jobs (project);
         """)
-        conn.execute(f'PRAGMA user_version = {VERSION}')
         conn.commit()
-    if version < VERSION:
-        conn.commit()
-    # future versions: ALTER TABLE ... blocks go here, each guarded by `if version < n`.
+    if version < 2:
+        conn.execute('ALTER TABLE jobs ADD COLUMN retry_allowed INTEGER NOT NULL DEFAULT 0')
+        conn.execute('ALTER TABLE jobs ADD COLUMN recovering_at REAL')
+    conn.execute(f'PRAGMA user_version = {VERSION}')
+    conn.commit()
 
 
 _INITED = None
@@ -103,7 +108,7 @@ def init(path=None):
 
 
 def _row(job, state=None, backend=None, take_id=None, snapshot_path=None, result_path=None,
-         prompt_ids=None, correlation=None):
+         prompt_ids=None, correlation=None, retry_allowed=None, recovering_at=None):
     """A row dict for an in-memory web.py job dict; the job dict stays the live view."""
     resolved = job.get('resolved') or {}
     take = job.get('take') or {}
@@ -121,12 +126,16 @@ def _row(job, state=None, backend=None, take_id=None, snapshot_path=None, result
         'resolved_at': resolved.get('at'),
         'workdir': job.get('workdir'),
         'holds': json.dumps([list(k) for k in (job.get('holds') or [])]),
+        'retry_allowed': 1 if (retry_allowed if retry_allowed is not None
+                               else job.get('retry_allowed')) else 0,
+        'recovering_at': recovering_at if recovering_at is not None else job.get('recovering_at'),
     }
 
 
 COLUMNS = ('id', 'kind', 'project', 'scene', 'state', 'created', 'started', 'ended', 'backend',
            'prompt_ids', 'correlation', 'snapshot_path', 'result_path', 'take_id', 'run', 'error',
-           'resolved_by', 'resolved_verdict', 'resolved_at', 'workdir', 'holds')
+           'resolved_by', 'resolved_verdict', 'resolved_at', 'workdir', 'holds',
+           'retry_allowed', 'recovering_at')
 
 
 def _put(conn, r):
@@ -137,13 +146,14 @@ def _put(conn, r):
 
 
 def save(job, state=None, backend=None, take_id=None, snapshot_path=None, result_path=None,
-         prompt_ids=None, correlation=None):
+         prompt_ids=None, correlation=None, retry_allowed=None, recovering_at=None):
     """Upsert the whole row from the live job dict. Raises JobDbError on failure; the live job
     path in web.py logs those and continues -- only submit_tracked refuses to go on."""
     init()
     r = _row(job, state=state, backend=backend, take_id=take_id,
              snapshot_path=snapshot_path, result_path=result_path,
-             prompt_ids=prompt_ids, correlation=correlation)
+             prompt_ids=prompt_ids, correlation=correlation,
+             retry_allowed=retry_allowed, recovering_at=recovering_at)
     with LOCK:
         conn = _connect()
         try:
@@ -180,6 +190,36 @@ def forget(job_id):
             conn.close()
 
 
+def mark_recovering(job_id, at=None):
+    """A recovery pass could not reach ComfyUI for this job: timestamp the row WITHOUT
+    touching its state -- the job is neither resolved nor abandoned."""
+    init()
+    with LOCK:
+        conn = _connect()
+        try:
+            conn.execute('UPDATE jobs SET recovering_at = ? WHERE id = ?',
+                         (at if at is not None else time.time(), job_id))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise JobDbError(str(e))
+        finally:
+            conn.close()
+
+
+def clear_recovering(job_id):
+    """A pass reached ComfyUI and is handling the job again: drop the marker."""
+    init()
+    with LOCK:
+        conn = _connect()
+        try:
+            conn.execute('UPDATE jobs SET recovering_at = NULL WHERE id = ?', (job_id,))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise JobDbError(str(e))
+        finally:
+            conn.close()
+
+
 def _decode(row):
     out = dict(row)
     for key in ('prompt_ids', 'holds'):
@@ -189,6 +229,7 @@ def _decode(row):
             out[key] = []
     out['resolved'] = ({'by': out['resolved_by'], 'verdict': out['resolved_verdict'], 'at': out['resolved_at']}
                        if out['resolved_verdict'] is not None else None)
+    out['retry_allowed'] = bool(out['retry_allowed'])
     return out
 
 

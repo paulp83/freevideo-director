@@ -58,7 +58,7 @@ class Store(unittest.TestCase):
 
     def test_versioned_database_created(self):
         con = sqlite3.connect(self.db)
-        self.assertEqual(con.execute('PRAGMA user_version').fetchone()[0], 1)
+        self.assertEqual(con.execute('PRAGMA user_version').fetchone()[0], jobs_db.VERSION)
         names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         con.close()
         self.assertIn('jobs', names)
@@ -78,11 +78,56 @@ class Store(unittest.TestCase):
         con.close()
         jobs_db.init(path)
         con = sqlite3.connect(path)
-        self.assertEqual(con.execute('PRAGMA user_version').fetchone()[0], 1)
+        self.assertEqual(con.execute('PRAGMA user_version').fetchone()[0], jobs_db.VERSION)
         names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         con.close()
         self.assertIn('jobs', names)
         self.assertIn('leftovers', names)
+
+    def test_a_v1_database_gains_the_recovery_markers_without_losing_rows(self):
+        path = self.root / 'v1.db'                        # exactly the pre-marker (version 1) schema
+        con = sqlite3.connect(path)
+        con.executescript("""
+            CREATE TABLE jobs (
+                id               TEXT PRIMARY KEY,
+                kind             TEXT NOT NULL,
+                project          TEXT,
+                scene            TEXT,
+                state            TEXT NOT NULL,
+                created          REAL,
+                started          REAL,
+                ended            REAL,
+                backend          TEXT,
+                prompt_ids       TEXT NOT NULL DEFAULT '[]',
+                correlation      TEXT,
+                snapshot_path    TEXT,
+                result_path      TEXT,
+                take_id          TEXT,
+                run              TEXT,
+                error            TEXT,
+                resolved_by      TEXT,
+                resolved_verdict TEXT,
+                resolved_at      REAL,
+                workdir          TEXT,
+                holds            TEXT NOT NULL DEFAULT '[]'
+            );
+            CREATE INDEX jobs_state_ended ON jobs (state, ended);
+            CREATE INDEX jobs_project     ON jobs (project);
+        """)
+        con.execute("INSERT INTO jobs (id, kind, state) VALUES ('abc123', 'render', 'running')")
+        con.execute('PRAGMA user_version = 1')
+        con.commit()
+        con.close()
+        jobs_db.init(path)
+        con = sqlite3.connect(path)
+        self.assertEqual(con.execute('PRAGMA user_version').fetchone()[0], jobs_db.VERSION)
+        cols = [r[1] for r in con.execute('PRAGMA table_info(jobs)')]
+        con.close()
+        self.assertIn('retry_allowed', cols)              # added by ALTER, not by recreation
+        self.assertIn('recovering_at', cols)
+        row = jobs_db.get('abc123')                       # the old row survives the migration
+        self.assertEqual((row['state'], row['retry_allowed']), ('running', False))
+        jobs_db.init(self.db)
 
     def test_save_get_roundtrip(self):
         job = make_job(7, 'unknown')
@@ -101,6 +146,21 @@ class Store(unittest.TestCase):
         self.assertEqual(row['snapshot_path'], 'projects/film/jobs/000000000007.json')
         self.assertEqual(row['result_path'], 'projects/film/jobs/000000000007.result.json')
         self.assertIsNone(jobs_db.get('ffffffffffff'))
+
+    def test_recovery_markers_round_trip(self):
+        job = make_job(7, 'running')
+        job['retry_allowed'] = True                       # the live flag persists through db_note
+        jobs_db.save(job)
+        self.assertIs(jobs_db.get('000000000007')['retry_allowed'], True)
+        self.assertIsNone(jobs_db.get('000000000007')['recovering_at'])
+        jobs_db.mark_recovering('000000000007')           # a pass could not reach ComfyUI
+        row = jobs_db.get('000000000007')
+        self.assertGreaterEqual(row['recovering_at'], time.time() - 5)
+        self.assertEqual(row['state'], 'running')         # the marker never touches the state
+        jobs_db.clear_recovering('000000000007')
+        self.assertIsNone(jobs_db.get('000000000007')['recovering_at'])
+        jobs_db.save(make_job(8, 'queued'))               # untouched jobs keep a plain False
+        self.assertIs(jobs_db.get('000000000008')['retry_allowed'], False)
 
     def test_save_replaces_the_whole_row(self):
         job = make_job(7, 'queued')

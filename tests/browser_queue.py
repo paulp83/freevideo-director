@@ -238,7 +238,7 @@ threading.Thread(target=web.ws_listen, daemon=True).start()
 ThreadingHTTPServer(("127.0.0.1", %d), web.Handler).serve_forever()
 """
 
-NOTE = 'Jobs live in memory; restarting the director forgets them (ComfyUI may still finish them)'
+NOTE = 'Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically.'
 
 
 def main():

@@ -60,7 +60,7 @@ dialog .row { display: flex; gap: 8px; margin-top: 10px; }
       </table>
     </div>
     <p class="hint">Estimates are the median of your last 20 runs of the same kind; they appear after a first run.</p>
-    <p class="hint">Jobs live in memory; restarting the director forgets them (ComfyUI may still finish them)</p>
+    <p class="hint">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically.</p>
   </section>
 </main>
 

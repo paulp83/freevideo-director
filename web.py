@@ -728,12 +728,9 @@ def write_job_result(job, take_id=None):
         'stages': [{'key': s['key'], 'started': s['started'], 'ended': s['ended']} for s in job['stages']]})
 
 
-def enhance_job(job, run, on_final=None, keys=()):
-    """Thread body for a standalone enhance: hold the take (plus the endpoint's scene key), record the
-    finishing request against the project's take, then finish it. An ad-hoc enhance records nothing."""
-    reserve(job, [take_key(run), *keys])
-    if job.get('project'):
-        write_enhance_snapshot(job, run)
+def enhance_late_record(job, on_final):
+    """What a finished enhance must record whenever the proof arrives -- live, or late after
+    the job went unknown: the final and the project result file. Every write is replay-safe."""
     def late(verdict):                                   # an unknown enhance proved to have finished
         if verdict != 'finished' or not job['prompt_ids']:
             return
@@ -746,7 +743,16 @@ def enhance_job(job, run, on_final=None, keys=()):
                 write_job_result(job)                    # written once; a clash means it already was
             except projects.ProjectError:
                 pass
-    job['late_record'] = late
+    return late
+
+
+def enhance_job(job, run, on_final=None, keys=()):
+    """Thread body for a standalone enhance: hold the take (plus the endpoint's scene key), record the
+    finishing request against the project's take, then finish it. An ad-hoc enhance records nothing."""
+    reserve(job, [take_key(run), *keys])
+    if job.get('project'):
+        write_enhance_snapshot(job, run)
+    job['late_record'] = enhance_late_record(job, on_final)
     enhance_stages(job, run, on_final)
     if job.get('project'):
         write_job_result(job)
@@ -757,22 +763,33 @@ def enhance_job(job, run, on_final=None, keys=()):
 RECONCILE_SECONDS = 15                                   # background ask-again interval
 
 
-def comfy_history_outcome(pid):
-    """What ComfyUI's history says about one prompt: 'completed', 'interrupted' or 'failed',
-    'lost' when it left no trace, or None when ComfyUI could not be reached to ask."""
+def comfy_history_detail(pid):
+    """(outcome, message) as ComfyUI's history answers for one prompt: 'completed', 'interrupted'
+    or 'failed' (with ComfyUI's own exception text when it left one), 'lost' when it left no
+    trace, or (None, None) when ComfyUI could not be reached to ask."""
     try:
         h = comfy(f'/history/{pid}')
     except (urllib.error.URLError, OSError, ValueError):
-        return None
+        return None, None
     entry = h.get(pid)
     if entry is None:
-        return 'lost'
+        return 'lost', None
     status = entry.get('status') or {}
+    message = None
+    for kind, data in status.get('messages') or []:
+        if kind in ('execution_error', 'execution_interrupted'):
+            message = data.get('exception_message') or kind
     if entry.get('status_str') == 'error' or status.get('failed'):
-        return 'failed'
+        return 'failed', message
     if status.get('completed'):
-        return 'completed'
-    return 'interrupted'                                 # recorded but never completed: it stopped
+        return 'completed', None
+    return 'interrupted', message
+
+
+def comfy_history_outcome(pid):
+    """What ComfyUI's history says about one prompt: 'completed', 'interrupted' or 'failed',
+    'lost' when it left no trace, or None when ComfyUI could not be reached to ask."""
+    return comfy_history_detail(pid)[0]
 
 
 def release_resolved(job, verdict, by='reconcile'):
@@ -838,6 +855,11 @@ def reconcile_loop():
             except Exception:
                 pass                                     # still holding; the next round asks again
         try:
+            if jobs_db.list_jobs(states=RECOVER_STATES, limit=1):
+                recover_jobs()        # rows still open in the store: ask ComfyUI again
+        except Exception:
+            pass                                       # the next round asks again
+        try:
             sweep_enhance_tmp()
         except Exception:
             pass                                       # the next round sweeps again
@@ -850,11 +872,412 @@ def sweep_enhance_tmp():
     return enhance.sweep_workdirs(keep)
 
 
+
+# ------------------------------------------------------------------ startup recovery
+# A restart must neither lose unfinished work nor duplicate it. `recover_jobs` reads the durable
+# store and asks ComfyUI what became of every row that is not terminal yet, plus every unresolved
+# 'unknown' row: still queued or running -> the job is rebuilt in memory and its EXISTING prompt
+# polled (never resubmitted); provably completed -> take/final and the result file are recorded
+# through the SAME recorders a live job uses (all replay-safe); failed or interrupted -> the
+# matching terminal state carrying ComfyUI's own message; gone from queue and history ->
+# 'unknown', still holding its scene, with `retry_allowed` only where the submit provably never
+# reached ComfyUI. When ComfyUI itself is unreachable nothing moves: rows keep their state, get a
+# `recovering_at` marker, and the reconcile loop runs the pass again.
+
+RECOVER_STATES = ('submitting', 'queued', 'preparing', 'submitted', 'running')
+NOT_REACHABLE = 'ComfyUI not reachable yet'
+
+
+class ComfyWentAway(Exception):
+    """ComfyUI stopped answering mid-pass: leave the row exactly as it was and try again later."""
+
+
+def _rebuilt_job(row):
+    """The live job dict a durable row rebuilds: identity, prompt ids and flags come from the
+    row; the state machine restarts at 'queued' (run_job and every settle path move legally
+    from there) and the wall-clock cap restarts from now."""
+    try:
+        keys = scene_stage_keys(row['kind'])
+    except KeyError:
+        keys = ['render']
+    return {'id': row['id'], 'kind': row['kind'], 'created': row['created'] or time.time(),
+            'started': row['started'], 'ended': None, 'error': None, 'done': False,
+            'state': 'queued', 'deadline': time.time() + JOB_TIMEOUT,
+            'stages': [{'key': k, 'label': STAGES[k], 'state': 'pending', 'started': None,
+                        'ended': None, 'value': 0, 'max': 0} for k in keys],
+            'take': ({'path': str(Path(row['run']) / 'video.mp4'), 'run': row['run'], 'url': None}
+                     if row.get('run') else None),
+            'final': None, 'prompt_ids': list(row['prompt_ids'] or []), 'cancel': False,
+            'project': row['project'], 'scene': row['scene'], 'holds': [],
+            'correlation': row['correlation'], 'workdir': row['workdir'],
+            'take_id': row['take_id'], 'retry_allowed': bool(row['retry_allowed']),
+            'recovering_at': None}       # the store's marker is not copied onto the live job
+
+
+def recovery_snapshot(job):
+    """The immutable request record the job wrote before submitting (preset, seed, variant,
+    continuation, and for an enhance the source run), or None when there is nothing to read."""
+    if not job.get('project'):
+        return None
+    try:
+        snapshot, _ = projects.read_job(job['project'], job['id'])
+    except projects.ProjectError:
+        return None
+    return snapshot
+
+
+def _resume_render(job, slug, scene_id, preset_name, take_id, seed, variant, source_take,
+                   render_pid, enhance_pid):
+    """Thread body for a render a restart found inside ComfyUI: no build, no submit, no new GPU
+    work -- poll the existing prompt and record through the same take/final recorders and result
+    file a fresh render uses. A Final render whose finishing stages were never submitted ends
+    render-only, saying so: starting the enhance now would be an automatic resubmit, which
+    recovery NEVER does."""
+    activate(job, 'render')
+    check_cancel(job)
+    transition(job, 'submitted')
+    transition(job, 'running')
+
+    def progress():
+        p = PROGRESS.get(render_pid, {})
+        st = stage(job, 'render')
+        st.update(value=p.get('value', 0), max=p.get('max', 0))
+
+    try:
+        take = poll(job, lambda: render_result(render_pid), progress)
+    except (RuntimeError, KeyError):
+        take = job.get('take')          # history purged but the run dir is known from the row
+        if take is None:
+            raise
+    job['take'] = take
+    if slug and scene_id:
+        take_recorder(slug, scene_id, job['id'], take_id, preset_name,
+                      seed, variant, source_take)(take)
+        if enhance_pid:
+            on_final = final_recorder(slug, scene_id, lambda: take['run'])
+            activate(job, 'upscale')
+            check_cancel(job)
+
+            def eprogress():
+                p = PROGRESS.get(enhance_pid, {})
+                if p.get('node') in ENHANCE_NODES:
+                    st = activate(job, ENHANCE_NODES[p['node']])
+                    st.update(value=p.get('value', 0), max=p.get('max', 0))
+
+            final = poll(job, lambda: enhance.result(enhance_pid), eprogress)
+            job['final'] = final
+            on_final(final)
+        elif preset_name == 'final':
+            job['error'] = ('the render completed; its finishing stages had not been submitted when '
+                            'the director stopped, so the take is recorded unenhanced. Run an Enhance '
+                            'for this take; no new GPU work was started automatically.')
+    if slug:
+        try:
+            write_job_result(job, take_id)     # written once; a clash means it already was
+        except projects.ProjectError:
+            pass
+    if job.get('workdir'):
+        enhance.remove_workdir(Path(job['workdir']))   # the raw mkv is only needed while ComfyUI reads it
+        job['workdir'] = None
+
+
+def _resume_enhance(job, run, on_final):
+    """Thread body for a standalone enhance a restart found inside ComfyUI: poll its existing
+    prompt only; record the final and the result file exactly as a fresh enhance does."""
+    pid = job['prompt_ids'][-1]
+    activate(job, 'upscale')
+    check_cancel(job)
+    transition(job, 'submitted')
+    transition(job, 'running')
+
+    def progress():
+        p = PROGRESS.get(pid, {})
+        if p.get('node') in ENHANCE_NODES:
+            st = activate(job, ENHANCE_NODES[p['node']])
+            st.update(value=p.get('value', 0), max=p.get('max', 0))
+
+    final = poll(job, lambda: enhance.result(pid), progress)
+    job['final'] = final
+    if on_final:
+        on_final(final)
+    if job.get('workdir'):
+        enhance.remove_workdir(Path(job['workdir']))   # the raw mkv is only needed while ComfyUI reads it
+        job['workdir'] = None
+    if job.get('project'):
+        try:
+            write_job_result(job, job.get('take_id'))
+        except projects.ProjectError:
+            pass
+
+
+def _lost_message(job, row):
+    """What 'gone from queue and history' means, by evidence class -- and whether a Retry could
+    honestly be offered. A row still 'submitting' proves only that the POST left the director
+    unanswered: the request may never have reached ComfyUI, so a Retry is honest. A submit
+    ComfyUI had acknowledged (the row moved past 'submitting') may simply have been purged, and
+    resubmitting on that guess could double the GPU work."""
+    if row['state'] == jobs_db.SUBMITTING:
+        job['retry_allowed'] = True
+        return ('the submit was not confirmed: ComfyUI has no record of its prompt, so the request '
+                'may never have reached it. Nothing was resubmitted; Retry is available.')
+    return ('ComfyUI has no record of this job in its queue or history: the work may have completed '
+            'and been purged, or been lost. Reconcile or dismiss it; it is never resubmitted '
+            'automatically.')
+
+
+def _chain_verdict(job, out, msg, enhance_side=False):
+    """A non-completed settle verdict, told with ComfyUI's own message when it left one.
+    `enhance_side`: the render landed and its take is already recorded -- only the finishing
+    prompt vanished, so the scene keeps its reservation until reconciled or dismissed."""
+    if out == 'failed':
+        fail(job, msg or 'ComfyUI reported an error')
+        release(job)
+        db_note(job)
+        return 'failed'
+    if out == 'interrupted':
+        cancel_job(job)
+        job['error'] = msg or 'interrupted by ComfyUI'
+        release(job)
+        db_note(job)
+        return 'cancelled'
+    if enhance_side:
+        unknown(job, 'the render completed and its take is recorded, but ComfyUI has no record of '
+                     'the finishing prompt either; the scene keeps its reservation until the job is '
+                     'reconciled or dismissed. Nothing was resubmitted.')
+    else:
+        unknown(job, msg)
+    db_note(job)
+    return 'unknown'
+
+
+def _settle(job, row, snap, details):
+    """ComfyUI's queue holds nothing of this job any more: its history gives the verdict, and
+    the job moves to the terminal state -- and makes exactly the records -- the live worker
+    would have. Returns a summary key."""
+    pids, kind, slug, scene_id = job['prompt_ids'], job['kind'], job['project'], job['scene']
+    if any(o is None for o, _ in details):
+        raise ComfyWentAway()
+    render = kind.startswith('render')
+    if render:
+        preset_name = 'final' if kind == 'render-final' else 'draft'
+        finish_after = PRESETS[preset_name]['finish']
+        take_id = job['take_id'] or (snap or {}).get('take_id') or projects.new_take_id()
+        job['take_id'] = take_id
+        on_take = (take_recorder(slug, scene_id, job['id'], take_id, preset_name,
+                                 (snap or {}).get('seed'), (snap or {}).get('variant') or None,
+                                 source_take_of(snap) if snap else None)
+                   if slug and scene_id else None)
+        on_final = (final_recorder(slug, scene_id, lambda: job['take']['run'])
+                    if slug and scene_id else None)
+        job['late_record'] = render_late_record(job, on_take, on_final, take_id, finish_after)
+    else:
+        run = (job['take'] or {}).get('run') or ((snap or {}).get('source') or {}).get('run')
+        take_id = job.get('take_id')
+        on_final = (final_recorder(slug, scene_id, lambda: run)
+                    if slug and scene_id and run else None)
+        job['late_record'] = enhance_late_record(job, on_final)
+
+    def finish_recorded():
+        job['state'] = 'preparing'        # legal stand-in: finish() cannot close a 'queued' job
+        finish(job)
+        if slug:
+            try:
+                write_job_result(job, take_id)
+            except projects.ProjectError:
+                pass                      # the result file exists: this pass is a replay
+        if job.get('workdir'):                         # the raw mkv is only needed while ComfyUI reads it
+            enhance.remove_workdir(Path(job['workdir']))
+            job['workdir'] = None
+        release(job)
+        db_note(job)
+        return 'recorded'
+
+    if not pids:
+        # record_submit writes the row BEFORE the POST leaves, so a row that never grew prompt
+        # ids provably never reached ComfyUI: nothing was lost, and a Retry would be honest.
+        job['retry_allowed'] = True       # set BEFORE unknown()'s write so it is persisted
+        unknown(job, 'the job was interrupted before anything reached ComfyUI: nothing had been '
+                     'submitted, so nothing was resubmitted.')
+        return 'unknown'
+    out, msg = (details[0] if render else details[-1])
+    if out == 'completed':
+        try:
+            got = render_result(pids[0]) if render else enhance.result(pids[-1])
+        except (RuntimeError, KeyError) as e:
+            fail(job, f'ComfyUI says the work completed but left no video: {e}')
+            release(job)
+            return 'failed'
+        if render:
+            job['take'] = got
+            if on_take:
+                on_take(got)
+            if finish_after and len(pids) > 1:
+                e_out, e_msg = details[-1]
+                if e_out != 'completed':
+                    return _chain_verdict(job, e_out, e_msg, enhance_side=True)
+                final = enhance.result(pids[-1])
+                job['final'] = final
+                if on_final:
+                    on_final(final)
+            elif finish_after:
+                job['error'] = ('the render completed; its finishing stages had not been submitted '
+                                'when the director stopped, so the take is recorded unenhanced. Run '
+                                'an Enhance for this take; no new GPU work was started automatically.')
+        else:
+            job['final'] = got
+            if on_final:
+                on_final(got)
+        return finish_recorded()
+    if out == 'lost':
+        return _chain_verdict(job, out, _lost_message(job, row))
+    return _chain_verdict(job, out, msg)
+
+
+def _reattach(job, row, snap):
+    """ComfyUI verifiably still holds one of this job's prompts: rebuild it in memory, reclaim
+    its reservations and poll the EXISTING prompt -- the only new work recovery ever starts is
+    watching."""
+    if job['kind'].startswith('render'):
+        preset_name = 'final' if job['kind'] == 'render-final' else 'draft'
+        take_id = job['take_id'] or (snap or {}).get('take_id') or projects.new_take_id()
+        job['take_id'] = take_id
+        pids = job['prompt_ids']
+        body = _resume_render
+        args = (job['project'], job['scene'], preset_name, take_id,
+                (snap or {}).get('seed'), (snap or {}).get('variant') or None,
+                source_take_of(snap) if snap else None,
+                pids[0], pids[-1] if len(pids) > 1 else None)
+    else:
+        run = (job['take'] or {}).get('run') or ((snap or {}).get('source') or {}).get('run')
+        if run and job['take'] is None:
+            job['take'] = {'path': str(Path(run) / 'video.mp4'), 'run': run, 'url': None}
+        on_final = (final_recorder(job['project'], job['scene'], lambda: run)
+                    if job['project'] and job['scene'] and run else None)
+        body, args = _resume_enhance, (run, on_final)
+    with LOCK:
+        JOBS[job['id']] = job
+    keys = [tuple(k) for k in (row['holds'] or [])]
+    try:
+        if keys:
+            reserve(job, keys)
+    except Busy as e:
+        unknown(job, f'{e}: this job\'s ComfyUI prompt may still be executing; nothing was resubmitted.')
+        return 'unknown'
+    threading.Thread(target=run_job, args=(job, body, *args), daemon=True).start()
+    return 'reattached'
+
+
+def _recover_one(row, queue_ids):
+    """Recover one durable row against a fresh ComfyUI queue snapshot."""
+    job = _rebuilt_job(row)
+    try:
+        jobs_db.clear_recovering(job['id'])            # ComfyUI reached: handled again right now
+    except jobs_db.JobDbError:
+        pass
+
+    snap = recovery_snapshot(job)
+    if job['prompt_ids'] and (set(job['prompt_ids']) & queue_ids):
+        return _reattach(job, row, snap)
+    with LOCK:
+        JOBS[job['id']] = job             # on the board while the verdict is being established
+    keys = [tuple(k) for k in (row['holds'] or [])]
+    try:
+        if keys:
+            reserve(job, keys)
+    except Busy as e:
+        unknown(job, f'{e}: this job\'s ComfyUI prompt may still be executing; nothing was resubmitted.')
+        return 'unknown'
+    details = [comfy_history_detail(pid) for pid in job['prompt_ids']]
+    try:
+        return _settle(job, row, snap, details)
+    except ComfyWentAway:
+        with LOCK:
+            if JOBS.get(job['id']) is job:
+                del JOBS[job['id']]       # nothing was learned: drop the stand-in job
+        release(job)
+        jobs_db.mark_recovering(job['id'])
+        return 'recovering'
+
+
+def recover_jobs(comfy=None):
+    """Startup (and periodic) reconciliation against ComfyUI -- see the notes at the top of
+    this section. Pass `comfy` to aim one pass at a specific server (tests); threads the pass
+    starts use the module globals, so the swap covers those too."""
+    global COMFY
+    saved = COMFY
+    if comfy:
+        COMFY = enhance.COMFY = comfy
+    try:
+        return _recovery_pass()
+    finally:
+        COMFY = saved
+
+
+def _recovery_pass():
+    summary = {'recovering': 0, 'reattached': 0, 'recorded': 0, 'failed': 0,
+               'unknown': 0, 'skipped': 0}
+    try:
+        rows = jobs_db.list_jobs(states=RECOVER_STATES)
+        rows += [r for r in jobs_db.list_jobs(states=('unknown',)) if not r['resolved']]
+    except jobs_db.JobDbError as e:
+        print(f'jobs: recovery cannot read the store: {e}')
+        return summary
+    if not rows:
+        return summary
+    q = comfy_queue()
+    if q is None:
+        for row in rows:                 # ComfyUI is not up (yet): change nothing, mark waiting
+            if row['id'] not in JOBS:
+                try:
+                    jobs_db.mark_recovering(row['id'])
+                    summary['recovering'] += 1
+                except jobs_db.JobDbError:
+                    pass
+        return summary
+    queue_ids = q[0] | q[1]
+    for row in rows:
+        if row['id'] in JOBS:            # a live or board-present job: the pass must not touch it
+            try:
+                jobs_db.clear_recovering(row['id'])
+            except jobs_db.JobDbError:
+                pass
+            summary['skipped'] += 1
+            continue
+        try:
+            summary[_recover_one(row, queue_ids)] += 1
+        except Exception as e:
+            print(f'jobs: could not recover {row["id"]}: {e}')
+    return summary
+
+
+def loadable_job(job_id):
+    """Routes keep answering persisted jobs after a restart: live and settled jobs are in
+    memory; an open store row nothing has loaded yet is loaded -- and reconciled against
+    ComfyUI -- on demand, so Reconcile works on a job recovery has not reached. Terminal rows
+    stay display-only, and while ComfyUI is unreachable an open row answers 404: the honest
+    step-2 limit until Retry (step 3) gives the user the other door."""
+    job = JOBS.get(job_id)
+    if job:
+        return job
+    try:
+        row = jobs_db.get(job_id)
+    except jobs_db.JobDbError:
+        return None
+    if not row or row['state'] in TERMINAL or row['resolved']:
+        return None
+    q = comfy_queue()
+    if q is None:
+        return None
+    _recover_one(row, q[0] | q[1])
+    return JOBS.get(job_id)
+
+
 def public(job):
     now = time.time()
     out = {k: job[k] for k in ('id', 'kind', 'error', 'done', 'state', 'take', 'final')}
     out['prompt_ids'] = list(job['prompt_ids'])
     out['resolved'] = job.get('resolved')
+    out['retry_allowed'] = bool(job.get('retry_allowed'))
     out['stages'] = [{**s, 'seconds': round((s['ended'] or now) - s['started']) if s['started'] else None}
                      for s in job['stages']]
     out['elapsed'] = round(now - job['created'])
@@ -1019,33 +1442,10 @@ def render_job(job, slug, scene_id, preset_name, variant=None):
                                args, graph, model, continuation(p, i))
     projects.write_job_snapshot(slug, snapshot)
     source_take = source_take_of(snapshot)     # a continuation names the take it started from
-    def on_take(take):
-        def apply(proj):
-            s = proj['scenes'][projects.scene_index(proj, scene_id)]
-            if any(t.get('id') == take_id for t in s['takes']):
-                return                                   # already recorded (a resolved unknown job)
-            s['takes'].append({'id': take_id, 'job': job['id'], 'provenance': 'recorded',
-                               'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
-                               'seed': scene['seed'], 'created': time.time(), 'final': None, 'final_url': None,
-                               'variant': list(variant) if variant else None,
-                               'source_take': source_take})
-        projects.mutate(slug, apply)
+    on_take = take_recorder(slug, scene_id, job['id'], take_id, preset_name,
+                            scene['seed'], variant, source_take)
     on_final = final_recorder(slug, scene_id, lambda: job['take']['run'])
-    def late(verdict):                                   # an unknown job proved to have finished: record it
-        if verdict != 'finished':
-            return
-        take = render_result(job['prompt_ids'][0])
-        job['take'] = take
-        on_take(take)
-        if preset['finish'] and len(job['prompt_ids']) > 1:
-            final = enhance.result(job['prompt_ids'][-1])
-            job['final'] = final
-            on_final(final)
-        try:
-            write_job_result(job, take_id)               # written once; a clash means it already was
-        except projects.ProjectError:
-            pass
-    job['late_record'] = late
+    job['late_record'] = render_late_record(job, on_take, on_final, take_id, preset['finish'])
     do_render(job, graph, preset['finish'], on_take, on_final)
     write_job_result(job, take_id)
 
@@ -1059,6 +1459,45 @@ def final_recorder(slug, scene_id, run_of):
                     t['final'], t['final_url'] = final['path'], final['url']
         projects.mutate(slug, apply)
     return on_final
+
+
+def take_recorder(slug, scene_id, job_id, take_id, preset_name, seed, variant, source_take):
+    """Append this job's take to its scene -- idempotent under the project lock: a take for
+    this id, this job, or this exact run directory already recorded means nothing is appended
+    twice, whether the proof comes live, late after reconcile, or from a recovery pass."""
+    def on_take(take):
+        def apply(proj):
+            s = proj['scenes'][projects.scene_index(proj, scene_id)]
+            if any(t.get('id') == take_id or t.get('job') == job_id for t in s['takes']):
+                return                                   # already recorded (a resolved unknown job)
+            s['takes'].append({'id': take_id, 'job': job_id, 'provenance': 'recorded',
+                               'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
+                               'seed': seed, 'created': time.time(), 'final': None, 'final_url': None,
+                               'variant': list(variant) if variant else None,
+                               'source_take': source_take})
+        projects.mutate(slug, apply)
+    return on_take
+
+
+def render_late_record(job, on_take, on_final, take_id, finish_after):
+    """What a finished render must record whenever the proof arrives -- live, or late after
+    the job went unknown: the take, the final if the chain ran, the result file. Every write
+    is replay-safe."""
+    def late(verdict):                                   # an unknown job proved to have finished:
+        if verdict != 'finished' or not job['prompt_ids']:
+            return
+        take = render_result(job['prompt_ids'][0])
+        job['take'] = take
+        on_take(take)
+        if finish_after and len(job['prompt_ids']) > 1:
+            final = enhance.result(job['prompt_ids'][-1])
+            job['final'] = final
+            on_final(final)
+        try:
+            write_job_result(job, take_id)               # written once; a clash means it already was
+        except projects.ProjectError:
+            pass
+    return late
 
 
 def start_batch(slug, label, steps, worker):
@@ -1292,8 +1731,9 @@ def queue_view():
 
     Live jobs are memory-only; finished verdicts additionally come back from the durable
     store (jobs_db) after a restart, flagged `persisted`, for exactly as long as they would
-    have stayed on the board anyway. Recovery of work still running when the director died
-    is not built yet. Each job row
+    have stayed on the board anyway. Work that was still unfinished when the director died is
+    re-checked against ComfyUI at startup and periodically (recover_jobs): reattached, settled
+    from history, or left 'unknown' -- never resubmitted. Each job row
     carries the raw epochs (created/started/ended) plus two SEPARATE durations: queued_for
     (accepted -> ComfyUI first verifiably had the work) and running_for (that moment -> now/end).
     A job that never reached ComfyUI has running_for null and is still marked cancelled/failed."""
@@ -1328,7 +1768,8 @@ def queue_view():
                'take': (job.get('take') or {}).get('run'),
                'created': job.get('created'), 'started': started, 'ended': job.get('ended'),
                'queued_for': round((started or end) - job['created']),
-               'running_for': round(end - started) if started else None}
+               'running_for': round(end - started) if started else None,
+               'retry_allowed': bool(job.get('retry_allowed')), 'recovering': bool(job.get('recovering_at'))}
         (live if row['live'] else done).append(row)
     live.sort(key=lambda r: r['created'] or 0)             # oldest live job first
     done.sort(key=lambda r: -(r['ended'] or 0))           # newest verdict first
@@ -1353,9 +1794,31 @@ def queue_view():
                          'take': row['run'], 'created': row['created'], 'started': started, 'ended': row['ended'],
                          'queued_for': round((started or end) - (row['created'] or end)),
                          'running_for': round(end - started) if started else None,
-                         'correlation': row['correlation'], 'persisted': True})
+                         'correlation': row['correlation'], 'persisted': True,
+                         'retry_allowed': bool(row['retry_allowed']), 'recovering': False})
     except Exception as e:
         print(f'jobs: durable queue history unavailable: {e}')  # a broken store never breaks the board
+    # a recovery pass that could not reach ComfyUI leaves its rows in the store marked
+    # recovering: shown as unknown "not reachable yet", state and holds untouched.
+    try:
+        for row in jobs_db.list_jobs(states=RECOVER_STATES, limit=200):
+            if row['id'] in seen:
+                continue                                     # the memory view already shows it
+            slug, scene_id = row['project'], row['scene']
+            name, title = film(slug, scene_id) if slug else (None, None)
+            done.append({'id': row['id'], 'kind': row['kind'], 'state': 'unknown', 'project': slug,
+                         'project_name': name, 'scene': scene_id, 'scene_title': title,
+                         'elapsed': round(now - (row['created'] or now)),
+                         'estimate': None, 'eta': None, 'stage': None,
+                         'error': f'{NOT_REACHABLE}: the director re-checks ComfyUI every '
+                                  f'{RECONCILE_SECONDS}s; nothing was resubmitted.',
+                         'prompt_ids': row['prompt_ids'], 'resolved': None, 'live': False,
+                         'take': row['run'], 'created': row['created'], 'started': row['started'],
+                         'ended': None, 'queued_for': None, 'running_for': None,
+                         'correlation': row['correlation'], 'persisted': True,
+                         'retry_allowed': bool(row['retry_allowed']), 'recovering': True})
+    except Exception as e:
+        print(f'jobs: durable recovery rows unavailable: {e}')  # a broken store never breaks the board
     batches = []
     for slug, b in list(BATCH.items()):
         if not b['done']:
@@ -1566,7 +2029,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, public(job))
             m = re.match(r'^/api/job/([^/]+)/resolve$', self.path)
             if m:
-                job = JOBS.get(m.group(1))
+                job = loadable_job(m.group(1))
                 if not job:
                     return self.reply(404, {'error': 'unknown job'})
                 if not job['done']:
@@ -1582,7 +2045,7 @@ class Handler(BaseHTTPRequestHandler):
                                'scene/take could generate a duplicate take'})
             m = re.match(r'^/api/job/([^/]+)/reconcile$', self.path)
             if m:
-                job = JOBS.get(m.group(1))
+                job = loadable_job(m.group(1))
                 if not job:
                     return self.reply(404, {'error': 'unknown job'})
                 if not job['done']:
@@ -1594,7 +2057,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, {'job': public(job), 'proved': reconcile(job)})
             m = re.match(r'^/api/job/([^/]+)/cancel$', self.path)
             if m:
-                job = JOBS.get(m.group(1))
+                job = loadable_job(m.group(1))
                 if not job:
                     return self.reply(404, {'error': 'unknown job'})
                 if job['state'] == 'unknown':
@@ -1767,6 +2230,7 @@ if __name__ == '__main__':
     jobs_db.init()                       # the durable job bookkeeping, pruned to its retention
     jobs_db.prune()
     sweep_enhance_tmp()
+    recover_jobs()      # re-check ComfyUI for every unfinished job before new work can start
     threading.Thread(target=reconcile_loop, daemon=True).start()
     threading.Thread(target=ws_listen, daemon=True).start()
     print(f'FreeVideo director UI: http://{a.host}:{a.port}')

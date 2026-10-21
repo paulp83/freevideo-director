@@ -548,7 +548,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   <div id="queueBody">
     <div id="queueMine"></div>
     <details id="queueOthersWrap" hidden><summary id="queueOthersSum"></summary><div id="queueOthers"></div></details>
-    <p class="qnote">Jobs live in memory; restarting the director forgets them (ComfyUI may still finish them)</p>
+    <p class="qnote">Jobs are saved. After a restart the director re-checks ComfyUI for every unfinished job; jobs it cannot confirm stay "unknown" and are never resubmitted automatically.</p>
   </div>
 </dialog>
 

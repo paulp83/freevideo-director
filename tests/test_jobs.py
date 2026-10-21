@@ -100,9 +100,15 @@ class StubComfy(BaseHTTPRequestHandler):
             if StubComfy.mode in ('hang', 'gate', 'gone'):
                 return self._json(200, {})     # never finishes, or leaves no record at all
             if StubComfy.mode == 'interrupted':
-                return self._json(200, {pid: {'status': {'completed': False, 'interrupted': True}}})
+                return self._json(200, {pid: {'status': {'completed': False, 'interrupted': True,
+                                                         'messages': [['execution_interrupted',
+                                                                       {'exception_message':
+                                                                        'prompt interrupted by user'}]]}}})
             if StubComfy.mode == 'failed':
-                return self._json(200, {pid: {'status_str': 'error', 'status': {'completed': False}}})
+                return self._json(200, {pid: {'status_str': 'error', 'status':
+                                              {'completed': False,
+                                               'messages': [['execution_error',
+                                                             {'exception_message': 'CUDA out of memory'}]]}}})
             outputs = {'9': {'gifs': [{'filename': 'take.mp4', 'subfolder': 'director', 'type': 'output'}]}}
             return self._json(200, {pid: {'status': {'completed': True}, 'outputs': outputs}})
         self._json(200, {})
