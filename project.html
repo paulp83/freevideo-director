@@ -1675,6 +1675,11 @@ function updateJob(s) {
   // block is rebuilt only when its own content changes
   const jid = job ? String(job.id) : '';
   if (jb.dataset.job !== jid) { jb.dataset.job = jid; jb.replaceChildren(); }
+  let jnote = jb.querySelector(':scope > .jobnotice');          // a finished job's plain-words notice (e.g. a cached duplicate)
+  if (job && job.notice) {
+    if (!jnote) { jnote = el('div', {class: 'jobnotice'}); jb.append(jnote); }
+    if (jnote.textContent !== job.notice) jnote.textContent = job.notice;
+  } else if (jnote) jnote.remove();
   if (job && ((job && !job.done) || job.error)) {
     let chips = jb.querySelector(':scope > .stagechips');
     if (!chips) { chips = el('div', {class: 'stagechips'}); jb.append(chips); }
@@ -2269,6 +2274,7 @@ function queueRow(r) {
   kids.push(el('span', {class: 'qstate'}, qword(r.state) + (r.stage ? ' · ' + r.stage : '')));
   kids.push(el('span', {class: 'qtime', 'data-times': JSON.stringify([r.created, r.started, r.ended])}));
   if (r.error) kids.push(el('span', {class: 'qerr'}, r.error));
+  if (r.notice) kids.push(el('span', {class: 'qnotice'}, r.notice));
   if (r.resolved) kids.push(el('span', {class: 'qresolved'}, 'Resolved: ' + (r.resolved.verdict || 'dismissed') +
     (r.resolved.verdict === 'dismissed' ? ' (no proof; the prompt may still be running)'
      : r.resolved.verdict === 'retried' ? ` (as job ${r.retried_as || ''})` : '')));
@@ -2321,7 +2327,7 @@ function qsig(q) {
   // must keep its identity through the poll — the times are ticked in place instead
   return JSON.stringify([slug,
     q.jobs.map(r => [r.id, r.kind, r.state, r.project, r.project_name || '', r.scene || '', r.scene_title || '',
-                     r.stage || '', r.error || '', !!r.resolved, r.take || '', (r.prompt_ids || []).join(','),
+                     r.stage || '', r.error || '', r.notice || '', !!r.resolved, r.take || '', (r.prompt_ids || []).join(','),
                      !!r.retry_allowed, r.retried_as || '']),
     [...qMsg.entries()]]);
 }

@@ -146,6 +146,16 @@ class Selection(unittest.TestCase):
         self.assertEqual(job['state'], 'finished', job['error'])
         return job
 
+    def rehome_first_take(self, scene_ix=0):
+        """The stub ComfyUI hands every render the same output folder. A real second take lives in its own folder
+        (a repeat of the same request is ComfyUI's cache answering with the SAME video, which the director refuses
+        to record twice), so move the first take to a folder of its own before the second render lands."""
+        def move(p):
+            t = p['scenes'][scene_ix]['takes'][0]
+            t['run'] = f'/comfy/output/director/run-first-{next(self.seq)}'
+            t['path'] = t['run'] + '/video.mp4'
+        projects.mutate(self.slug, move)
+
     def add_take(self, scene_ix=0, tid=None, run=None):
         """Append a finished take record the way a render leaves it; no tid means a legacy take."""
         run = run or f'/comfy/output/director/run-{next(self.seq)}'
@@ -326,6 +336,7 @@ class Selection(unittest.TestCase):
 
     def test_a_finished_render_never_moves_an_explicit_pick(self):
         self.render(self.ids[0])
+        self.rehome_first_take()
         t1 = projects.load(self.slug)['scenes'][0]['takes'][0]
         projects.mutate(self.slug, lambda p: projects.set_explicit(p, self.ids[0], t1['id']))
         self.render(self.ids[0])                               # a second take for the same scene
@@ -338,6 +349,7 @@ class Selection(unittest.TestCase):
 
     def test_star_endpoint_selects_by_id_and_auto_releases(self):
         self.render(self.ids[0])
+        self.rehome_first_take()
         self.render(self.ids[0])
         t1, t2 = projects.load(self.slug)['scenes'][0]['takes']
         legacy = self.add_take(1, run='/comfy/output/director/run-old')

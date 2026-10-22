@@ -479,7 +479,7 @@ function drawQueue(q, force) {
   const rows = (q && q.jobs) || [];
   $('queueBox').hidden = !rows.length;
   const sig = JSON.stringify([rows.map(r => [r.id, r.kind, r.state, r.project || '', r.project_name || '', r.scene_title || '',
-                                             r.stage || '', r.error || '', !!r.resolved, (r.prompt_ids || []).join(','),
+                                             r.stage || '', r.error || '', r.notice || '', !!r.resolved, (r.prompt_ids || []).join(','),
                                              !!r.retry_allowed, r.retried_as || '']),
                               [...qMsg.entries()]]);
   if (!force && $('queueJobs').dataset.sig === sig) { tickQueue(); return; }
@@ -491,7 +491,7 @@ function drawQueue(q, force) {
     const b = document.createElement('b'); b.textContent = r.kind; li.append(b);
     li.append(' ' + (r.project ? (r.project_name || r.project) + (r.scene_title ? ' · ' + r.scene_title : '') : 'single shot') + ' ');
     const st = document.createElement('span');
-    st.textContent = qword(r.state) + (r.stage ? ' · ' + r.stage : '') + (r.error ? ': ' + r.error : '');
+    st.textContent = qword(r.state) + (r.stage ? ' · ' + r.stage : '') + (r.error ? ': ' + r.error : '') + (r.notice ? ' · ' + r.notice : '');
     if (r.error) st.className = 'qerr';
     li.append(st);
     if (r.resolved && r.resolved.verdict === 'retried') {

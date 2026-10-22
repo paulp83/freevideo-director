@@ -1546,6 +1546,7 @@ def public(job):
     out['retry_allowed'] = bool(job.get('retry_allowed'))
     out['retry_of'] = job.get('retry_of')
     out['retried_as'] = job.get('retried_as')
+    out['notice'] = job.get('notice')
     out['stages'] = [{**s, 'seconds': round((s['ended'] or now) - s['started']) if s['started'] else None}
                      for s in job['stages']]
     out['elapsed'] = round(now - job['created'])
@@ -1740,16 +1741,30 @@ def take_recorder(slug, scene_id, job_id, take_id, preset_name, seed, variant, s
     this id, this job, or this exact run directory already recorded means nothing is appended
     twice, whether the proof comes live, late after reconcile, or from a recovery pass."""
     def on_take(take):
+        duplicate = []
+
         def apply(proj):
             s = proj['scenes'][projects.scene_index(proj, scene_id)]
             if any(t.get('id') == take_id or t.get('job') == job_id for t in s['takes']):
                 return                                   # already recorded (a resolved unknown job)
+            same = next((t for t in s['takes'] if t.get('run') and t.get('run') == take['run']), None)
+            if same is not None:
+                # ComfyUI answered an identical request (same seed and inputs) from its cache: the output is the
+                # video an earlier take already points at, so recording it again would show one file as two takes
+                duplicate.append(same.get('id') or same.get('run'))
+                return
             s['takes'].append({'id': take_id, 'job': job_id, 'provenance': 'recorded',
                                'run': take['run'], 'path': take['path'], 'url': take['url'], 'preset': preset_name,
                                'seed': seed, 'created': time.time(), 'final': None, 'final_url': None,
                                'variant': list(variant) if variant else None,
                                'source_take': source_take})
         projects.mutate(slug, apply)
+        if duplicate:
+            job = JOBS.get(job_id)
+            if job is not None:
+                job['notice'] = ('ComfyUI returned its cached result for an identical request (same seed and inputs), '
+                                 f'so no new take was recorded: the video is take {duplicate[0]}. '
+                                 'Use a new seed for another take.')
     return on_take
 
 

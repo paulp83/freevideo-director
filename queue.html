@@ -98,7 +98,7 @@ function queueRows(data) {
   const jobs = ((data && data.jobs) || []).map(j => ({
     id: 'j' + j.id, jid: j.id, kind: j.kind,
     where: j.project ? (j.project_name || j.project) + (j.scene_title ? ' · ' + j.scene_title : '') : 'single shot',
-    state: qword(j.state), stage: j.stage || '', error: j.error || '',
+    state: qword(j.state), stage: j.stage || '', error: j.error || '', notice: j.notice || '',
     times: [j.created, j.started, j.ended], eta: j.eta != null ? fmtSecs(j.eta) : '–',
     prompt_ids: j.prompt_ids || [], resolved: j.resolved || null, live: !!j.live,
     retry_allowed: !!j.retry_allowed, retried_as: j.retried_as || ''}));
@@ -133,6 +133,7 @@ function buildRow(j) {
   tr.append(td(j.kind), td(j.where));
   const stCell = td(j.state);
   if (j.error) { const err = document.createElement('span'); err.className = 'qerr'; err.textContent = ': ' + j.error; stCell.append(err); }
+  if (j.notice) { const nt = document.createElement('span'); nt.className = 'qnotice'; nt.textContent = ' · ' + j.notice; stCell.append(nt); }
   tr.append(stCell, td(j.stage), td('–'), td('–'), td(j.eta));
   const act = document.createElement('td');
   if (j.state === 'state unknown') {                 // the verdict stays on the row in words,
@@ -236,7 +237,7 @@ async function refresh() {
     const rows = queueRows(await r.json());
     const body = $('queueBody');
     // rebuild only when a row's data actually changes; the times tick in place otherwise
-    const sig = JSON.stringify([rows.map(x => [x.id, x.state, x.stage, x.error, x.eta,
+    const sig = JSON.stringify([rows.map(x => [x.id, x.state, x.stage, x.error, x.notice, x.eta,
                                                x.prompt_ids.join(','), !!x.resolved,
                                                x.retry_allowed, x.retried_as]),
                                 [...qMsg.entries()]]);
