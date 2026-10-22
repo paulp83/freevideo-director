@@ -1,0 +1,5 @@
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a close-up shot frames a folded white paper boat floating in a narrow metal rain gutter on the side of a weathered brick building. Heavy rain streaks downward in the background. The camera tracks right, following the boat as it catches the current and drifts past a rusted nail. [Shot 2] At 00:04.000, the camera cuts to a low-angle shot of the gutter's end pouring water onto the pavement below. The paper boat rides the stream off the lip, drops briefly, and lands with a splash in a growing puddle at the base. Ripples expand outward from the impact point.
+
+overall_soundscape: Heavy rain falls consistently against the brick wall and pavement. Water rushes audibly through the metal gutter, accompanied by the soft swishing of the paper boat. A sharp splash erupts when the boat hits the puddle, followed by the gentle lapping of water against the concrete edges.
+
+non_diegetic_music: A gentle, atmospheric synth pad at a slow tempo, layered with subtle high-frequency chimes that mimic raindrops. The music swells slightly as the boat falls, then fades to silence as the ripples settle.

@@ -1,0 +1,23 @@
+subject_definitions:
+<Subject 1> is the woman on the right side of <Picture 1>, wearing a purple "TEAM PIZZA" tank top, black shorts, red sneakers, and sunglasses.
+<Subject 2> is the man on the right side of <Picture 1>, wearing a purple "TEAM PIZZA" tank top, black shorts, a cap, and sunglasses.
+
+summary:
+[reference generation] The target video features <Subject 1> and <Subject 2> from <Picture 1> engaging in a playful lightsaber duel in the same parking lot setting.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the purple "TEAM PIZZA" tank top, black shorts, red sneakers, and sunglasses are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the purple "TEAM PIZZA" tank top, black shorts, cap, and sunglasses are retained.
+<Picture 1> (environment): weak_reference - the parking lot and brick building with orange doors are retained as the setting.
+
+detailed_description:
+The target video is a dynamic action scene set in a sunny outdoor parking lot.
+[Shot 1] A medium shot captures <Subject 1> and <Subject 2> standing in the parking lot with a brick building and orange roll-up doors in the background. <Subject 1> ignites a blue lightsaber, and <Subject 2> ignites a red one. They assume fighting stances and charge at each other.
+[Shot 2] At 00:04.000, the camera tracks closely as they clash blades. <Subject 1> parries a strike from <Subject 2>, spinning around. The camera shakes slightly with the impact.
+[Shot 3] At 00:07.000, the shot widens to show them stopping mid-swing, laughing. <Subject 1> lowers her lightsaber and points at <Subject 2>'s shirt. <Subject 2> shrugs playfully.
+
+overall_soundscape:
+Distant parking lot ambience, wind, and the high-pitched hum and crackle of lightsabers clashing.
+
+non_diegetic_music:
+Upbeat, playful action music with a comedic undertone.
