@@ -13,6 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
+import leak_guard   # noqa: E402
 import config, pilot   # noqa: E402
 
 WEB_PORT, DRIVER_PORT = 8393, 4456
@@ -28,16 +29,20 @@ def check(name, ok, detail=''):
 class Driver:
     def __init__(self):
         self.base = f'http://127.0.0.1:{DRIVER_PORT}'
-        self.proc = subprocess.Popen(['geckodriver', '--port', str(DRIVER_PORT)],
+        self.proc = leak_guard.spawn(['geckodriver', '--port', str(DRIVER_PORT)],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try:
                 self.call('GET', '/status'); break
             except Exception:
                 time.sleep(0.2)
-        caps = {'capabilities': {'alwaysMatch': {'browserName': 'firefox',
-                                                 'moz:firefoxOptions': {'args': ['-headless']}}}}
-        self.sid = self.call('POST', '/session', caps)['value']['sessionId']
+        try:                                                # a dead driver must not leak: stop, then fail
+            caps = {'capabilities': {'alwaysMatch': {'browserName': 'firefox',
+                                                     'moz:firefoxOptions': {'args': ['-headless']}}}}
+            self.sid = self.call('POST', '/session', caps)['value']['sessionId']
+        except Exception:
+            leak_guard.stop(self.proc)
+            raise
 
     def call(self, method, path, body=None):
         req = urllib.request.Request(self.base + path, method=method,
@@ -81,7 +86,7 @@ class Driver:
 
     def close(self):
         try: self.call('DELETE', f'/session/{self.sid}')
-        finally: self.proc.terminate()
+        finally: leak_guard.stop(self.proc)
 
 
 def http(method, path, obj=None):
@@ -207,7 +212,10 @@ def main():
         shutil.rmtree(tmp, ignore_errors=True)
 
     failed = results.count(False)
-    print(f'{len(results) - failed}/{len(results)} checks passed')
+    for pid, cmd in leak_guard.final_leaks():
+        print(f'LEAK - leftover process {pid}: {cmd[:100]}')
+        failed += 1
+    print(f'{len(results) - results.count(False)}/{len(results)} checks passed')
     sys.exit(1 if failed else 0)
 
 

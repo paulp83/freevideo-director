@@ -24,6 +24,7 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / 'tests' / 'fixtures'))
 import project as projects   # noqa: E402
+import leak_guard           # noqa: E402
 import make_fixture          # noqa: E402
 
 WEB_PORT, STUB_PORT, DRIVER_PORT = 8211, 8212, 4465
@@ -39,7 +40,7 @@ def check(name, ok, detail=''):
 class Driver:
     def __init__(self):
         self.base = f'http://127.0.0.1:{DRIVER_PORT}'
-        self.proc = subprocess.Popen(['geckodriver', '--port', str(DRIVER_PORT)],
+        self.proc = leak_guard.spawn(['geckodriver', '--port', str(DRIVER_PORT)],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try:
@@ -48,10 +49,14 @@ class Driver:
                 time.sleep(0.2)
         caps = {'capabilities': {'alwaysMatch': {'browserName': 'firefox',
                                                 'moz:firefoxOptions': {'args': ['-headless']}}}}
-        ses = self.call('POST', '/session', caps)
-        if 'sessionId' not in ses.get('value', {}):
-            raise RuntimeError('geckodriver session failed: ' + json.dumps(ses)[:300])
-        self.sid = ses['value']['sessionId']
+        try:                                                # a dead driver must not leak: stop, then fail
+            ses = self.call('POST', '/session', caps)
+            if 'sessionId' not in ses.get('value', {}):
+                raise RuntimeError('geckodriver session failed: ' + json.dumps(ses)[:300])
+            self.sid = ses['value']['sessionId']
+        except Exception:
+            leak_guard.stop(self.proc)
+            raise
 
     def call(self, method, path, body=None):
         req = urllib.request.Request(self.base + path, method=method,
@@ -106,7 +111,7 @@ class Driver:
 
     def close(self):
         try: self.call('DELETE', f'/session/{self.sid}')
-        finally: self.proc.terminate()
+        finally: leak_guard.stop(self.proc)
 
 
 CHIP = """const c = document.getElementById('rd-' + arguments[0]);
@@ -121,7 +126,7 @@ def main():
     slug, ids = man['slug'], man['scene_ids']
     comfy_root = tmp / 'comfy-stub'
     comfy_root.mkdir()
-    stub = subprocess.Popen([sys.executable, str(HERE / 'tests' / 'stub_comfy.py'),
+    stub = leak_guard.spawn([sys.executable, str(HERE / 'tests' / 'stub_comfy.py'),
                              '--port', str(STUB_PORT), '--root', str(comfy_root)],
                             env=dict(os.environ, COMFY_STUB_DROP=SEEDVR2),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -129,7 +134,7 @@ def main():
                 'project.ROOT = Path(%r); sys.argv = ["web.py", "--port", "%d"]; '
                 'import runpy; runpy.run_path(%r, run_name="__main__")'
                 % (str(HERE), str(projects.ROOT), WEB_PORT, str(HERE / 'web.py')))
-    web = subprocess.Popen([sys.executable, '-c', launcher],
+    web = leak_guard.spawn([sys.executable, '-c', launcher],
                            env=dict(os.environ,
                                     COMFY_URL=f'http://127.0.0.1:{STUB_PORT}',
                                     DIRECTOR_URL='http://127.0.0.1:1/v1/chat/completions',
@@ -293,11 +298,14 @@ def main():
     finally:
         if d: d.close()
         for p in (web, stub):
-            p.terminate()
+            leak_guard.stop(p)
         shutil.rmtree(tmp, ignore_errors=True)
     passed = sum(results)
+    leaks = leak_guard.final_leaks()
+    for pid, cmd in leaks:
+        print(f'LEAK - leftover process {pid}: {cmd[:100]}')
     print(f'{passed}/{len(results)} checks passed')
-    sys.exit(0 if passed == len(results) else 1)
+    sys.exit(0 if passed == len(results) and not leaks else 1)
 
 
 if __name__ == '__main__':

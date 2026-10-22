@@ -23,6 +23,7 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / 'tests' / 'fixtures'))
 import project as projects   # noqa: E402
+import leak_guard           # noqa: E402
 import make_fixture          # noqa: E402
 
 WEB_PORT, DRIVER_PORT = 8207, 4461
@@ -38,7 +39,7 @@ def check(name, ok, detail=''):
 class Driver:
     def __init__(self):
         self.base = f'http://127.0.0.1:{DRIVER_PORT}'
-        self.proc = subprocess.Popen(['geckodriver', '--port', str(DRIVER_PORT)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.proc = leak_guard.spawn(['geckodriver', '--port', str(DRIVER_PORT)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try:
                 self.call('GET', '/status'); break
@@ -49,10 +50,14 @@ class Driver:
                                                     # the comparison player starts on a plain button click;
                                                     # headless has no gesture pipeline, so allow audio autoplay
                                                     'prefs': {'media.autoplay.blocking_policy': 0}}}}}
-        ses = self.call('POST', '/session', caps)
-        if 'sessionId' not in ses.get('value', {}):
-            raise RuntimeError('geckodriver session failed: ' + json.dumps(ses)[:300])
-        self.sid = ses['value']['sessionId']
+        try:                                                # a dead driver must not leak: stop, then fail
+            ses = self.call('POST', '/session', caps)
+            if 'sessionId' not in ses.get('value', {}):
+                raise RuntimeError('geckodriver session failed: ' + json.dumps(ses)[:300])
+            self.sid = ses['value']['sessionId']
+        except Exception:
+            leak_guard.stop(self.proc)
+            raise
 
     def call(self, method, path, body=None):
         req = urllib.request.Request(self.base + path, method=method, data=json.dumps(body).encode() if body is not None else None,
@@ -122,7 +127,7 @@ class Driver:
 
     def close(self):
         try: self.call('DELETE', f'/session/{self.sid}')
-        finally: self.proc.terminate()
+        finally: leak_guard.stop(self.proc)
 
 
 HOOK = """
@@ -189,7 +194,7 @@ def main():
     man = make_fixture.build(tmp)
     slug, ids = man['slug'], man['scene_ids']
     launcher = LAUNCHER % (str(HERE), str(HERE / 'tests' / 'fixtures'), str(projects.ROOT), json.dumps([slug, ids]), WEB_PORT)
-    web = subprocess.Popen([sys.executable, '-c', launcher],
+    web = leak_guard.spawn([sys.executable, '-c', launcher],
                            # DIRECTOR_URL pinned closed: the prompt chip is deterministically
                            # Down, whatever docker happens to hold on 8144/8078
                            env=dict(os.environ, COMFY_URL='http://127.0.0.1:1',
@@ -591,11 +596,14 @@ def main():
         print(f'screenshots -> {SHOTS}')
     finally:
         if d: d.close()
-        web.terminate()
+        leak_guard.stop(web)
         shutil.rmtree(tmp, ignore_errors=True)
     passed = sum(1 for r in results if r)
+    leaks = leak_guard.final_leaks()
+    for pid, cmd in leaks:
+        print(f'LEAK - leftover process {pid}: {cmd[:100]}')
     print(f'{passed}/{len(results)} browser checks passed')
-    sys.exit(0 if passed == len(results) else 1)
+    sys.exit(0 if passed == len(results) and not leaks else 1)
 
 
 if __name__ == '__main__':

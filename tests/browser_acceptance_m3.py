@@ -40,6 +40,7 @@ sys.path.insert(0, str(HERE / 'tests' / 'fixtures'))
 sys.path.insert(0, str(HERE / 'tests'))
 import project as projects   # noqa: E402
 import make_fixture          # noqa: E402
+import leak_guard          # noqa: E402
 import stub_comfy          # noqa: E402  canonical /object_info map the stub serves
 
 WEB_PORT, DRIVER_PORT = 8209, 4463
@@ -131,7 +132,7 @@ class Stub(BaseHTTPRequestHandler):
 class Driver:
     def __init__(self, prefs=None):
         self.base = f'http://127.0.0.1:{DRIVER_PORT}'
-        self.proc = subprocess.Popen(['geckodriver', '--port', str(DRIVER_PORT)],
+        self.proc = leak_guard.spawn(['geckodriver', '--port', str(DRIVER_PORT)],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try:
@@ -142,10 +143,14 @@ class Driver:
         fprefs.update(prefs or {})
         caps = {'capabilities': {'alwaysMatch': {'browserName': 'firefox', 'unhandledPromptBehavior': 'ignore',
                                                 'moz:firefoxOptions': {'args': ['-headless'], 'prefs': fprefs}}}}
-        ses = self.call('POST', '/session', caps)
-        if 'sessionId' not in ses.get('value', {}):
-            raise RuntimeError('geckodriver session failed: ' + json.dumps(ses)[:300])
-        self.sid = ses['value']['sessionId']
+        try:                                                # a dead driver must not leak: stop, then fail
+            ses = self.call('POST', '/session', caps)
+            if 'sessionId' not in ses.get('value', {}):
+                raise RuntimeError('geckodriver session failed: ' + json.dumps(ses)[:300])
+            self.sid = ses['value']['sessionId']
+        except Exception:
+            leak_guard.stop(self.proc)
+            raise
 
     def call(self, method, path, body=None):
         req = urllib.request.Request(self.base + path, method=method,
@@ -236,7 +241,7 @@ class Driver:
 
     def close(self):
         try: self.call('DELETE', f'/session/{self.sid}')
-        finally: self.proc.terminate()
+        finally: leak_guard.stop(self.proc)
 
 
 # the launcher mirrors web.py's __main__ startup block; the unknown-job and second-film rows
@@ -299,7 +304,7 @@ def main():
                                      'exec /usr/bin/ffmpeg "$@"\n')
     (gate_dir / 'ffmpeg').chmod(0o755)
     GATE.write_text('open')
-    webp = subprocess.Popen([sys.executable, '-c', launcher],
+    webp = leak_guard.spawn([sys.executable, '-c', launcher],
                             env=dict(os.environ, COMFY_URL=stub_url, JOBS_DB=str(tmp / 'jobs.db'),
                                      PATH=str(gate_dir) + os.pathsep + os.environ['PATH'],
                                      M3B3_FFMPEG_GATE=str(GATE)),
@@ -1084,13 +1089,16 @@ def main():
     finally:
         if d:
             d.close()
-        webp.terminate()
+        leak_guard.stop(webp)
         stub.shutdown()
         shutil.rmtree(tmp, ignore_errors=True)
 
     passed = sum(results)
+    leaks = leak_guard.final_leaks()
+    for pid, cmd in leaks:
+        print(f'LEAK - leftover process {pid}: {cmd[:100]}')
     print(f'\n{passed}/{len(results)} acceptance checks passed; screenshots -> {SHOTS}')
-    sys.exit(0 if passed == len(results) else 1)
+    sys.exit(0 if passed == len(results) and not leaks else 1)
 
 
 if __name__ == '__main__':

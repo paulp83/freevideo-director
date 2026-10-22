@@ -35,6 +35,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO))
+import leak_guard                                     # noqa: E402
 import project as projects                                 # noqa: E402
 
 PLAN = {'title': 'Restart film', 'bible': 'nothing in here', 'music': '',
@@ -86,16 +87,24 @@ class Harness:
 
     def start_stub(self, port=None):
         self.stub_port = port or self.stub_port
-        self.stub = subprocess.Popen([sys.executable, str(HERE / 'stub_comfy.py'),
+        self.stub = leak_guard.spawn([sys.executable, str(HERE / 'stub_comfy.py'),
                                       '--port', str(self.stub_port), '--root', str(self.comfy_root)],
                                      stdout=self.stub_log, stderr=subprocess.STDOUT)
-        self.wait_http(f'http://127.0.0.1:{self.stub_port}/_ctl/state', 10)
+        try:
+            self.wait_http(f'http://127.0.0.1:{self.stub_port}/_ctl/state', 10)
+        except Exception:
+            leak_guard.stop(self.stub)
+            raise
 
     def start_web(self):
-        self.web = subprocess.Popen([sys.executable, str(REPO / 'web.py'), '--port', str(self.web_port)],
+        self.web = leak_guard.spawn([sys.executable, str(REPO / 'web.py'), '--port', str(self.web_port)],
                                     cwd=str(REPO), env=self.env(),
                                     stdout=self.web_log, stderr=subprocess.STDOUT)
-        self.wait_http(f'http://127.0.0.1:{self.web_port}/api/queue', 20)
+        try:
+            self.wait_http(f'http://127.0.0.1:{self.web_port}/api/queue', 20)
+        except Exception:
+            leak_guard.stop(self.web)
+            raise
 
     def restart_web(self):
         assert self.web is None, 'kill the director before restarting it'
@@ -113,9 +122,7 @@ class Harness:
 
     def shutdown(self):
         for p in (self.web, self.stub):
-            if p and p.poll() is None:
-                p.kill()
-                p.wait()
+            leak_guard.stop(p)
         for f in (self.stub_log, self.web_log):
             f.close()
         shutil.rmtree(self.root, ignore_errors=True)

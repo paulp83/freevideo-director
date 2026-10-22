@@ -60,6 +60,7 @@ import enhance  # noqa: E402
 import finishing  # noqa: E402
 import project as projects  # noqa: E402
 import web  # noqa: E402
+import leak_guard  # noqa: E402
 
 # project.py snapshots projects_root at import time; during a full-suite run an
 # earlier test module may have imported it already. The in-process classes below
@@ -532,8 +533,8 @@ class WebFinishingGate(unittest.TestCase):
         try:
             cls.web1, cls.b1 = cls._start_web(cls.root1, cls.comfyroot, cls.sport)
         except Exception:
-            cls.stub.terminate()
-            cls.stub.wait(timeout=10)
+            leak_guard.stop(cls.web1)
+            leak_guard.stop(cls.stub)
             cls.director.shutdown()
             raise
 
@@ -546,11 +547,15 @@ class WebFinishingGate(unittest.TestCase):
                    COMFY_ROOT=str(root))
         if drop:
             env['COMFY_STUB_DROP'] = ','.join(drop)
-        proc = subprocess.Popen([sys.executable, str(HERE / 'stub_comfy.py'),
+        proc = leak_guard.spawn([sys.executable, str(HERE / 'stub_comfy.py'),
                                  '--port', str(port), '--root', str(root)],
                                 env=env, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL)
-        wait_http(f'http://127.0.0.1:{port}/object_info')
+        try:
+            wait_http(f'http://127.0.0.1:{port}/object_info')
+        except Exception:
+            leak_guard.stop(proc)
+            raise
         return proc, port
 
     @classmethod
@@ -568,20 +573,22 @@ class WebFinishingGate(unittest.TestCase):
                    READINESS_CACHE='0.05')
         if path_prefix:
             env['PATH'] = str(path_prefix) + os.pathsep + os.environ['PATH']
-        proc = subprocess.Popen([sys.executable, str(REPO / 'web.py'),
+        proc = leak_guard.spawn([sys.executable, str(REPO / 'web.py'),
                                  '--port', str(port)],
                                 env=env, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL)
-        wait_http(f'http://127.0.0.1:{port}/api/config')
+        try:
+            wait_http(f'http://127.0.0.1:{port}/api/config')
+        except Exception:
+            leak_guard.stop(proc)
+            raise
         return proc, port
 
     @classmethod
     def tearDownClass(cls):
         for proc in (getattr(cls, 'web1', None), getattr(cls, 'web2', None),
                      getattr(cls, 'stub', None)):
-            if proc is not None and proc.poll() is None:
-                proc.terminate()
-                proc.wait(timeout=10)
+            leak_guard.stop(proc)
         cls.director.shutdown()
 
     def api(self, port, method, path, body=None):
@@ -612,8 +619,7 @@ class WebFinishingGate(unittest.TestCase):
     def restart_stub(self, drop=()):
         # class attr: unittest builds a fresh instance per test method, so an
         # instance attr set by an earlier test would be invisible here
-        self.stub.terminate()
-        self.stub.wait(timeout=10)
+        leak_guard.stop(self.stub)
         self.__class__.stub, _ = self._start_stub(self.comfyroot, drop, self.sport)
 
     # -- tests (a..f fixes the execution order the backends need) -------------------
@@ -730,8 +736,9 @@ class WebFinishingGate(unittest.TestCase):
         root2 = MODROOT / 'web2'
         install_acc(root2, self.slug)
         self.restart_stub()  # full node set again: only ffmpeg should be broken
-        self.web2, self.b2 = self._start_web(root2, self.comfyroot, self.sport,
-                                             path_prefix=fakebin)
+        # class attr: tearDownClass must see web2 even though test_f starts it
+        self.__class__.web2, self.b2 = self._start_web(root2, self.comfyroot, self.sport,
+                                                       path_prefix=fakebin)
         rep = self.readiness(self.b2, project=self.slug)
         self.assertEqual(rep['level'], 'unavailable')
         self.assertIn('ffmpeg lacks export filters', rep['summary'])

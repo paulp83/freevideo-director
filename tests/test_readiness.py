@@ -22,6 +22,7 @@ from pathlib import Path
 import config
 import enhance
 import readiness
+import leak_guard
 
 HERE = Path(__file__).resolve().parent
 ABSENT = HERE / 'tests-fixtures' / 'no-such-file.json'
@@ -393,7 +394,7 @@ class TestRouteGates(ReadinessCase):
         self.web_port = sock.getsockname()[1]
         sock.close()
         self.web_log = open(self.tmp / 'web.log', 'wb')
-        self.web = subprocess.Popen(
+        self.web = leak_guard.spawn(
             [sys.executable, str(HERE.parent / 'web.py'), '--port', str(self.web_port)],
             cwd=str(HERE.parent),
             env=dict(os.environ, PROJECTS_ROOT=str(projects.ROOT),
@@ -410,11 +411,12 @@ class TestRouteGates(ReadinessCase):
             except OSError:
                 time.sleep(0.2)
         else:
+            # setUp raising skips tearDown: stop the server here or it leaks
+            leak_guard.stop(self.web)
             self.fail('web.py did not start: ' + self.web_log.read().decode(errors='replace')[-400:])
 
     def tearDown(self):
-        self.web.kill()
-        self.web.wait()
+        leak_guard.stop(self.web)
         self.web_log.close()
         self.projects.ROOT = self._saved_root
         super().tearDown()

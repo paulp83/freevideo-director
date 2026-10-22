@@ -17,6 +17,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
+import leak_guard     # noqa: E402
 import project as projects   # noqa: E402
 
 WEB_PORT, DRIVER_PORT = 8203, 4457
@@ -31,15 +32,19 @@ def check(name, ok, detail=''):
 class Driver:
     def __init__(self):
         self.base = f'http://127.0.0.1:{DRIVER_PORT}'
-        self.proc = subprocess.Popen(['geckodriver', '--port', str(DRIVER_PORT)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.proc = leak_guard.spawn(['geckodriver', '--port', str(DRIVER_PORT)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try:
                 self.call('GET', '/status'); break
             except Exception:
                 time.sleep(0.2)
-        caps = {'capabilities': {'alwaysMatch': {'browserName': 'firefox', 'unhandledPromptBehavior': 'ignore',
-                                                 'moz:firefoxOptions': {'args': ['-headless']}}}}
-        self.sid = self.call('POST', '/session', caps)['value']['sessionId']
+        try:                                            # a dead driver must not leak: stop, then fail
+            caps = {'capabilities': {'alwaysMatch': {'browserName': 'firefox', 'unhandledPromptBehavior': 'ignore',
+                                                     'moz:firefoxOptions': {'args': ['-headless']}}}}
+            self.sid = self.call('POST', '/session', caps)['value']['sessionId']
+        except Exception:
+            leak_guard.stop(self.proc)
+            raise
 
     def call(self, method, path, body=None):
         req = urllib.request.Request(self.base + path, method=method, data=json.dumps(body).encode() if body is not None else None,
@@ -75,7 +80,7 @@ class Driver:
 
     def close(self):
         try: self.call('DELETE', f'/session/{self.sid}')
-        finally: self.proc.terminate()
+        finally: leak_guard.stop(self.proc)
 
 
 HOOK = """
@@ -198,7 +203,7 @@ def main():
     launcher = ('import sys; sys.path.insert(0, %r); import project; from pathlib import Path; project.ROOT = Path(%r); '
                 'sys.argv = ["web.py", "--port", "%d"]; import runpy; runpy.run_path(%r, run_name="__main__")'
                 % (str(HERE), str(projects.ROOT), WEB_PORT, str(HERE / 'web.py')))
-    web = subprocess.Popen([sys.executable, '-c', launcher],
+    web = leak_guard.spawn([sys.executable, '-c', launcher],
                            env=dict(os.environ, JOBS_DB=str(tmp / 'jobs.db')),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d = None
@@ -316,10 +321,13 @@ def main():
                                                .map(v => v.getAttribute('preload'));""")))
     finally:
         if d: d.close()
-        web.terminate()
+        leak_guard.stop(web)
         shutil.rmtree(tmp, ignore_errors=True)
     failed = results.count(False)
-    print(f'{len(results) - failed}/{len(results)} browser checks passed')
+    for pid, cmd in leak_guard.final_leaks():
+        print(f'LEAK - leftover process {pid}: {cmd[:100]}')
+        failed += 1
+    print(f'{len(results) - results.count(False)}/{len(results)} browser checks passed')
     sys.exit(1 if failed else 0)
 
 
