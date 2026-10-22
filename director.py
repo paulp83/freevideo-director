@@ -115,7 +115,9 @@ def direct_report(idea, seconds=10, refs=(), first=None, last=None, think=True, 
                   max_side=1024, url=None, model=None, retries=1):
     """Return a dict: mode, text, tokens, model, first_failures, final_failures, retried.
 
-    A reply that fails the h3check format checks is sent back once (`retries`) with the failed check names."""
+    A reply that fails the h3check format checks is sent back once (`retries`) with the failed
+    check names and their one-line messages. A final still-failing reply is returned with its
+    check names in `final_failures`; a final empty reply raises DirectorError naming the checks."""
     if not idea.strip():
         raise DirectorError('describe the idea first')
     if not 4 <= seconds <= 15:
@@ -147,22 +149,25 @@ def direct_report(idea, seconds=10, refs=(), first=None, last=None, think=True, 
     content = [{'type': 'text', 'text': user}] + [image_part(x, max_side) for x in images]
     text, tokens = chat(url, model, system, content, think, temperature)
     text = re.sub(r'^```\w*\n|\n```$', '', text).strip()
-    if not text:
-        raise DirectorError('empty reply (try again, or turn reasoning off)')
-    bad = h3check.failures(mode, text, seconds, len(images))
+    rep = h3check.report(mode, text, seconds, len(images))
+    bad = [r['check'] for r in rep if not r['ok']]
     first_failures = list(bad)
     retried = False
     for _ in range(retries if bad else 0):
         retried = True
-        fix = ('Your reply failed these format checks: ' + ', '.join(bad) + '. Fix them and output ONLY the '
-               'corrected final prompt text, exactly as before: no markdown fences, no commentary.')
+        fix = ('Your reply failed these format checks: '
+               + '; '.join(f"{r['check']}: {r['detail']}" for r in rep if not r['ok'])
+               + '. Fix them and output ONLY the corrected final prompt text, exactly as before: '
+                 'no markdown fences, no commentary.')
         again, more = chat(url, model, system, content, think, temperature,
                            extra=[{'role': 'assistant', 'content': text}, {'role': 'user', 'content': fix}])
         again = re.sub(r'^```\w*\n|\n```$', '', again).strip()
         tokens = (tokens or 0) + (more or 0)
-        again_bad = h3check.failures(mode, again, seconds, len(images)) if again else bad + ['empty']
-        if len(again_bad) <= len(bad):                        # keep the better reply; a tie takes the later one
-            text, bad = again or text, again_bad
+        again_bad = [r['check'] for r in h3check.report(mode, again, seconds, len(images)) if not r['ok']]
+        if again and len(again_bad) <= len(bad):                # keep the better reply; a tie takes the later one
+            text, bad = again, again_bad
+    if not text:
+        raise DirectorError('the model replied with no prompt text (checks: ' + ', '.join(bad) + ')')
     return {'mode': mode, 'text': text, 'tokens': tokens, 'model': model,
             'first_failures': first_failures, 'final_failures': list(bad), 'retried': retried}
 
