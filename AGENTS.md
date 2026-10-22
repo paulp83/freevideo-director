@@ -32,7 +32,8 @@ Check a change by running it:
    to a temp projects dir, so it never touches `projects/`. `test_restart_acceptance` skips unless
    `DIRECTOR_SLOW_SUITES=1`. `tests/test_zz_no_leaks.py` runs last and fails the whole suite when a
    test-spawned server (`web.py`, `stub_comfy.py`, geckodriver, headless firefox) outlives the run:
-   start children with `tests/leak_guard.py` (`spawn` + `stop`), which sweeps them at exit as a net.
+   start children with `tests/leak_guard.py` (`spawn` + `stop`), which sweeps them at exit and
+   starts a detached `tests/leak_watchdog.py` that sweeps them even if the runner is SIGKILLed.
 3. The headless-Firefox suites (`tests/browser_*.py`) and `node tests/autosave_check.js` are not under
    discover — run each separately, one at a time; they need geckodriver + firefox on PATH and bind
    fixed ports, so leftovers from one run break the next.
