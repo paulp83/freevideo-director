@@ -60,5 +60,29 @@ class DuplicateTake(unittest.TestCase):
         self.assertIsNone(job.get('notice'))                 # a replay of the same job is not a duplicate
 
 
+class ResultFile(unittest.TestCase):
+    def test_a_stage_open_when_the_result_is_written_gets_an_end_time(self):
+        # found on real renders: every result file said the render stage never ended
+        tmp = Path(tempfile.mkdtemp(prefix='result-stage-'))
+        saved = projects.ROOT
+        projects.ROOT = tmp / 'projects'
+        try:
+            p = projects.create('Res', 'x', 8, '16:9', [])
+            slug = p['slug']
+            job = web.new_job('render-draft', ['render'], project=slug, scene='s1')
+            web.activate(job, 'render')                      # the render stage is active when the job body ends
+            job['take'] = {'run': 'out/r', 'path': 'out/r/video.mp4', 'url': '/f'}
+            web.write_job_result(job, 'take-1')
+            res = projects.read_job_result(slug, job['id']) if hasattr(projects, 'read_job_result') else \
+                __import__('json').loads((projects.ROOT / slug / 'jobs' / f"{job['id']}.result.json").read_text())
+            stage = res['stages'][0]
+            self.assertIsNotNone(stage['ended'])
+            self.assertGreaterEqual(stage['ended'], stage['started'])
+        finally:
+            projects.ROOT = saved
+            shutil.rmtree(tmp, ignore_errors=True)
+            web.JOBS.clear()
+
+
 if __name__ == '__main__':
     unittest.main()

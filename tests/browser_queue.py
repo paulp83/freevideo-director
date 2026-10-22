@@ -378,6 +378,23 @@ def main():
         rclosed = d.wait("!document.getElementById('retryAsk').open && document.getElementById('queueDrawer').open", timeout=5)
         check('Escape on the retry dialog submits nothing and leaves the drawer open',
               bool(rclosed) and d.js("return window.__hits('/retry');") == h0r)
+        # the keyboard-only path (audit finding): focus the Retry… button, open with Enter, Tab must stay inside
+        # the dialog, and Escape must hand focus back to that same button without submitting anything
+        d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
+                  .find(r => r.textContent.includes('render-final'));
+                [...r.querySelectorAll('button')].find(b => b.textContent === 'Retry…').focus(); return 1;""")
+        d.key('\ue007')                                                      # Enter
+        kopen = d.wait("document.getElementById('retryAsk').open", timeout=5)
+        tabs = []
+        for _ in range(6):
+            d.key('\ue004')                                                  # Tab
+            tabs.append(d.js("return !!(document.activeElement && document.activeElement.closest('#retryAsk'));"))
+        d.key('\ue00c')                                                      # Escape
+        kclosed = d.wait("!document.getElementById('retryAsk').open", timeout=5)
+        kback = d.js("return !!(document.activeElement && document.activeElement.textContent === 'Retry…');")
+        check('the Retry dialog opens by keyboard, keeps Tab inside, and Escape returns focus to the Retry… button',
+              bool(kopen) and all(tabs) and bool(kclosed) and kback and d.js("return window.__hits('/retry');") == h0r,
+              json.dumps([bool(kopen), tabs, bool(kclosed), kback]))
         d.js("""const r = [...document.querySelectorAll('#queueMine .qrow')]
                   .find(r => r.textContent.includes('render-final'));
                 [...r.querySelectorAll('button')].find(b => b.textContent === 'Retry…').click(); return 1;""")

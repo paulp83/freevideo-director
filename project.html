@@ -228,6 +228,8 @@ details:not([open]) > :not(summary) { display: none; }
 /* settings drawer */
 dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(760px, 94vw); max-height: 88vh; color: var(--ink); background: var(--panel); }
 dialog::backdrop { background: rgba(0,0,0,.45); }
+.conflictbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid #b45309; margin: 6px 12px; }
+.conflictbar[hidden] { display: none; }
 #settingsHead { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
                 position: sticky; top: 0; background: var(--panel); }
 #settingsBody { padding: 14px 16px 20px; overflow-y: auto; }
@@ -395,6 +397,11 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 </div>
 
 <!-- project workspace -->
+<div id="conflictBar" class="conflictbar" role="alert" hidden>
+  <span id="conflictBarText">The film changed elsewhere. Your draft is kept and not saved.</span>
+  <button class="btn small" id="conflictBarMine">Keep mine</button>
+  <button class="btn ghost small" id="conflictBarReload">Reload</button>
+</div>
 <main id="projWrap" hidden>
   <nav id="navigator" role="listbox" aria-label="Scenes"></nav>
   <span id="navSay" class="sr" aria-live="polite"></span>
@@ -599,6 +606,22 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <div class="row" style="margin-top:10px">
       <button class="btn" id="dismissGo">Dismiss without proof</button>
       <button class="btn ghost" id="dismissNo">Keep it unknown</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- a save the server refused because the film changed elsewhere: three real choices, and closing the dialog
+     (Escape, Decide later) keeps the draft untouched -- never window.confirm, whose Cancel used to discard it -->
+<dialog id="conflictAsk" aria-labelledby="conflictTitle">
+  <div style="padding:14px 16px">
+    <b id="conflictTitle">This film changed while you were editing</b>
+    <p class="hint" id="conflictWhat" style="margin-top:8px"></p>
+    <p class="hint">Your draft is kept either way until you choose. <b>Keep mine</b> sends your edits on top of the
+      newer copy (only the fields you changed). <b>Reload</b> throws your draft away and shows the saved copy.</p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="conflictMine">Keep mine</button>
+      <button class="btn ghost" id="conflictReload">Reload (discard my draft)</button>
+      <button class="btn ghost" id="conflictLater" autofocus>Decide later</button>
     </div>
   </div>
 </dialog>
@@ -892,6 +915,7 @@ async function open(s) {
     }
   }
   slug = s; history.replaceState(null, '', '/project?p=' + s);
+  conflictCopy = null; conflictOpener = null; $('conflictBar').hidden = true; if ($('conflictAsk').open) $('conflictAsk').close();   // a conflict belongs to the film it was raised on
   st = autosaveState(s); viewToken++;   // the old draft is dropped; in-flight responses fail asStale
   selId = null; previewRef = null; viewMode = 'scene';
   showProj(); $('picker').value = s; $('openSettings').hidden = false; $('stages').hidden = false; placeReadiness();
@@ -2013,6 +2037,41 @@ function save(structure) {        // immediate kick; structure = the new scene l
   if (structure) st.structure = structure;
   return pump();
 }
+let conflictCopy = null, conflictFields = '';            // the newer saved copy and the fields that clashed, while a conflict is open
+function showConflict(openDialog) {
+  const what = 'Changed elsewhere' + (conflictFields ? ': ' + conflictFields : '') + '.';
+  $('conflictWhat').textContent = what;
+  $('conflictBarText').textContent = what + ' Your draft is kept and not saved yet.';
+  $('conflictBar').hidden = false;
+  flash('Not saved: changed elsewhere, your draft is kept', true);
+  if (openDialog && !$('conflictAsk').open) { conflictOpener = document.activeElement; $('conflictAsk').showModal(); }
+}
+let conflictOpener = null;
+function conflictDone() {
+  $('conflictBar').hidden = true;
+  if ($('conflictAsk').open) $('conflictAsk').close();
+  const back = conflictOpener; conflictOpener = null;
+  if (back && back.isConnected && back !== document.body) back.focus();
+}
+async function resolveConflictUi(keepMine) {
+  if (!st.conflict) { conflictDone(); return; }
+  const requestSlug = slug, copy = conflictCopy;
+  const rev = asResolveConflict(st, keepMine);
+  conflictCopy = null;
+  conflictDone();
+  if (rev !== null) { st.rev = rev; flash('Saving your draft…'); pump(); }     // Keep mine: resend on the new rev
+  else if (copy && requestSlug === slug) {
+    proj = copy; viewToken++; document.activeElement.blur(); draw(true); flash('Reloaded the saved copy');   // the draft is gone: repaint the field the user typed in
+  }
+}
+$('conflictMine').onclick = () => resolveConflictUi(true);
+$('conflictReload').onclick = () => resolveConflictUi(false);
+$('conflictBarMine').onclick = () => resolveConflictUi(true);
+$('conflictBarReload').onclick = () => resolveConflictUi(false);
+$('conflictLater').onclick = () => { $('conflictAsk').close(); $('conflictBar').hidden = false; };   // draft pending, banner stays
+$('conflictAsk').addEventListener('close', () => {          // Escape closes it the same way: decide later, nothing lost
+  if (st.conflict) { $('conflictBar').hidden = false; const b = conflictOpener; conflictOpener = null; if (b && b.isConnected && b !== document.body) b.focus(); }
+});
 function pump() {                 // drain the pending drafts; never more than one request in flight
   if (saveBusy) { saveAgain = true; return saveBusy; }
   saveBusy = (async () => {
@@ -2036,12 +2095,9 @@ async function doSave() {
     if (e.status === 409 && e.payload && e.payload.project) {
       asConflict(st, e.payload.fields, e.payload.project.rev);
       const fields = (e.payload.fields || []).join(', ');
-      const mine = confirm('The film changed while you were editing' + (fields ? ' (' + fields + ')' : '') +
-        '. Your draft is kept. OK keeps your draft and overwrites the server copy; Cancel discards your draft and reloads the server copy.');
-      if (asStale(st, requestSlug)) return;
-      const rev = asResolveConflict(st, mine);
-      if (rev !== null) st.rev = rev;                       // Keep mine: the loop below resends on the new rev
-      else { proj = e.payload.project; viewToken++; document.activeElement.blur(); draw(true); flash('Reloaded the saved copy'); }  // the draft is gone: repaint the field the user typed in
+      conflictCopy = e.payload.project;                      // the newer saved copy, for Reload
+      conflictFields = fields;
+      showConflict(true);                                    // the draft stays pending until the user picks
       return;
     }
     st.error = e;

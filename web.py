@@ -801,7 +801,9 @@ def write_job_result(job, take_id=None):
         'final_url': job['final'] and job['final'].get('url'),
         'prompt_ids': list(job['prompt_ids']),
         'started': job['created'], 'finished': time.time(),
-        'stages': [{'key': s['key'], 'started': s['started'], 'ended': s['ended']} for s in job['stages']]})
+        # written just before run_job closes the last stage: a stage still open now ends now, not "never"
+        'stages': [{'key': s['key'], 'started': s['started'],
+                    'ended': s['ended'] or (time.time() if s['state'] == 'active' else None)} for s in job['stages']]})
 
 
 def enhance_late_record(job, on_final):
