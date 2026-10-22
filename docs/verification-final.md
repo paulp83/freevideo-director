@@ -60,6 +60,36 @@ model unless it says so explicitly:
   render, SeedVR2/RIFE end to end, the live schema-2 eval run, and the pilot itself,
   which needs 12 real renders plus a human review.
 
+## Process cleanup
+
+Test harnesses spawn servers (`web.py`, `tests/stub_comfy.py`, geckodriver, headless
+Firefox). `tests/leak_guard.py` stops them on any normal end of a run (atexit plus the
+browser harnesses' `tearDown`), and `tests/test_zz_no_leaks.py` fails the suite if any
+survive. Neither runs when the runner itself is SIGKILLed, so `leak_guard` also starts a
+detached `tests/leak_watchdog.py`: it tracks every descendant, every process carrying
+`DIRECTOR_TEST_OWNER=<runner pid>` in its environment, and every pid `spawn()` recorded
+in a pidfile — re-checking start times each 0.5 s so a reused pid is never killed — and
+SIGKILLs them deepest-first the moment the runner exits, crashes, or is killed. The
+watchdog only ever touches pids it recorded, so a user's own servers and browser are
+off-limits. On a clean exit `leak_guard` unlinks the pidfile, which tells the watchdog
+to sweep anything left (including orphans `stop()` was told to forget) and quit, and
+`_sweep()` waits for it — so the runner is finished only once everything it started,
+watchdog included, is gone. Proofs, each with an external `/proc` scan (matching
+web/stub cmdlines, geckodriver, headless Firefox, and the watchdog itself):
+
+| Run | state at scan | leftovers |
+|---|---|---|
+| `kill -9 tests/browser_status.py` at 25 s, scan 4 s later | 7 checks done, servers + Firefox live | 0 (was: 2× web.py, geckodriver, Firefox) |
+| `kill -9` restart-acceptance runner at 12 s, scan 4 s later | 8 tests run, servers live | 0 |
+| `kill -9 tests.test_finishing_acceptance` at 8 s, scan 4 s later | mid ffmpeg export, servers live | 0 |
+| `timeout -s KILL 20 unittest discover tests`, scan 3 s later, rc 137 | mid finishing-acceptance | 0, watchdog itself included |
+| full suite ×2, node autosave check, `browser_autosave.py`, `browser_pilot_review.py`, scan 0.5 s after each | normal exit | 0 |
+
+`tests/test_leak_watchdog.py` (3 cases, green on repeated standalone runs and under
+discover) covers sweep after SIGKILL of the runner, sweep of an orphan deliberately
+forgotten by `stop()`, and that an unrelated process survives untouched.
+
+
 ## Remaining limits
 
 - Restart recovery, retry and reconcile are proven against a stub ComfyUI process and
