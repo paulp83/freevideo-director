@@ -83,6 +83,7 @@ class Harness:
         return dict(os.environ, PROJECTS_ROOT=str(self.projects_root), JOBS_DB=str(self.db),
                     STATS=str(self.root / 'stats.json'), COMFY_ROOT=str(self.comfy_root),
                     COMFY_URL=f'http://127.0.0.1:{self.stub_port}',
+                    DIRECTOR_URL='http://127.0.0.1:1/v1',      # never a real model: the result must not depend on what runs here
                     POLL_SECONDS='0.15', RECONCILE_SECONDS='1.2', JOB_TIMEOUT='120')
 
     def start_stub(self, port=None):

@@ -36,7 +36,8 @@ Check a change by running it:
    starts a detached `tests/leak_watchdog.py` that sweeps them even if the runner is SIGKILLed.
 3. The headless-Firefox suites (`tests/browser_*.py`) and `node tests/autosave_check.js` are not under
    discover — run each separately, one at a time; they need geckodriver + firefox on PATH and bind
-   fixed ports, so leftovers from one run break the next.
+   fixed ports, so leftovers from one run break the next. `browser_autosave_workspace.py` drives the
+   shipping workspace page; `browser_autosave.py` drives only the `/project/classic` fallback.
 4. Start the UI on a spare port (`python3 web.py --port 8199`) and `curl` the pages and `/api/...`
    endpoints you touched. The UI runs without a director model or ComfyUI; only *Write prompt* and
    *Render* need them.
@@ -47,6 +48,17 @@ Check a change by running it:
 
 ## Gotchas
 
+- **ComfyUI shapes come from captures, not guesses.** History entries nest `status_str` inside `status` and an
+  interrupt is `status_str: "error"` with an `execution_interrupted` message (only the message kind separates it from
+  `execution_error`); combo inputs may be `[[names], {default}]`. Stubs must use the real shapes
+  (`tests/fixtures/comfy_history`, `comfy_object_info`); a stub that guesses has already hidden two bugs.
+- **Cancel names the prompt and waits.** `/interrupt` carries `{"prompt_id": ...}` (atomic on this ComfyUI) and
+  `target_cancel` polls up to `cancel_confirm_seconds` for the prompt to leave the queue: a real interrupt unwinds in
+  seconds. An unconfirmed cancel is `unknown`, never `cancelled`.
+- **A cached repeat is not a take.** An identical request (same seed and inputs) comes back from ComfyUI's cache with
+  the earlier video; `take_recorder` refuses to record that run twice and the job carries a `notice`.
+- **Render progress is FreeVideo's broadcast.** `freevideo_progress` has no prompt id; `render_progress` uses it only
+  while the job's prompt is the one ComfyUI runs, else the sampler counter.
 - **H3 format comes from `skill/`.** The director's system prompt is the pinned MiniMax skill;
   `h3check.py` encodes its field names and rules, and `director.py` retries when a check fails. Change
   the skill and `h3check.py` together.

@@ -102,3 +102,27 @@ forgotten by `stop()`, and that an unrelated process survives untouched.
 - Browser suites cover desktop widths plus one phone width on the layout suite; the
   rest run at 1440-wide. Touch behaviour beyond that is unchecked.
 - Voice: unchanged by this branch, still untested.
+
+
+## Real-backend run (2026-10-21/22) and the final gate battery
+
+Run against ComfyUI 0.34.0 (RTX 5090, FreeVideo) and the live director model `qwen3.8-27b`, with a throwaway projects root
+and its own `jobs.db`. Per-item results are in `docs/real-backend-checklist.md`: groups A and B pass, C1 and C2 pass, C3 is
+partly verified (no real model mistake occurred), D (human) is open.
+
+Bugs found only by the real backend, each fixed with a test and a real capture where one applies:
+| Found by | Bug | Fix |
+|---|---|---|
+| A1 | a failed prompt classified `interrupted` (stubs put `status_str` at the wrong level) | `30d9752` |
+| A1 | installed RIFE model read as unconfirmed (legacy combo shape) | `8399977` |
+| real renders | a cached repeat recorded the same video as a second take | `e99f9b5` |
+| B2 | cancel with a neighbour queued ended `unknown` for ~17 s | `5ed402d` |
+| B11 | render progress stuck at 50/50 for 70 s and absent after a reattach | `5ed402d` |
+| B10 | a live unanswered submit never offered Retry (jobs.db v4 `submit_unanswered`) | `916db70` |
+| B5 | page said SeedVR2 outputs 1920×1080; it keeps the take's aspect (1890×1080) | `916db70` |
+| result files | the render stage never recorded an end time | `19c738b` |
+| restart suite | a test depended on whether a real model happened to run on the machine | launchers pin a dead `DIRECTOR_URL` |
+
+Final gates on the last commit: unit 370 OK (10 skipped); node autosave core 10/10; restart acceptance 10/10;
+browser: autosave (classic) 33, autosave workspace 31, status 19, layout 78, compare 68, queue 62, readiness 21,
+finishing 18, acceptance 75, pilot review 22; zero leftover processes after the batch.

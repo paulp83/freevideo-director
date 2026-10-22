@@ -267,7 +267,8 @@ def main():
     slug, ids = man['slug'], man['scene_ids']
     launcher = LAUNCHER % (str(HERE), str(HERE / 'tests' / 'fixtures'), str(projects.ROOT), json.dumps([slug, ids]), WEB_PORT)
     web = leak_guard.spawn([sys.executable, '-c', launcher],
-                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1', JOBS_DB=str(tmp / 'jobs.db')),
+                           env=dict(os.environ, COMFY_URL='http://127.0.0.1:1', DIRECTOR_URL='http://127.0.0.1:1/v1',   # never a real model
+                                    JOBS_DB=str(tmp / 'jobs.db')),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d = None
     try:
@@ -640,9 +641,12 @@ def main():
         check('the running job row fills both time columns with different labelled values',
               re.match(r'^(\d+m \d+s|\d+s)$', tq['q']) and re.match(r'^(\d+m \d+s|\d+s)$', tq['run']), json.dumps(tq))
         t1 = d.js("return [window.__tr.children[4].textContent, window.__tr.children[5].textContent];")
-        time.sleep(1.4)
-        t2 = d.js("""return [window.__tr === [...document.querySelectorAll('#queueBody tr')].find(r => r === window.__tr),
-                              window.__tr.children[4].textContent, window.__tr.children[5].textContent];""")
+        for _ in range(20):                                   # wait (bounded) for a tick instead of guessing one second
+            time.sleep(0.5)
+            t2 = d.js("""return [window.__tr === [...document.querySelectorAll('#queueBody tr')].find(r => r === window.__tr),
+                                  window.__tr.children[4].textContent, window.__tr.children[5].textContent];""")
+            if t2[2] != t1[1]:
+                break
         def secs(s):
             m = re.match(r'^(?:(\d+)m )?(\d+)s$', s)
             return 60 * int(m.group(1) or 0) + int(m.group(2)) if m else -1

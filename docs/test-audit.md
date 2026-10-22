@@ -18,16 +18,24 @@ thresholds were extracted (`director-work/audit/extract.py`) and each hit was ma
 | Fixture/count changes | queue rows 6 -> 7 and live count after the Retry fixtures were added | justified |
 | Leak sweep edits (4fc080d) | `sys.exit(...)` and the geckodriver session check replaced by the shared leak-guard exit path | justified (suite fails on leftovers) |
 | Threshold loosened | comparison players: brief said >=30% of viewport height, test asserts >=25% | justified: two 16:9 players side by side at 1440x900 cap at ~28% (454x255 px); disclosed by the agent |
-| Coverage dropped | acceptance suite lost the keyboard path for the **Retry** dialog (its stub never offers `retry_allowed`); `browser_compare` still covers the button's gating, but no test drives Retry's dialog by keyboard or checks focus restoration after it | **gap, open** |
-| Behaviour weakened | conflict dialog: the check "stale tab keeps its draft" was removed when **Cancel was changed to Reload**, which discards the unsaved edits. The design asks that a conflict "preserves the local draft" | **defect, open** (see below) |
+| Coverage dropped | acceptance suite lost the keyboard path for the **Retry** dialog (its stub never offers `retry_allowed`); `browser_compare` still covers the button's gating, but no test drove Retry's dialog by keyboard or checked focus restoration | **gap, resolved** (finding 2) |
+| Behaviour weakened | conflict dialog: the check "stale tab keeps its draft" was removed when **Cancel was changed to Reload**, which discards the unsaved edits. The design asks that a conflict "preserves the local draft" | **defect, resolved** (finding 1) |
 
-## Open findings
-1. **Conflict dialog discards edits on Cancel/Escape** (`project.html` autosave core, introduced with the hardening pass
-   `a1a13ec`). A user who dismisses the native `confirm()` loses their draft. Fix proposed: a three-way in-page dialog
-   (Keep mine / Reload / Decide later) where closing leaves the draft pending and dirty; reinstate "stale tab keeps its
-   draft" and cover the new choices in `browser_autosave.py` and `tests/autosave_check.js`.
-2. **Retry dialog keyboard/focus test missing.** Add a scenario with a stub that offers `retry_allowed` (the queue launcher
-   already seeds retry rows) driving open, Tab trap, Escape and focus restoration by keyboard.
+## Findings
+1. **Conflict dialog discarded edits on Cancel/Escape** — *resolved* (`19c738b`). The workspace page now asks with
+   Keep mine / Reload / Decide later in an in-page dialog (default focus on Decide later). Escape and Decide later keep
+   the draft pending behind a banner; nothing is written or adopted until the user chooses. Covered by
+   `tests/browser_autosave_workspace.py` (stale tab keeps its draft, a poll does not discard it, Reload and Keep mine from
+   the dialog and from the banner). The classic fallback page still uses the old native confirm.
+2. **Retry dialog had no keyboard-only test** — *resolved* (`browser_queue.py`): Enter opens it, Tab stays inside, Escape
+   returns focus to the Retry… button and submits nothing.
+3. **The autosave browser suite only ever drove `/project/classic`** — *found while fixing 1, resolved*. The workspace page,
+   which ships, had no delayed-save, failed-save, switch, two-tab or poll scenarios in a real browser. A workspace version
+   of the suite now exists (`tests/browser_autosave_workspace.py`, 31 checks); the classic suite stays for the fallback.
+   The audit method (edits after first commit) could not see this: the gap was a suite that was weak from birth.
+4. **Real-backend run exposed stubs that guessed ComfyUI's shapes** — fixed with real captures pinned as fixtures
+   (`tests/fixtures/comfy_history`, `comfy_object_info`). A stub-only suite had passed while a failed prompt read as
+   "interrupted" and an installed RIFE model read as unconfirmed.
 
 ## Limits of this audit
 - It only sees edits after a file's first commit. A test that was weak when first written, or an assertion that never
