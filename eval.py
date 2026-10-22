@@ -37,18 +37,13 @@ CASES = [
          grounding=['reston wranglers', 'plaid|flannel', 'bandana', 'rope'], labels=1),
 ]
 
-BASE = h3check.BASE
-REF = h3check.REF
-I2VA_LINE = h3check.I2VA_LINE
 
 
 def score(case, mode, text):
     low = text.lower()
     n_images = len(case.get('refs', [])) or len([x for x in (case.get('first'), case.get('last')) if x])
-    failed = set(h3check.failures(mode, text, case['seconds'], n_images))
-    names = ['fields_in_order'] + (['instruction_line'] if mode == 'i2va' else []) + \
-            ['has_shots', 'timestamps_in_range', 'labels_valid', 'no_markdown']
-    checks = {n: n not in failed for n in names}
+    rep = h3check.report(mode, text, case['seconds'], n_images)
+    checks = {r['check']: r['ok'] for r in rep}
     stamps = [int(m) * 60 + float(s) for m, s in re.findall(r'At (\d\d):(\d\d(?:\.\d+)?)', text)]
     shots = re.findall(r'\[Shot (\d+)\]', text)
     labels = {int(n) for n in re.findall(r'<Picture (\d+)>', text)}
