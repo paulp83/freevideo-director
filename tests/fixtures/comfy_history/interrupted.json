@@ -1,0 +1,44 @@
+{
+ "captured_from": "ComfyUI 0.34.0 /history on 2026-10-21 (real render cancelled via /interrupt by the director)",
+ "prompt_id": "7faab12c-5309-4a36-9f7c-54a33f5f24d1",
+ "entry": {
+  "status": {
+   "status_str": "error",
+   "completed": false,
+   "messages": [
+    [
+     "execution_start",
+     {
+      "prompt_id": "7faab12c-5309-4a36-9f7c-54a33f5f24d1",
+      "timestamp": 1792636113832
+     }
+    ],
+    [
+     "execution_cached",
+     {
+      "nodes": [],
+      "prompt_id": "7faab12c-5309-4a36-9f7c-54a33f5f24d1",
+      "timestamp": 1792636113833
+     }
+    ],
+    [
+     "execution_interrupted",
+     {
+      "prompt_id": "7faab12c-5309-4a36-9f7c-54a33f5f24d1",
+      "node_id": "1",
+      "node_type": "FreeVideoGenerate",
+      "executed": [],
+      "timestamp": 1792636123314
+     }
+    ]
+   ]
+  },
+  "outputs": {},
+  "top_level_keys": [
+   "meta",
+   "outputs",
+   "prompt",
+   "status"
+  ]
+ }
+}

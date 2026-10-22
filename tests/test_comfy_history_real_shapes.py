@@ -31,12 +31,8 @@ def _serve(entries):
 class RealHistoryShapes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.cap = {k: json.loads((FIX / f'{k}.json').read_text()) for k in ('completed', 'failed')}
+        cls.cap = {k: json.loads((FIX / f'{k}.json').read_text()) for k in ('completed', 'failed', 'interrupted')}
         entries = {c['prompt_id']: c['entry'] for c in cls.cap.values()}
-        interrupted = {'status': {'status_str': 'error', 'completed': False, 'messages': [
-            ['execution_start', {'timestamp': 1}], ['execution_interrupted', {'node_id': '1', 'timestamp': 2}]]},
-            'outputs': {}}
-        entries['11111111-1111-4111-8111-111111111111'] = interrupted   # ComfyUI source: interrupt also yields status_str 'error'
         cls.srv = _serve(entries)
         cls.saved = (web.COMFY, enhance.COMFY)
         web.COMFY = enhance.COMFY = f'http://127.0.0.1:{cls.srv.server_address[1]}'
@@ -56,7 +52,8 @@ class RealHistoryShapes(unittest.TestCase):
 
     def test_an_interrupt_is_interrupted_not_failed(self):
         # status_str is 'error' for an interrupt too, so only the message kind separates the two
-        self.assertEqual(web.comfy_history_detail('11111111-1111-4111-8111-111111111111')[0], 'interrupted')
+        self.assertEqual(web.comfy_history_detail(self.cap['interrupted']['prompt_id'])[0], 'interrupted')
+        self.assertEqual(self.cap['interrupted']['entry']['status']['status_str'], 'error')   # real ComfyUI: also 'error'
 
     def test_no_entry_is_lost(self):
         self.assertEqual(web.comfy_history_detail('22222222-2222-4222-8222-222222222222'), ('lost', None))
