@@ -1,0 +1,26 @@
+subject_definitions:
+<Subject 1> is the TEAM PIZZA brand identity derived from <Picture 1>: a solid red base color carrying white "TEAM PIZZA" lettering plus a blue rectangular block and a yellow rectangular block as accent marks, applied here to the delivery van's body panels, the crew's red T-shirts, and the pizza boxes.
+<Subject 2> is the RESTON RANCH gate and surroundings derived from <Picture 2>: a brown wooden gate and matching fence standing at the edge of a flat green grass field under a clear light-blue sky.
+<Subject 3> is the rancher, a middle-aged man with a tanned weathered face, a brown-and-tan plaid long-sleeve shirt, blue jeans, and a wide-brimmed tan cowboy hat.
+<Subject 4> is the pizza boxes, red cardboard boxes printed with the white "TEAM PIZZA" wordmark and a small blue-and-yellow block logo on the lid.
+
+summary:
+[reference generation] The target video shows the TEAM PIZZA crew, branded with <Subject 1>, driving their red van up to the brown gate of <Subject 2>, stacking <Subject 4> on the fence, and handing one box across to <Subject 3>. The two reference images supply only the brand palette and the ranch setting; all characters, actions, and the dialogue are newly generated.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the red base, white "TEAM PIZZA" lettering, and blue-and-yellow accent blocks are retained on the van, the crew shirts, and the boxes.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the brown wooden gate and fence, the green field, and the light-blue sky are retained as the setting.
+<Subject 3> (appears in [Shot 3]): fully_preserved - the rancher's plaid shirt, jeans, and tan cowboy hat are kept consistent.
+<Subject 4> (appears in [Shot 2], [Shot 3]): fully_preserved - the red boxes with the white wordmark and blue-and-yellow logo are retained.
+
+detailed_description:
+The target video uses a bright, sunny, live-action promotional style with saturated outdoor colors and a steady handheld camera.
+[Shot 1] A low tracking shot follows a red delivery van bearing the white "TEAM PIZZA" wordmark and blue-and-yellow block panels of <Subject 1> as it drives up a gravel road toward <Subject 2>, the brown wooden gate of the ranch standing against the green field and light-blue sky. Two crew members in red "TEAM PIZZA" T-shirts are visible through the windshield. The van slows and stops just in front of the gate.
+[Shot 2] At 00:03.000, the shot cuts to a medium shot at the gate. The two crew members, both in red "TEAM PIZZA" shirts with blue and yellow trim, step out carrying <Subject 4>, the red pizza boxes printed with the white wordmark and blue-and-yellow logo. They lift the boxes one by one and stack them neatly on top of the brown fence rail of <Subject 2>. The lead crew member (S1), a young man with short dark hair, sets the final box down and calls out cheerfully, <d>[English] Fresh pizza for the ranch, you're welcome!</d>
+[Shot 3] At 00:07.000, the shot cuts to a medium two-shot at the fence. <Subject 3>, the rancher in the plaid shirt and tan cowboy hat, steps up on the near side and reaches over the brown rail. The lead crew member (S1) hands one <Subject 4> across the fence to him. <Subject 3> (S2) takes the box, gives a thumbs-up, and replies in a warm gravelly voice, <d>[English] You guys are the best. Thanks a lot!</d> The crew member smiles and taps the stacked boxes on the fence as the shot holds.
+
+overall_soundscape:
+Bright outdoor rural ambience throughout, with the van's engine and gravel rumble in the opening, light wind over the grass, and the soft thud of cardboard boxes being set on the wooden fence.
+
+non_diegetic_music:
+A light, upbeat indie-folk score with acoustic guitar and a steady drum groove plays under the whole video, lifting slightly when the box is handed over.

@@ -1,0 +1,26 @@
+subject_definitions:
+<Subject 1> is the TEAM PIZZA crew, two young delivery drivers whose red uniforms, blue and yellow accent details, and the white "TEAM PIZZA" wordmark on their caps and boxes come from <Picture 1>.
+<Subject 2> is the RESTON RANCH gate environment from <Picture 2>: a flat green pasture under a pale light-blue sky, with a maroon/brown gate sign bearing the white text "RESTON RANCH" at the horizon line.
+<Subject 3> is the rancher, a middle-aged weathered man with a sun-tanned face, a brown plaid shirt, and a faded cowboy hat, standing at the gate.
+<Subject 4> is a stack of red pizza boxes printed with the white "TEAM PIZZA" wordmark, matching the palette of <Picture 1>.
+
+summary:
+[reference generation] The target video shows <Subject 1>, the TEAM PIZZA crew, driving up to <Subject 2>, the RESTON RANCH gate, stacking <Subject 4> on the fence, and handing one box across to <Subject 3>, the rancher. The crew's red-blue-yellow branding and the ranch's light-blue-sky, green-field, maroon-sign environment are referenced from <Picture 1> and <Picture 2>.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the red uniforms with blue and yellow accents and the white "TEAM PIZZA" wordmark are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the pale light-blue sky, flat green pasture, and maroon "RESTON RANCH" sign are retained.
+<Subject 3> (appears in [Shot 3]): fully_preserved - the rancher's plaid shirt, cowboy hat, and tanned build are retained.
+<Subject 4> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the red boxes with the white "TEAM PIZZA" wordmark are retained.
+
+detailed_description:
+The target video uses a bright, upbeat commercial style with saturated daylight colors and a clean, slightly stylized look.
+[Shot 1] A wide establishing shot shows <Subject 2>, the RESTON RANCH environment: a flat green pasture under a pale light-blue sky, with the maroon gate sign reading "RESTON RANCH" in white at the horizon. A red delivery van bearing the white "TEAM PIZZA" wordmark rolls in from the left and stops at the gate. Two members of <Subject 1>, the TEAM PIZZA crew in red uniforms with blue and yellow accents and "TEAM PIZZA" caps, hop out carrying a tall stack of <Subject 4>, the red pizza boxes. The camera slowly pushes in as they walk toward the fence.
+[Shot 2] At 00:04.000, the shot cuts to a medium shot at the fence. The two crew members lift the stack of <Subject 4> and rest the boxes neatly on top of the wooden gate rail, balancing them. The maroon "RESTON RANCH" sign and green pasture of <Subject 2> fill the background. One driver taps the stack to settle it.
+[Shot 3] At 00:07.000, the shot cuts to a two-shot at the gate. <Subject 1> (S1), the driver on the near side, reaches over and hands a single red <Subject 4> box across to <Subject 3>, the rancher in the brown plaid shirt and faded cowboy hat, who steps forward from the far side of the fence. <Subject 1> (S1) says in a friendly, energetic young voice, <d>[English] Fresh from the oven, on the house!</d> <Subject 3> takes the box, smiles, and gives a small nod of thanks as the camera holds on the exchange.
+
+overall_soundscape:
+Light outdoor daylight ambience with a soft breeze across the pasture and the low rumble of the van's engine in the opening shot, continuing as quiet rural room tone.
+
+non_diegetic_music:
+A bright, upbeat acoustic-pop track with a light drum groove and plucked guitar, building gently through the three shots.

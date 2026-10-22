@@ -1,0 +1,7 @@
+For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
+
+integrated_multimodal_description: [Shot 1] Flat graphic, 2D-animated, a full-frame poster matching <Picture 1> opens on a solid red field with the white sans-serif text "TEAM PIZZA" centered, a flat blue square in the lower-left, and a flat yellow square in the lower-right. The camera holds a static shot for the first moment, then the sign flickers to life: the white "TEAM PIZZA" letters pulse with a bright glow that strobes on and off twice, and the blue and yellow squares brighten in sync. As the flicker settles into a steady glow, a burst of multicolored confetti erupts over the blue square, then a second burst erupts over the yellow square, the paper pieces scattering upward and drifting across the red field. The whole poster then hums with celebration, shaking slightly as the colored shapes vibrate and the confetti continues to rain down, filling the frame with festive motion.
+
+overall_soundscape: A low electrical hum builds as the sign flickers, punctuated by two sharp confetti-burst whooshes over each square, followed by a sustained celebratory vibration and the soft flutter of falling paper.
+
+non_diegetic_music: An upbeat festive track at a fast tempo with bright synth stabs and a driving drum pattern that swells as the confetti bursts and holds through the shaking celebration.

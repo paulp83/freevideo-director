@@ -1,0 +1,24 @@
+subject_definitions:
+<Subject 1> is the brown coffee mug taken from <Picture 1>: a matte dark-brown cylindrical mug body with a flat rectangular block handle on its right side, originally drawn as a flat shape on a cream-beige background.
+<Subject 2> is the barista, a woman with dark hair tied in a low bun, a medium build, wearing a beige canvas apron over a cream long-sleeve shirt and a thin silver necklace.
+<Subject 3> is the cafe counter environment adapted from the flat palette and branding of <Picture 1>: a warm honey-toned wooden counter surface set against a flat cream-beige wall, with a small white sans-serif "CAFE 42" sign mounted on the wall behind the counter.
+
+summary:
+[reference generation] The target video shows <Subject 2>, the barista, lifting <Subject 1>, the brown mug, from the counter in <Subject 3>, pouring latte art into it, and sliding the finished drink along the wooden counter. <Picture 1> provides the mug's color and shape, the "CAFE 42" visible sign, and the cream-beige flat color palette that guide the scene's look.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the matte dark-brown cylindrical body and the rectangular block handle on the right are retained in the target video.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the barista's dark low-bun hair, medium build, beige canvas apron, cream long-sleeve shirt, and thin silver necklace are retained.
+<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3]): partially_preserved - the cream-beige wall, the honey-toned wooden counter, and the white "CAFE 42" sign are retained, while the original 2D flat logo layout is adapted into a real three-dimensional counter space.
+
+detailed_description:
+The target video uses a clean, warm, minimalist cafe style with soft even lighting and a cream-beige and brown color palette.
+[Shot 1] A medium shot frames <Subject 3>, the cafe counter with its honey-toned wooden surface, cream-beige wall, and the small white "CAFE 42" sign mounted behind it. <Subject 2>, the barista with dark hair in a low bun, a beige canvas apron over a cream long-sleeve shirt, and a thin silver necklace, stands behind the counter. She reaches down and lifts <Subject 1>, the matte dark-brown cylindrical mug with its rectangular block handle on the right, from the counter with both hands, raising it to chest height. A low espresso-machine hiss and soft room tone fill the space.
+[Shot 2] At 00:03.000, the shot cuts to a close-up focused on <Subject 1>, the brown mug, held steady in <Subject 2>'s left hand. <Subject 2>'s right hand tilts a stainless-steel milk pitcher and pours steamed milk into the mug, drawing a white rosetta latte-art pattern that spreads across the brown crema. The pour is slow and controlled; the soft hiss of the machine and a faint liquid pour sound continue.
+[Shot 3] At 00:06.000, the shot cuts back to the medium view of <Subject 3>, the counter and the "CAFE 42" sign behind it. <Subject 2> sets <Subject 1>, now topped with the finished rosetta, onto the wooden counter and slides it smoothly forward along the surface toward the camera, then steps back with a small nod. In a warm, even barista voice she says, <d>[English] Here you go, enjoy your latte.</d> The mug comes to rest near the front edge of the counter as the shot holds.
+
+overall_soundscape:
+A quiet cafe room tone with a low espresso-machine hiss and the soft sound of milk pouring and a ceramic mug sliding on wood continue throughout the video.
+
+non_diegetic_music:
+A soft, slow acoustic-guitar and light-piano score at a gentle tempo plays underneath, with no swell, audible only to the audience.

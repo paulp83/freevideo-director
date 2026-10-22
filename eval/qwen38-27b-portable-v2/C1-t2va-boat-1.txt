@@ -1,0 +1,5 @@
+integrated_multimodal_description: [Shot 1] Live-action, cinematic, a close tracking shot follows a small white paper boat floating down a concrete rain gutter filled with shallow rainwater. The camera tracks the boat along the gutter at slow speed as it drifts over small pebbles and bits of debris, water rippling in its wake. The gutter runs along the base of a dark brick wall with rain streaking down its surface. [Shot 2] At 00:03.500, the shot cuts to a slightly lower angle as the paper boat reaches the open end of the gutter and tumbles off the edge, landing in a shallow puddle on the wet pavement below. The boat bobs and rotates a few degrees before settling, and concentric ripples spread outward from where it lands.
+
+overall_soundscape: Steady rain falls on the gutter and surrounding pavement. Water gurgles and trickles along the concrete channel with small splashes as the boat passes over pebbles. A soft plop marks the boat landing in the puddle, followed by the gentle lapping of ripples.
+
+non_diegetic_music: N/A

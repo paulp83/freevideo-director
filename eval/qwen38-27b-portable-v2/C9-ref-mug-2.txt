@@ -1,0 +1,22 @@
+subject_definitions:
+<Subject 1> is the brown mug from <Picture 1>, a solid medium-brown cylindrical mug with a short rectangular handle block on its right side, originally drawn as a flat minimalist shape on a cream field.
+<Subject 2> is the "CAFE 42" wordmark from <Picture 1>, white uppercase sans-serif lettering that identifies the cafe and is reproduced on the counter front in the target video.
+
+summary:
+[reference generation] The target video shows a barista at a cafe counter lifting <Subject 1>, the brown mug from <Picture 1>, pouring steamed-milk latte art into it, and sliding the finished cup along the counter. <Subject 2>, the "CAFE 42" wordmark from <Picture 1>, is reproduced on the counter front to brand the scene. The image supplies the mug's brown color and form and the logo's lettering as generation guidance rather than as a concrete frame.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): partially_preserved - the mug keeps its medium-brown body, cylindrical silhouette, and right-side handle block from <Picture 1>, but is rendered as a realistic three-dimensional ceramic cup instead of a flat two-dimensional shape.
+<Subject 2> (appears in [Shot 1], [Shot 3]): fully_preserved - the white uppercase "CAFE 42" lettering is retained on the counter front with the same sans-serif style.
+
+detailed_description:
+The target video uses a clean, warm, slightly desaturated commercial style with soft natural side light and a cream-toned palette that echoes the reference's background.
+[Shot 1] A medium shot establishes a light wooden cafe counter with <Subject 2>, the white "CAFE 42" wordmark, printed on its front edge. A barista, a woman with shoulder-length dark hair tied in a low bun and a cream canvas apron over a charcoal long-sleeve shirt with sleeves rolled to the forearm, stands behind the counter. Her hands reach down and grip <Subject 1>, the medium-brown cylindrical mug with its short right-side handle, lifting it off the counter surface and turning it upright in front of her. The espresso machine behind her hisses softly as she positions the cup under the steam wand.
+[Shot 2] At 00:03.000, the shot cuts to a close-up on <Subject 1> as the barista tilts a stainless steel pitcher and pours a thin stream of steamed milk into the espresso. The milk blooms and spreads across the brown crema, and with small wrist taps she draws a symmetrical rosetta with a central stem, the white pattern standing out against the brown cup. The barista's forearm and the apron's cream edge stay in the lower frame, and the steam wand's faint hiss continues under the pour.
+[Shot 3] At 00:06.000, the shot cuts to a slightly higher three-quarter view of the counter. The barista sets <Subject 1>, now holding the finished rosetta, onto the wood and, with one hand on its base, slides it smoothly along the counter toward the camera side, stopping just in front of <Subject 2>, the "CAFE 42" wordmark. She rests her palm on the counter and holds the pose as the cup settles, the latte art still intact on its surface.
+
+overall_soundscape:
+A quiet cafe room tone continues throughout, with a low espresso-machine hum, a brief steam-wand hiss during the pour in [Shot 2], and a soft wooden clink as the mug slides and settles on the counter in [Shot 3].
+
+non_diegetic_music:
+A light, low-volume acoustic score of soft fingerpicked guitar and a gentle brushed snare at a relaxed tempo plays under all shots, rising slightly in level at [Shot 3] as the mug is presented.
