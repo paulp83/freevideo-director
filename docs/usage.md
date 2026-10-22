@@ -83,6 +83,19 @@ plus a **style bible** (every character's exact look, the places, palette, camer
 You can edit anything: scene title, seconds, **Cut** or **↪ Continue**, action, and the bible. Edits
 save automatically. Scenes can be added, moved and deleted.
 
+The page is one workspace: the **viewer box** sits at the left of the stage list and stays put while
+you move between stages, so a render never scrolls out of sight; the **stage nav** walks
+idea → prompt → render → compare → select → finishing → cut; **Next action** spells out what this
+film is waiting for and runs it. The header shows save blinks (saving → saved), a **Queue** button
+with a live count, and three **readiness chips** — **Prompts**, **Video**, **Finishing** — that say
+what the machine can do right now and disable exactly the actions that depend on what is missing
+([troubleshooting](troubleshooting.md#readiness)).
+
+Edits carry a revision. If the film changes while you are editing — another tab, or a job recording
+a take — the save stops with **"changed elsewhere"**: **Reload** reads the newer film, **Keep mine**
+re-applies only the fields you actually touched. A save can never silently overwrite a take another
+process recorded.
+
 | Step | What it does | Time (5–10 s scenes) |
 |---|---|---|
 | ① Storyboard | Plans the scenes. **Re-plan** replaces all of them. | ~20 s |
@@ -95,6 +108,16 @@ save automatically. Scenes can be added, moved and deleted.
 Per scene: **Write prompt**, **Draft**, **Final**, **✨ Enhance ★**, and **☆ choose** on any take.
 Choosing pins that take explicitly (it becomes the ★): later takes never replace it. **auto** on the
 chosen take releases the pin, and a scene that was never chosen simply follows its latest take.
+
+**Compare takes** plays two takes of the scene side by side against one shared bar, so choosing is
+about the shot, not about clicking two players. **Status is in words, never colour alone**: a scene
+says **nothing generated yet**, **Ready**, **Selected** (you starred a take, which auto-selection
+will not override), or **outdated · <what changed>** — one of *prompt changed*, *references
+changed*, *settings changed*, *continuity outdated*, *instructions changed*, *finishing changed*,
+plus *provenance unavailable* for takes that predate the take records. When an earlier scene's cut
+moved, the affected scenes say so too. The **Queue** drawer (header button) lists this film's jobs
+first with per-job queued and running times, then everything else ComfyUI holds; unknown jobs carry
+Reconcile / Dismiss / Retry there as well.
 
 **Continuity**
 
@@ -109,9 +132,19 @@ chosen take releases the pin, and a scene that was never chosen simply follows i
   under the scenes' sound and dialogue, and faded out. Without a track, the film keeps the scenes' own sound.
 - Every cut gets 30 ms audio fades, and the mix is normalised to −14 LUFS.
 
+**Finishing settings** (project page): what happens to a take after it renders. **Upscaling** —
+Off, 720, Full HD 1080, or 4K (needs GPU headroom); **Frame interpolation** — Off, ×2, ×4;
+**Encoding quality** — High (CRF 16), Standard (CRF 20), Smaller (CRF 24) or a Custom CRF of your
+own (12–28, lower is better picture and bigger file). One place decides the frame rate for Enhance,
+Final and the film cut, so they can never disagree; changing any of it flags the affected takes
+**finishing changed** until they are re-cut. **Reset to defaults** returns to Full HD, ×2, CRF 16.
+
 **Files** in `projects/<name>/`: `project.json`, `refs/`, `frames/` (handoff frames), `music.*`,
 `animatic-*.mp4`, `film-*.mp4`. Takes stay in ComfyUI's output folder. Design notes:
 [MULTISCENE-PLAN.md](../MULTISCENE-PLAN.md).
+
+The old single-column editor stays at **/project/classic** as a fallback while the workspace page
+earns its keep: it gets no new features, and it will be removed once nobody needs it.
 
 ## Command line
 

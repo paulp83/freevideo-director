@@ -14,6 +14,12 @@ idea + images ──► Director UI :8192 ──► director model (local vision
 The director uses the official MiniMax-H3 `h3-prompt-writing` skill (`skill/`, pinned copy) as the
 system prompt, and talks to any local OpenAI-compatible **vision** model.
 
+What the workspace page adds over the classic editor: durable jobs that survive a restart
+(never a silent resubmit), a queue drawer with honest per-job times and
+Reconcile/Dismiss/Retry for unknown jobs, three readiness chips that gate exactly the actions
+they gate, take comparison, explicit take selection, per-project finishing settings, and a
+continuity/outdated flag per scene.
+
 ## Requirements
 
 - Python 3.10+ and `ffmpeg` on `PATH`
@@ -59,12 +65,14 @@ a logline, and you draft, pick, and finish scenes step by step:
 | `project.py`, `project.html` | Multi-scene film projects (the workspace page; `/project/classic` keeps the old single-column page as `project-classic.html`) |
 | `enhance.py` | SeedVR2 upscale, RIFE 48 fps, H.264 encode |
 | `h3check.py` | H3 format checks used by the retry loop and `eval.py` |
-| `readiness.py` | Prompt / video / finishing health probes behind the header chips |
+| `jobs_db.py` | Durable sqlite job store (schema-versioned) behind the queue and recovery pass |
+| `finishing.py` | The finishing stages and the one frame-rate policy (presets, CRF, fps) |
 | `skill/` | Pinned MiniMax-H3 prompt-writing skill |
 | `eval/` | Director-model A/B: case set (`eval/cases.json`), fixture README, per-label outputs (`results.json`) |
 | `eval/make_fixtures.py` | Deterministic fixture images for the portable eval cases |
 | `rescore.py` | Re-score saved `eval/` outputs with today's `h3check.py` (writes `eval/<label>/rescored.json`) |
 | `eval_compare.py` | Side-by-side diff of two eval labels, gated on matching validator/case-set versions |
+| `tests/` | unittest suites (`test_*.py` fast; `test_restart_acceptance` slow behind `DIRECTOR_SLOW_SUITES=1`), headless-Firefox suites (`browser_*.py`), `leak_guard.py` + `test_zz_no_leaks.py` (no process may outlive a run), fixtures and `stub_comfy.py` |
 | `pilot.py`, `pilot/scenes.json` | M6 pilot: 3 scenes x 2 seeds x 2 prompt arms, rendered one at a time, blinded review and report |
 | `docs/` | Documentation and screenshots |
 

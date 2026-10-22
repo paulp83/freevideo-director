@@ -24,8 +24,10 @@ For a first frame, crop the photo to just the people you want, at 16:9.
 
 ## Choosing a director model
 
-In a 6-case, 2-run A/B (`eval/`), both models passed the H3 format checks almost every time
-(Qwen3.8-27B 92/92, Qwen3.6-35B-A3B 91/92).
+In a 6-case, 2-run A/B (`eval/`), both models pass the H3 format checks essentially always:
+re-scored under today's stricter checks, Qwen3.8-27B 242/242 and Qwen3.6-35B-A3B 237/242
+(92/92 and 91/92 under the older ones). Counts compare only over the same validator and case set
+(`rescore.py`, `eval_compare.py`), and a failed model call counts as a failing row.
 
 | | Qwen3.8-27B | Qwen3.6-35B-A3B |
 |---|---|---|
