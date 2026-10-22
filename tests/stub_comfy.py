@@ -73,13 +73,13 @@ STATE = {'mode': 'auto', 'bodies': [], 'accepted': [], 'pending': [], 'running':
 
 
 def _completed_entry(sub, fn):
-    return {'status': {'completed': True},
+    return {'status': {'status_str': 'success', 'completed': True},
             'outputs': {'9': {'gifs': [{'filename': fn, 'subfolder': sub, 'type': 'output'}]}}}
 
 
 def _failed_entry(message):
-    return {'status_str': 'error', 'status': {'completed': False,
-                                             'messages': [['execution_error', {'exception_message': message}]]},
+    return {'status': {'status_str': 'error', 'completed': False,
+                       'messages': [['execution_error', {'exception_message': message}]]},
             'outputs': {}}
 
 

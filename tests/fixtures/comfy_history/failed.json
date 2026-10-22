@@ -1,0 +1,64 @@
+{
+ "captured_from": "ComfyUI 0.34.0 /history on 2026-10-21 (real backend, tiny SaveImage / unreadable LoadImage graphs)",
+ "prompt_id": "360c05a1-1c32-43e2-a494-4ad0b667c291",
+ "entry": {
+  "status": {
+   "status_str": "error",
+   "completed": false,
+   "messages": [
+    [
+     "execution_start",
+     {
+      "prompt_id": "360c05a1-1c32-43e2-a494-4ad0b667c291",
+      "timestamp": 1792635506098
+     }
+    ],
+    [
+     "execution_cached",
+     {
+      "nodes": [],
+      "prompt_id": "360c05a1-1c32-43e2-a494-4ad0b667c291",
+      "timestamp": 1792635506099
+     }
+    ],
+    [
+     "execution_error",
+     {
+      "prompt_id": "360c05a1-1c32-43e2-a494-4ad0b667c291",
+      "node_id": "1",
+      "node_type": "LoadImage",
+      "executed": [],
+      "exception_message": "cannot identify image file '/home/paul/FreeVideo-ComfyUI/ComfyUI/input/director-realcheck-bad.png'\n",
+      "exception_type": "PIL.UnidentifiedImageError",
+      "traceback": [
+       "  File \"/home/paul/FreeVideo-ComfyUI/ComfyUI/execution.py\", line 545, in execute\n    output_data, output_ui, has_subgraph, has_pending_tasks = await get_output_data(prompt_id, unique_id, obj, input_data_all, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, v3_data=v3_data)\n                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+       "  File \"/home/paul/FreeVideo-ComfyUI/ComfyUI/execution.py\", line 344, in get_output_data\n    return_values = await _async_map_node_over_list(prompt_id, unique_id, obj, input_data_all, obj.FUNCTION, allow_interrupt=True, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, v3_data=v3_data)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+       "  File \"/home/paul/FreeVideo-ComfyUI/ComfyUI/execution.py\", line 318, in _async_map_node_over_list\n    await process_inputs(input_dict, i)\n",
+       "  File \"/home/paul/FreeVideo-ComfyUI/ComfyUI/execution.py\", line 306, in process_inputs\n    result = f(**inputs)\n             ^^^^^^^^^^^\n",
+       "  File \"/home/paul/FreeVideo-ComfyUI/ComfyUI/nodes.py\", line 1766, in load_image\n    img = node_helpers.pillow(Image.open, image_path)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+       "  File \"/home/paul/FreeVideo-ComfyUI/ComfyUI/node_helpers.py\", line 62, in pillow\n    x = fn(arg)\n        ^^^^^^^\n",
+       "  File \"/home/paul/FreeVideo-ComfyUI/venv/lib/python3.12/site-packages/PIL/Image.py\", line 3715, in open\n    raise UnidentifiedImageError(msg)\n"
+      ],
+      "current_inputs": {
+       "image": [
+        "director-realcheck-bad.png"
+       ]
+      },
+      "current_outputs": [
+       "2",
+       "1"
+      ],
+      "timestamp": 1792635506217
+     }
+    ]
+   ]
+  },
+  "outputs": {},
+  "top_level_keys": [
+   "meta",
+   "outputs",
+   "prompt",
+   "status"
+  ]
+ }
+}

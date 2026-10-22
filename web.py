@@ -817,11 +817,18 @@ def comfy_history_detail(pid):
     if entry is None:
         return 'lost', None
     status = entry.get('status') or {}
-    message = None
+    message, kinds = None, set()
     for kind, data in status.get('messages') or []:
+        kinds.add(kind)
         if kind in ('execution_error', 'execution_interrupted'):
             message = data.get('exception_message') or kind
-    if entry.get('status_str') == 'error' or status.get('failed'):
+    # Real ComfyUI nests status_str inside `status` and sets it to 'error' for BOTH a runtime failure
+    # and a user interrupt, so the message kinds tell them apart (a failed run also never completes).
+    if 'execution_error' in kinds:
+        return 'failed', message
+    if 'execution_interrupted' in kinds:
+        return 'interrupted', message
+    if status.get('status_str') == 'error' or entry.get('status_str') == 'error' or status.get('failed'):
         return 'failed', message
     if status.get('completed'):
         return 'completed', None
