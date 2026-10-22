@@ -27,12 +27,15 @@ class StubComfy(BaseHTTPRequestHandler):
     deletes, interrupts = [], 0
     bodies, prompt_ids = [], []          # every POST /prompt body, and the ids the stub handed back
     honour_delete = True                 # False: /queue delete is ignored (cancel cannot be confirmed)
+    interrupt_delay = 0.0                # seconds the executing prompt takes to unwind after /interrupt (real: the sampler only looks between steps)
+    interrupt_bodies = []                # every POST /interrupt body
     at_prompt, gate = threading.Event(), threading.Event()
 
     @classmethod
     def reset(cls):
         cls.pending, cls.running_ids = [], []
         cls.deletes, cls.interrupts, cls.honour_delete = [], 0, True
+        cls.interrupt_delay, cls.interrupt_bodies = 0.0, []
         cls.bodies, cls.prompt_ids = [], []
         cls.at_prompt, cls.gate = threading.Event(), threading.Event()
 
@@ -86,9 +89,17 @@ class StubComfy(BaseHTTPRequestHandler):
                 StubComfy.pending = [p for p in StubComfy.pending if p not in ids]
                 StubComfy.running_ids = [p for p in StubComfy.running_ids if p not in ids]
             return self._json(200, self._queue())
-        if self.path == '/interrupt':          # stops whatever the stub is "executing"
+        if self.path == '/interrupt':          # stops whatever the stub is "executing" (after the unwind delay)
             StubComfy.interrupts += 1
-            StubComfy.running_ids = []
+            try:
+                body = json.loads(raw or b'{}')
+            except ValueError:
+                body = {}
+            StubComfy.interrupt_bodies.append(body)
+            if StubComfy.interrupt_delay:
+                threading.Timer(StubComfy.interrupt_delay, lambda: setattr(StubComfy, 'running_ids', [])).start()
+            else:
+                StubComfy.running_ids = []
             return self._json(200, {})
         self._json(200, {})
 
@@ -136,7 +147,7 @@ class Jobs(unittest.TestCase):
         StubComfy.mode, StubComfy.submits = 'complete', 0
         StubComfy.reset()
         self.saved = (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
-                      web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS)
+                      web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS, web.CANCEL_CONFIRM_SECONDS)
         projects.ROOT = self.root
         stats.FILE = self.root / 'stats.json'
         jobs_db.FILE = self.root / 'jobs.db'
@@ -145,6 +156,7 @@ class Jobs(unittest.TestCase):
         web.COMFY_OUTPUT = self.root / 'comfy' / 'output'
         web.JOB_TIMEOUT = 120.0
         web.POLL_SECONDS = 0.05
+        web.CANCEL_CONFIRM_SECONDS = 2.0
         for table in (web.JOBS, web.RESERVES, web.SCENE_JOB, web.BATCH, web.PROGRESS):
             table.clear()
         self.slug = projects.create('Jobs film', 'nothing', 30, '16:9', [])['slug']
@@ -157,7 +169,7 @@ class Jobs(unittest.TestCase):
 
     def tearDown(self):
         (projects.ROOT, stats.FILE, jobs_db.FILE, enhance.COMFY, enhance.COMFY_ROOT,
-         web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS) = self.saved
+         web.COMFY, web.COMFY_OUTPUT, web.JOB_TIMEOUT, web.POLL_SECONDS, web.CANCEL_CONFIRM_SECONDS) = self.saved
         shutil.rmtree(self.root, ignore_errors=True)
 
     def take_dir(self, name='run-7'):
@@ -273,6 +285,22 @@ class Jobs(unittest.TestCase):
         self.assertIn('may still be executing', job['error'])
         self.assertEqual(StubComfy.interrupts, 0)
         self.assertEqual(StubComfy.submits, 1)          # and it is never resubmitted
+
+    def test_a_slow_interrupt_is_still_confirmed_and_names_the_prompt(self):
+        # real ComfyUI: the sampler only notices an interrupt between steps, so our prompt stays in queue_running
+        # for a while after /interrupt; the cancel has to wait for it instead of calling itself unconfirmed
+        StubComfy.mode = 'hang'
+        StubComfy.interrupt_delay = 0.9
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        t = threading.Thread(target=web.run_job,
+                             args=(job, web.render_job, self.slug, self.ids[0], 'draft'))
+        t.start()
+        self.assertTrue(self.wait_for(lambda: StubComfy.submits == 1))
+        job['cancel'] = True
+        t.join(15)
+        self.assertEqual(job['state'], 'cancelled')       # not 'unknown': the prompt left the queue within the window
+        self.assertEqual(StubComfy.interrupts, 1)         # one interrupt, not one per poll
+        self.assertEqual(StubComfy.interrupt_bodies, [{'prompt_id': job['prompt_ids'][0]}])
 
     def test_poll_cancel_interrupts_when_our_prompt_is_running(self):
         StubComfy.mode = 'hang'                         # our prompt is the one executing

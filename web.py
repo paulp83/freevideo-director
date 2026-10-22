@@ -229,6 +229,23 @@ def render_result(prompt_id):
 # ---------------------------------------------------------------- ComfyUI websocket (progress)
 
 PROGRESS = {}   # prompt_id -> {'node': str, 'value': int, 'max': int}
+FV_PROGRESS = {}   # the running render's overall progress as FreeVideo reports it: fraction, label, remaining, at
+
+
+def render_progress(job, pid):
+    """Update the render stage of `job` from ComfyUI's view of prompt `pid`. FreeVideo's overall fraction (0-1,
+    the whole render including the decode) beats ComfyUI's sampler step counter, which reaches its maximum long
+    before the render is done, and it keeps flowing for a prompt that was already running when the director
+    (re)started. It is broadcast without a prompt id, so it counts only while `pid` is the prompt ComfyUI runs."""
+    st = stage(job, 'render')
+    fv = dict(FV_PROGRESS)
+    if fv.get('at') and time.time() - fv['at'] <= 6:
+        q = comfy_queue()
+        if q is not None and pid in q[0]:
+            st.update(value=max(0, min(100, round(fv['fraction'] * 100))), max=100, unit='%', detail=fv.get('label') or '')
+            return
+    p = PROGRESS.get(pid, {})
+    st.update(value=p.get('value', 0), max=p.get('max', 0))
 
 
 def ws_target():
@@ -284,6 +301,12 @@ def ws_listen():
                     continue                                       # binary previews
                 msg = json.loads(payload)
                 data = msg.get('data') or {}
+                if msg.get('type') == 'freevideo_progress':        # FreeVideo's own whole-render progress: no
+                    overall = data.get('overall') or {}            # prompt id, broadcast; applies to the running prompt
+                    if isinstance(overall.get('fraction'), (int, float)):
+                        FV_PROGRESS.update(fraction=float(overall['fraction']), label=str(data.get('label') or ''),
+                                           remaining=overall.get('remaining_seconds'), at=time.time())
+                    continue
                 pid = data.get('prompt_id')
                 if not pid:
                     continue
@@ -475,14 +498,21 @@ def comfy_queue():
     return ids(q.get('queue_running')), ids(q.get('queue_pending'))
 
 
+CANCEL_CONFIRM_SECONDS = config.value('cancel_confirm_seconds')   # how long a cancel waits for ComfyUI to drop the prompt
+
+
 def target_cancel(pids):
-    """Stop only this job's prompts: delete ours from the queue, and interrupt only while one of
-    ours is the prompt executing, so an unrelated job's prompt is never collateral damage.
-    Returns True only when ComfyUI shows none of ours left; False means we cannot tell."""
+    """Stop only this job's prompts: delete ours from the queue, and interrupt only the prompt of ours that is
+    executing, naming it ({"prompt_id": ...}, which ComfyUI checks and signals atomically, so the interrupt cannot
+    land on a neighbour that starts at that instant). A real interrupt takes seconds to unwind (the sampler only
+    looks between steps), so wait, polling, until none of ours is left. Returns True only when ComfyUI shows none
+    of ours left within the window; False means we cannot tell."""
     ours = set(pids)
     if not ours:
         return True                                   # nothing was ever submitted
-    for _ in range(2):
+    deadline = time.time() + CANCEL_CONFIRM_SECONDS
+    asked = {}                                        # pid -> when the last interrupt for it went out
+    while True:
         q = comfy_queue()
         if q is None:
             return False
@@ -490,20 +520,23 @@ def target_cancel(pids):
         mine_run, mine_pend = ours & running, ours & pending
         if not mine_run and not mine_pend:
             return True
-        if mine_run:                                  # one of ours executes: interrupt stops it
-            try:
-                comfy('/interrupt', b'{}', {'Content-Type': 'application/json'})
-            except (urllib.error.URLError, OSError, ValueError):
-                pass                                  # ComfyUI answers /interrupt with an empty body
+        now = time.time()
+        for pid in sorted(mine_run):                  # asked again only after a pause: an interrupt unwinds slowly
+            if now - asked.get(pid, 0) >= 5:
+                asked[pid] = now
+                try:
+                    comfy('/interrupt', json.dumps({'prompt_id': pid}).encode(), {'Content-Type': 'application/json'})
+                except (urllib.error.URLError, OSError, ValueError):
+                    pass                              # ComfyUI answers /interrupt with an empty body
         if mine_pend:
             try:
                 comfy('/queue', json.dumps({'delete': sorted(mine_pend)}).encode(),
                       {'Content-Type': 'application/json'})
             except (urllib.error.URLError, OSError, ValueError):
                 pass
-        time.sleep(0.2)                               # give the interrupt a moment to take effect
-    q = comfy_queue()
-    return q is not None and not ours & (q[0] | q[1])
+        if time.time() >= deadline:
+            return False
+        time.sleep(0.5)
 
 
 def confirm_cancel(job):
@@ -660,8 +693,7 @@ def do_render(job, graph, finish_after, on_take=None, on_final=None):
     transition(job, 'running')
 
     def progress():
-        p = PROGRESS.get(pid, {})
-        st.update(value=p.get('value', 0), max=p.get('max', 0))
+        render_progress(job, pid)
 
     take = poll(job, lambda: render_result(pid), progress)
     job['take'] = take
@@ -1002,9 +1034,7 @@ def _resume_render(job, slug, scene_id, preset_name, take_id, seed, variant, sou
     transition(job, 'running')
 
     def progress():
-        p = PROGRESS.get(render_pid, {})
-        st = stage(job, 'render')
-        st.update(value=p.get('value', 0), max=p.get('max', 0))
+        render_progress(job, render_pid)
 
     try:
         take = poll(job, lambda: render_result(render_pid), progress)

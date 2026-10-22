@@ -1686,7 +1686,7 @@ function updateJob(s) {
     while (chips.children.length > job.stages.length) chips.lastChild.remove();
     job.stages.forEach((stg, k) => {
       const word = {pending: 'queued', active: 'running', done: 'done', error: 'failed'}[stg.state] || stg.state;
-      const txt = `${stg.label} · ${word}${stg.state === 'active' && stg.max ? ` ${stg.value}/${stg.max}` : ''}${stg.seconds != null ? ` · ${fmt(stg.seconds)}` : ''}`;
+      const txt = `${stg.label} · ${word}${stg.state === 'active' && stg.max ? (stg.unit === '%' ? ` ${stg.value}%${stg.detail ? ' · ' + stg.detail : ''}` : ` ${stg.value}/${stg.max}`) : ''}${stg.seconds != null ? ` · ${fmt(stg.seconds)}` : ''}`;
       const cls = 'chip ' + stg.state;
       let c = chips.children[k];
       if (!c) c = el('span', {class: cls}), chips.append(c);

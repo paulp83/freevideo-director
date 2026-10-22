@@ -67,6 +67,7 @@ SETTINGS = {
     'job_timeout':        Setting(4 * 3600, 'JOB_TIMEOUT', '--job-timeout', 'float', False),
     'poll_seconds':       Setting(1.5, 'POLL_SECONDS', '--poll-seconds', 'float', False),
     'reconcile_seconds':  Setting(15, 'RECONCILE_SECONDS', '--reconcile-seconds', 'float', False),
+    'cancel_confirm_seconds': Setting(20, 'CANCEL_CONFIRM_SECONDS', '--cancel-confirm-seconds', 'float', False),
     # readiness probes (readiness.py)
     'readiness_cache':   Setting(10, 'READINESS_CACHE',   None, 'float', False),
     'readiness_timeout': Setting(2,  'READINESS_TIMEOUT', None, 'float', False),

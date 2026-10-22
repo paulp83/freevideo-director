@@ -50,6 +50,7 @@ file) abort startup immediately, naming the setting and where the bad value came
 | `job_timeout` | `14400` s (4 h) | `JOB_TIMEOUT` | `--job-timeout` | `web.py:JOB_TIMEOUT` (poll deadline) |
 | `poll_seconds` | `1.5` | `POLL_SECONDS` | `--poll-seconds` | `web.py:POLL_SECONDS` |
 | `reconcile_seconds` | `15` | `RECONCILE_SECONDS` | `--reconcile-seconds` | `web.py:RECONCILE_SECONDS` (`reconcile_loop`) |
+| `cancel_confirm_seconds` | `20` | `CANCEL_CONFIRM_SECONDS` | `--cancel-confirm-seconds` | `web.py:CANCEL_CONFIRM_SECONDS` (`target_cancel`): how long a cancel waits for ComfyUI to drop the prompt before calling it unconfirmed |
 | `enhance_fps` | `24` | `ENHANCE_FPS` | — | `enhance.py:FPS` (raw-frame rate, graph `frame_rate`); `finishing.py:render_fps` — the rate the film policy multiplies from |
 | `enhance_resolution` | `1080` | `ENHANCE_RESOLUTION` | `--resolution` | `finishing.py:defaults` (SeedVR2 short side for projects that say nothing) |
 | `enhance_multiplier` | `2` | `ENHANCE_FPS_MULTIPLIER` | `--fps-multiplier` | `finishing.py:defaults` (RIFE factor for projects that say nothing) |
