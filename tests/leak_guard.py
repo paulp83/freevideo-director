@@ -42,9 +42,9 @@ def _child_starttime(pid):
 os.environ['DIRECTOR_TEST_OWNER'] = str(_me)          # inherited by every child we spawn
 _fd, _pidfile = tempfile.mkstemp(prefix='director-leak-pids-', text=True)
 os.close(_fd)
-subprocess.Popen([sys.executable, str(HERE / 'leak_watchdog.py'), str(_me), _pidfile],
-                 start_new_session=True, stdin=subprocess.DEVNULL,
-                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+_watchdog = subprocess.Popen([sys.executable, str(HERE / 'leak_watchdog.py'), str(_me), _pidfile],
+                             start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
 
 def _match(cmdline):
     """Why this command line is a watched server, or None."""
@@ -125,9 +125,14 @@ def _sweep():
     for proc in _children:
         stop(proc, grace=3.0)
     try:
-        os.unlink(_pidfile)                            # watchdog exits on our death anyway
+        os.unlink(_pidfile)                            # tells the watchdog to sweep and leave
     except OSError:
         pass
+    if _watchdog is not None:                          # it sweeps forgotten orphans, then exits
+        try:
+            _watchdog.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            _watchdog.kill()
 
 
 atexit.register(_sweep)

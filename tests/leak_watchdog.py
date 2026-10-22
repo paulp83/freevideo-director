@@ -137,6 +137,9 @@ def main():
         if st != orig_start or _state(runner) == 'Z':   # dead, or zombie not yet reaped
             sweep()
             return
+        if not Path(pidfile).exists():                  # runner exited cleanly (_sweep unlinked it)
+            sweep()                                     # catch orphans it chose to forget
+            return
         time.sleep(0.5)
 
 
