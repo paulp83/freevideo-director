@@ -40,6 +40,9 @@ file) abort startup immediately, naming the setting and where the bad value came
 | `stats_file` | `<repo>/stats.json` | `STATS` | `--stats` | `stats.py:FILE` |
 | `jobs_db_file` | `<repo>/jobs.db` | `JOBS_DB` | `--jobs-db` | `jobs_db.py:FILE/init` |
 | `notify_url` | *(empty)* | `DIRECTOR_NOTIFY_URL` | `--notify-url` | `notify.py:send` — **secret**: masked in `/api/config` and never in the startup line |
+| `eval_fixture_dir` | `<repo>/eval/fixtures` | `EVAL_FIXTURE_DIR` | `--eval-fixture-dir` | `eval.py` fixture lookup root (see `eval/fixtures/README.md`) |
+| `eval_group_image` | *(empty)* | `EVAL_GROUP_IMAGE` | `--eval-group-image` | `eval.py`: full-path override for the private `group` fixture |
+| `eval_range_image` | *(empty)* | `EVAL_RANGE_IMAGE` | `--eval-range-image` | `eval.py`: full-path override for the private `rangels` fixture |
 | `ffmpeg` | `ffmpeg` | `FFMPEG` | — | `director.py:image_part`; `enhance.py:intermediate`; `project.py:last_frame/make_card/assemble`; `web.py:poster_view` |
 | `ffprobe` | `ffprobe` | `FFPROBE` | — | `project.py:_duration/_has_audio` |
 | `job_timeout` | `14400` s (4 h) | `JOB_TIMEOUT` | `--job-timeout` | `web.py:JOB_TIMEOUT` (poll deadline) |
@@ -130,5 +133,5 @@ fixed pair (`preview_export_fps`/`preview_export_crf`), unchanged.
 Binary *lookup* of `notify-send`, H3's 4–15 s length range, the library image size cap, project
 edit-window/history limits, the encoder codec/preset/audio strings in `project.py`, ComfyUI's
 fixed subfolder names (`input/director`, `output/director`, `enhance-tmp`, `.director-trash`),
-`stats.py`'s history size, and the `eval.py` fixture picture paths. These are algorithmic or
+`stats.py`'s history size. These are algorithmic or
 page-level constants, not service addresses, paths or deployment defaults.

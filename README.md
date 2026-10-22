@@ -45,6 +45,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 | [Configuration](docs/configuration.md) | Every setting: defaults, environment variables, CLI flags, `config.json` |
 | [Best practices](docs/best-practices.md) | Writing better prompts, choosing a director model, iterating cheaply, film workflow |
 | [Troubleshooting](docs/troubleshooting.md) | Common errors, out-of-memory fixes, playback problems |
+| [Evaluating director models](docs/evaluation.md) | The eval harness: case set, fixtures, results schema, comparing models |
 | [Multi-scene design](MULTISCENE-PLAN.md) | Design notes and planned work for film projects |
 
 ## Files
@@ -59,8 +60,10 @@ a logline, and you draft, pick, and finish scenes step by step:
 | `h3check.py` | H3 format checks used by the retry loop and `eval.py` |
 | `readiness.py` | Prompt / video / finishing health probes behind the header chips |
 | `skill/` | Pinned MiniMax-H3 prompt-writing skill |
-| `eval/` | Director-model A/B outputs (Qwen3.6-35B vs Qwen3.8-27B) |
+| `eval/` | Director-model A/B: case set (`eval/cases.json`), fixture README, per-label outputs (`results.json`) |
+| `eval/make_fixtures.py` | Deterministic fixture images for the portable eval cases |
 | `rescore.py` | Re-score saved `eval/` outputs with today's `h3check.py` (writes `eval/<label>/rescored.json`) |
+| `eval_compare.py` | Side-by-side diff of two eval labels, gated on matching validator/case-set versions |
 | `docs/` | Documentation and screenshots |
 
 All servers bind to `127.0.0.1` by default.

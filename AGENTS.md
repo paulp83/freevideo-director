@@ -31,8 +31,10 @@ Check a change by running it:
 3. Start the UI on a spare port (`python3 web.py --port 8199`) and `curl` the pages and `/api/...`
    endpoints you touched. The UI runs without a director model or ComfyUI; only *Write prompt* and
    *Render* need them.
-4. For prompt changes, run `eval.py` against a live director model and compare with `eval/*/results.json`;
-   the pass count (`passed` / `total`) must not drop.
+4. For prompt changes, run `eval.py --portable` against a live director model and compare labels with
+   `eval_compare.py old new` — it refuses runs whose `h3check` version/hash or case set differs
+   (`rescore.py` re-scores old runs first). Pass counts are only comparable over the same denominator:
+   failed calls and skipped fixtures are rows and count against the total.
 
 ## Gotchas
 
@@ -45,7 +47,8 @@ Check a change by running it:
   `batch_size` is `4n+1`.
 - **Takes live in ComfyUI's output folder**, not in `projects/`. A project stores references to them.
 - **Ignored on purpose:** `out/`, `library/`, `stats.json`, `jobs.db*`, `config.json`,
-  `projects/*/*.mp4`, `projects/*/frames/`. Generated media and local settings stay out of git.
+  `projects/*/*.mp4`, `projects/*/frames/`, `eval/fixtures/generated/`, `eval/fixtures/*.jpg`.
+  Generated media, eval fixture images and local settings stay out of git.
 - **Ports:** UI `8192`, ComfyUI `8190`, director models `8144` then `8078` — the defaults in
   `config.py`, overridable by flag / env (`DIRECTOR_URL` / `DIRECTOR_MODEL`) / `config.json`.
 

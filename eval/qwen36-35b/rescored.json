@@ -3,6 +3,22 @@
     "rows": 12,
     "old_clean": 11,
     "new_clean": 9,
+    "failed_calls": 0,
+    "skipped": 0,
+    "unknown": 0,
+    "schema": 1,
+    "validator": {
+      "recorded": {
+        "h3check_version": null,
+        "note": "schema 1: validator not recorded at run time"
+      },
+      "current": {
+        "h3check_version": 2,
+        "h3check_sha256": "c38f1e3c46f43f48",
+        "cases_sha256": "38216c3a838099d5"
+      }
+    },
+    "validator_changed": false,
     "flipped": [
       "C2-t2va-dialogue-2: +fields_present, no_instruction_line, shot_numbering",
       "C4-i2va-cheer-1: +picture1_in_shot1",
@@ -14,52 +30,53 @@
       "case": "C1-t2va-boat",
       "run": 1,
       "mode": "t2va",
+      "status": "ok",
       "old_passed": 5,
       "old_total": 5,
       "old_failed": [],
       "new_passed": 19,
       "new_total": 19,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C1-t2va-boat",
       "run": 2,
       "mode": "t2va",
+      "status": "ok",
       "old_passed": 5,
       "old_total": 5,
       "old_failed": [],
       "new_passed": 19,
       "new_total": 19,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C2-t2va-dialogue",
       "run": 1,
       "mode": "t2va",
+      "status": "ok",
       "old_passed": 7,
       "old_total": 7,
       "old_failed": [],
-      "new_passed": 19,
-      "new_total": 19,
+      "new_passed": 21,
+      "new_total": 21,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C2-t2va-dialogue",
       "run": 2,
       "mode": "t2va",
+      "status": "ok",
       "old_passed": 6,
       "old_total": 7,
       "old_failed": [
         "fields_in_order"
       ],
-      "new_passed": 16,
-      "new_total": 19,
+      "new_passed": 18,
+      "new_total": 21,
       "new_failed": [
         "fields_present",
         "no_instruction_line",
@@ -69,120 +86,119 @@
         "fields_present",
         "no_instruction_line",
         "shot_numbering"
-      ],
-      "error": null
+      ]
     },
     {
       "case": "C3-ref-lightsaber",
       "run": 1,
       "mode": "ref2va",
+      "status": "ok",
       "old_passed": 8,
       "old_total": 8,
       "old_failed": [],
-      "new_passed": 21,
-      "new_total": 21,
+      "new_passed": 25,
+      "new_total": 25,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C3-ref-lightsaber",
       "run": 2,
       "mode": "ref2va",
+      "status": "ok",
       "old_passed": 8,
       "old_total": 8,
       "old_failed": [],
-      "new_passed": 21,
-      "new_total": 21,
+      "new_passed": 25,
+      "new_total": 25,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C4-i2va-cheer",
       "run": 1,
       "mode": "i2va",
+      "status": "ok",
       "old_passed": 7,
       "old_total": 7,
       "old_failed": [],
-      "new_passed": 19,
-      "new_total": 20,
+      "new_passed": 20,
+      "new_total": 21,
       "new_failed": [
         "picture1_in_shot1"
       ],
       "newly_failed": [
         "picture1_in_shot1"
-      ],
-      "error": null
+      ]
     },
     {
       "case": "C4-i2va-cheer",
       "run": 2,
       "mode": "i2va",
+      "status": "ok",
       "old_passed": 7,
       "old_total": 7,
       "old_failed": [],
-      "new_passed": 20,
-      "new_total": 20,
+      "new_passed": 21,
+      "new_total": 21,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C5-ref2-ranch",
       "run": 1,
       "mode": "ref2va",
+      "status": "ok",
       "old_passed": 9,
       "old_total": 9,
       "old_failed": [],
-      "new_passed": 21,
-      "new_total": 21,
+      "new_passed": 25,
+      "new_total": 25,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C5-ref2-ranch",
       "run": 2,
       "mode": "ref2va",
+      "status": "ok",
       "old_passed": 9,
       "old_total": 9,
       "old_failed": [],
-      "new_passed": 21,
-      "new_total": 21,
+      "new_passed": 25,
+      "new_total": 25,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     },
     {
       "case": "C6-ref-spin",
       "run": 1,
       "mode": "ref2va",
+      "status": "ok",
       "old_passed": 10,
       "old_total": 10,
       "old_failed": [],
-      "new_passed": 20,
-      "new_total": 21,
+      "new_passed": 25,
+      "new_total": 26,
       "new_failed": [
         "first_shot_zero"
       ],
       "newly_failed": [
         "first_shot_zero"
-      ],
-      "error": null
+      ]
     },
     {
       "case": "C6-ref-spin",
       "run": 2,
       "mode": "ref2va",
+      "status": "ok",
       "old_passed": 10,
       "old_total": 10,
       "old_failed": [],
-      "new_passed": 21,
-      "new_total": 21,
+      "new_passed": 26,
+      "new_total": 26,
       "new_failed": [],
-      "newly_failed": [],
-      "error": null
+      "newly_failed": []
     }
   ]
 }

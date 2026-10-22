@@ -96,9 +96,14 @@ at all, the job fails with `the model replied with no prompt text (checks: …)`
 ## Rescoring the saved runs
 
 `python3 rescore.py` re-scores every saved reply in `eval/<label>/` with today's validator —
-no model is re-run; durations and image counts come from `eval.py`'s `CASES`, never from the
-latency column — and writes `eval/<label>/rescored.json` with the old and new failed-check
-lists side by side. The `results.json` files are never touched.
+no model is re-run; durations, image counts and grounding come from `eval/cases.json`, never
+from the latency column — and writes `eval/<label>/rescored.json` with the failed checks
+recorded at run time beside the new ones, plus **both validators**: whatever the run recorded
+(`h3check_version` + hashes; "unknown" for the schema-1 runs below) and today's. `h3check.py`
+carries `H3CHECK_VERSION` (currently 2; bump it whenever a check's meaning changes), and
+`eval_compare.py` refuses to compare two labels whose validator or case-set hashes differ — a
+"regression" against a stale `results.json` is usually just the stricter checker. The
+`results.json` files are never touched.
 
 | Label | Replies clean (old validator) | Replies clean (today's validator) | Checks passed |
 |---|---|---|---|
