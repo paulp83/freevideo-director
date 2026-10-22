@@ -52,6 +52,7 @@ _env_saved = os.environ.get('PROJECTS_ROOT')
 os.environ['PROJECTS_ROOT'] = str(_inproc)
 
 sys.path.insert(0, str(HERE / 'golden'))
+sys.path.insert(0, str(HERE))                         # leak_guard also when run as a dotted name
 sys.path.insert(0, str(HERE / 'fixtures'))
 import capture_legacy_m4  # noqa: E402
 import legacy_m4  # noqa: E402
