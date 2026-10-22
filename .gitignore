@@ -15,3 +15,8 @@ jobs.db-shm
 
 # local settings overrides (config.py); user data, like stats.json
 config.json
+
+# eval fixtures: private photos and generated images are inputs, not results
+eval/fixtures/generated/
+eval/fixtures/*.jpg
+eval/fixtures/*.png

@@ -1,0 +1,58 @@
+{
+  "comment": "Eval case set (data, not code; eval.py loads this). Images are fixture ids, never paths: private photos resolve from eval/fixtures/ or the EVAL_* settings (docs/evaluation.md), gen-* fixtures are built deterministically by eval/make_fixtures.py. Grounding entries are regexes matched case-insensitively against the reply; for image cases they quote text the fixture draws.",
+  "fixtures": {
+    "group": {"kind": "private", "file": "group.jpg", "env": "EVAL_GROUP_IMAGE"},
+    "rangels": {"kind": "private", "file": "rangels.jpg", "env": "EVAL_RANGE_IMAGE"},
+    "gen-team-pizza": {"kind": "generated", "file": "team-pizza.png"},
+    "gen-cafe-mug": {"kind": "generated", "file": "cafe-mug.png"},
+    "gen-reston-ranch": {"kind": "generated", "file": "reston-ranch.png"}
+  },
+  "cases": [
+    {
+      "id": "C1-t2va-boat", "seconds": 6, "grounding": [],
+      "idea": "a paper boat drifts down a rain gutter into a puddle"
+    },
+    {
+      "id": "C2-t2va-dialogue", "seconds": 10, "dialogue": true, "grounding": ["grandmother"],
+      "idea": "a street food chef in Bangkok flips noodles in a flaming wok and tells the camera 'This is how my grandmother did it.'"
+    },
+    {
+      "id": "C3-ref-lightsaber", "seconds": 10, "refs": ["group"], "labels": 1,
+      "grounding": ["team pizza", "red", "cap|hat"],
+      "idea": "the two people on the right side of the photo have a Jedi lightsaber fight in this parking lot"
+    },
+    {
+      "id": "C4-i2va-cheer", "seconds": 5, "first": "group",
+      "grounding": ["purple|team pizza"],
+      "idea": "everyone cheers and the man on the far right jumps for joy"
+    },
+    {
+      "id": "C5-ref2-ranch", "seconds": 12, "refs": ["group", "rangels"], "labels": 2,
+      "grounding": ["reston wranglers", "team pizza", "lasso|rope"],
+      "idea": "the Team Pizza crew from the first photo rides horses into the ranch from the second photo at sunset, and the wranglers lasso the man in the cap"
+    },
+    {
+      "id": "C6-ref-spin", "seconds": 8, "refs": ["rangels"], "labels": 1,
+      "grounding": ["reston wranglers", "plaid|flannel", "bandana", "rope"],
+      "idea": "the three women let go of the rope and the man in the middle spins free, then tips his hat"
+    },
+    {
+      "id": "C7-t2va-train", "seconds": 6, "grounding": ["steam", "whistle"],
+      "idea": "a toy steam train chugs over a wooden bridge, puffs white steam and blows its whistle as it rolls down the other side"
+    },
+    {
+      "id": "C8-i2va-pizza", "seconds": 5, "first": "gen-team-pizza", "grounding": ["team pizza"],
+      "idea": "the sign flickers to life, confetti bursts over the blue square and the yellow circle, and the whole poster hums with celebration"
+    },
+    {
+      "id": "C9-ref-mug", "seconds": 8, "refs": ["gen-cafe-mug"], "labels": 1,
+      "grounding": ["cafe 42", "mug|cup"],
+      "idea": "a barista lifts the brown mug from the photo, pours latte art into it and slides it along the cafe counter"
+    },
+    {
+      "id": "C10-ref2-pizza-ranch", "seconds": 10, "refs": ["gen-team-pizza", "gen-reston-ranch"], "labels": 2,
+      "grounding": ["team pizza", "reston ranch", "pizza box|box"],
+      "idea": "the TEAM PIZZA crew drives up to the RESTON RANCH gate, stacks pizza boxes on the fence and hands one across to the rancher"
+    }
+  ]
+}
