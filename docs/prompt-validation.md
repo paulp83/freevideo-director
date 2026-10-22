@@ -10,6 +10,10 @@ the model. `h3check.MESSAGES` holds the same one-line messages.
 The validator measures **format compliance only**. A clean report is not evidence the prompt will
 render a good video; it only means the reply is shaped the way the video model expects.
 
+Before scoring, `report` trims the reply and unwraps it when the whole reply is wrapped in a
+`` ``` `` fence — a fenced prompt is normalised, not rejected. Only a fence with nothing inside
+fails (`code_fence_only`); markdown inside real content fails `no_markdown`.
+
 ## Shared rules (every mode)
 
 | Check | Rule (skill citation) | Message on failure |
@@ -91,4 +95,25 @@ at all, the job fails with `the model replied with no prompt text (checks: …)`
 
 ## Rescoring the saved runs
 
-(added with `rescore.py`)
+`python3 rescore.py` re-scores every saved reply in `eval/<label>/` with today's validator —
+no model is re-run; durations and image counts come from `eval.py`'s `CASES`, never from the
+latency column — and writes `eval/<label>/rescored.json` with the old and new failed-check
+lists side by side. The `results.json` files are never touched.
+
+| Label | Replies clean (old validator) | Replies clean (today's validator) | Checks passed |
+|---|---|---|---|
+| `qwen36-35b` | 11 / 12 | 9 / 12 | 91/92 old → 237/242 new |
+| `qwen38-27b` | 12 / 12 | 12 / 12 | 92/92 old → 242/242 new |
+
+The check totals are not comparable across columns — the old validator ran 6–8 checks per reply,
+today's runs 19 (T2VA), 20 (I2VA) or 21 (Ref2VA). The honest signal is the reply-level count:
+the stricter validator demotes two Qwen3.6 replies that used to pass, and nothing on Qwen3.8.
+
+* `C2-t2va-dialogue-2` already failed the old run (`fields_in_order`); the reply omits the
+  `integrated_multimodal_description:` label entirely, which today's `fields_present` names
+  directly, plus the `no_instruction_line` and `shot_numbering` it causes.
+* `C4-i2va-cheer-1` is newly failing: `<Picture 1>` appears only in the instruction line — the
+  `[Shot 1]` text never references the picture (`picture1_in_shot1`).
+* `C6-ref-spin-1` is newly failing: `At 00:02.000` and `At 00:05.000` sit inside `[Shot 1]`
+  prose with no `[Shot 2]` label after them (`first_shot_zero`), which the skill forbids
+  (base-en.txt:86).

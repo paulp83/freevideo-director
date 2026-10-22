@@ -60,6 +60,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 | `readiness.py` | Prompt / video / finishing health probes behind the header chips |
 | `skill/` | Pinned MiniMax-H3 prompt-writing skill |
 | `eval/` | Director-model A/B outputs (Qwen3.6-35B vs Qwen3.8-27B) |
+| `rescore.py` | Re-score saved `eval/` outputs with today's `h3check.py` (writes `eval/<label>/rescored.json`) |
 | `docs/` | Documentation and screenshots |
 
 All servers bind to `127.0.0.1` by default.
