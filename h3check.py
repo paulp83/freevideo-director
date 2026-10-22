@@ -13,6 +13,11 @@ puts a stamp on [Shot 1] - the timeline starts at 00:00).
 """
 import re
 
+# Bumped whenever the set of checks or their verdicts change, so eval results can name the
+# validator that produced them (eval.py, rescore.py, eval_compare.py). Bump it together with
+# any rule change; docs/prompt-validation.md keeps the rule table in sync.
+H3CHECK_VERSION = 2
+
 BASE = ['integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music']
 REF = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description',
        'overall_soundscape', 'non_diegetic_music']

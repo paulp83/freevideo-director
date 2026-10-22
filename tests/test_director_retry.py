@@ -18,7 +18,7 @@ class Stub:
         self.replies = list(replies)
         self.calls = []
 
-    def chat(self, url, model, system, content, think, temperature, max_tokens=12000, extra=()):
+    def chat(self, url, model, system, content, think, temperature, max_tokens=12000, extra=(), **kw):
         self.calls.append([m['content'] for m in extra])
         return self.replies[min(len(self.calls) - 1, len(self.replies) - 1)], 7
 

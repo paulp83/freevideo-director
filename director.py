@@ -94,30 +94,41 @@ def select_mode(refs=(), first=None, last=None):
             'i2va' if first else 'l2va' if last else 't2va')
 
 
-def chat(url, model, system, content, think, temperature, max_tokens=12000, extra=()):
-    """POST one chat completion; return (text, completion_tokens). `extra` are messages after the user turn."""
+def chat(url, model, system, content, think, temperature, max_tokens=12000, extra=(), timeout=600,
+         seed=None, top_p=None):
+    """POST one chat completion; return (text, completion_tokens). `extra` are messages after the user turn.
+
+    `seed`/`top_p` are sent only when set; anything the backend rejects (HTTP error, timeout,
+    malformed JSON, unexpected reply shape) comes back as a DirectorError naming the cause."""
     body = {'model': model, 'temperature': temperature, 'max_tokens': max_tokens,
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}, *extra],
             'chat_template_kwargs': {'enable_thinking': think}}
+    if seed is not None:
+        body['seed'] = seed
+    if top_p is not None:
+        body['top_p'] = top_p
     req = urllib.request.Request(url, json.dumps(body).encode(), {'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(req, timeout=600) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             reply = json.load(r)
-    except OSError as e:
-        raise DirectorError(f'request to {url} failed: {e}. Is the director model up? '
+        text = reply['choices'][0]['message'].get('content') or ''
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+        raise DirectorError(f'request to {url} failed: {type(e).__name__}: {e}. Is the director model up? '
                             '(docker ps | grep freevideo-director)') from e
-    text = reply['choices'][0]['message'].get('content') or ''
     text = re.sub(r'(?s)^.*?</think>', '', text).strip()          # reasoning left inline, if any
     return text, reply.get('usage', {}).get('completion_tokens')
 
 
 def direct_report(idea, seconds=10, refs=(), first=None, last=None, think=True, temperature=0.7,
-                  max_side=1024, url=None, model=None, retries=1):
-    """Return a dict: mode, text, tokens, model, first_failures, final_failures, retried.
+                  max_side=1024, url=None, model=None, retries=1, timeout=600, seed=None, top_p=None,
+                  max_tokens=12000):
+    """Return a dict: mode, text, tokens, model, calls, first_failures, final_failures, retried.
 
     A reply that fails the h3check format checks is sent back once (`retries`) with the failed
     check names and their one-line messages. A final still-failing reply is returned with its
-    check names in `final_failures`; a final empty reply raises DirectorError naming the checks."""
+    check names in `final_failures`; a final empty reply raises DirectorError naming the checks.
+    `calls` counts the chat completions made; a DirectorError raised from a chat call carries
+    `.calls` so a caller (eval.py) can record how many attempts were spent before the failure."""
     if not idea.strip():
         raise DirectorError('describe the idea first')
     if not 4 <= seconds <= 15:
@@ -147,7 +158,14 @@ def direct_report(idea, seconds=10, refs=(), first=None, last=None, think=True, 
              'No markdown fences, no headings, no commentary.')
 
     content = [{'type': 'text', 'text': user}] + [image_part(x, max_side) for x in images]
-    text, tokens = chat(url, model, system, content, think, temperature)
+    calls = 0
+    try:
+        calls += 1
+        text, tokens = chat(url, model, system, content, think, temperature, max_tokens=max_tokens,
+                            timeout=timeout, seed=seed, top_p=top_p)
+    except DirectorError as e:
+        e.calls = calls
+        raise
     text = re.sub(r'^```\w*\n|\n```$', '', text).strip()
     rep = h3check.report(mode, text, seconds, len(images))
     bad = [r['check'] for r in rep if not r['ok']]
@@ -159,23 +177,33 @@ def direct_report(idea, seconds=10, refs=(), first=None, last=None, think=True, 
                + '; '.join(f"{r['check']}: {r['detail']}" for r in rep if not r['ok'])
                + '. Fix them and output ONLY the corrected final prompt text, exactly as before: '
                  'no markdown fences, no commentary.')
-        again, more = chat(url, model, system, content, think, temperature,
-                           extra=[{'role': 'assistant', 'content': text}, {'role': 'user', 'content': fix}])
+        try:
+            calls += 1
+            again, more = chat(url, model, system, content, think, temperature, max_tokens=max_tokens,
+                               extra=[{'role': 'assistant', 'content': text}, {'role': 'user', 'content': fix}],
+                               timeout=timeout, seed=seed, top_p=top_p)
+        except DirectorError as e:
+            e.calls = calls
+            raise
         again = re.sub(r'^```\w*\n|\n```$', '', again).strip()
         tokens = (tokens or 0) + (more or 0)
         again_bad = [r['check'] for r in h3check.report(mode, again, seconds, len(images)) if not r['ok']]
         if again and len(again_bad) <= len(bad):                # keep the better reply; a tie takes the later one
             text, bad = again, again_bad
     if not text:
-        raise DirectorError('the model replied with no prompt text (checks: ' + ', '.join(bad) + ')')
-    return {'mode': mode, 'text': text, 'tokens': tokens, 'model': model,
+        err = DirectorError('the model replied with no prompt text (checks: ' + ', '.join(bad) + ')')
+        err.calls = calls
+        raise err
+    return {'mode': mode, 'text': text, 'tokens': tokens, 'model': model, 'calls': calls,
             'first_failures': first_failures, 'final_failures': list(bad), 'retried': retried}
 
 
 def direct(idea, seconds=10, refs=(), first=None, last=None, think=True, temperature=0.7,
-           max_side=1024, url=None, model=None, retries=1):
+           max_side=1024, url=None, model=None, retries=1, timeout=600, seed=None, top_p=None,
+           max_tokens=12000):
     """Return (mode, prompt, completion_tokens, model). Images are paths or raw bytes."""
-    r = direct_report(idea, seconds, refs, first, last, think, temperature, max_side, url, model, retries)
+    r = direct_report(idea, seconds, refs, first, last, think, temperature, max_side, url, model,
+                      retries, timeout, seed, top_p, max_tokens)
     return r['mode'], r['text'], r['tokens'], r['model']
 
 

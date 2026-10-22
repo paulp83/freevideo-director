@@ -52,6 +52,10 @@ SETTINGS = {
     'jobs_db_file':       Setting(HERE / 'jobs.db', 'JOBS_DB', '--jobs-db', 'file', False),
     # notifications
     'notify_url':         Setting('', 'DIRECTOR_NOTIFY_URL', '--notify-url', 'url-or-empty', True),
+    # eval harness fixture lookup (eval.py / docs/evaluation.md); private photos only
+    'eval_fixture_dir':   Setting(HERE / 'eval' / 'fixtures', 'EVAL_FIXTURE_DIR', '--eval-fixture-dir', 'dir', False),
+    'eval_group_image':   Setting('', 'EVAL_GROUP_IMAGE', '--eval-group-image', 'str', False),
+    'eval_range_image':   Setting('', 'EVAL_RANGE_IMAGE', '--eval-range-image', 'str', False),
     # external binaries (found on PATH)
     'ffmpeg':             Setting('ffmpeg', 'FFMPEG', None, 'str', False),
     'ffprobe':            Setting('ffprobe', 'FFPROBE', None, 'str', False),
