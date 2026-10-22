@@ -28,7 +28,7 @@ from pathlib import Path
 import config
 
 FILE = config.value('jobs_db_file')   # --jobs-db / JOBS_DB / config.json
-VERSION = 3
+VERSION = 4
 SUBMITTING = 'submitting'                     # persisted-only (see docstring)
 TERMINAL = ('finished', 'failed', 'cancelled', 'unknown')
 KEEP_TERMINAL = 500                           # retention: the last 500 terminal jobs...
@@ -85,6 +85,8 @@ def _migrate(conn):
     if version < 3:
         conn.execute('ALTER TABLE jobs ADD COLUMN retry_of TEXT')
         conn.execute('ALTER TABLE jobs ADD COLUMN retried_as TEXT')
+    if version < 4:
+        conn.execute('ALTER TABLE jobs ADD COLUMN submit_unanswered INTEGER NOT NULL DEFAULT 0')
     conn.execute(f'PRAGMA user_version = {VERSION}')
     conn.commit()
 
@@ -138,13 +140,14 @@ def _row(job, state=None, backend=None, take_id=None, snapshot_path=None, result
                                else job.get('retry_allowed')) else 0,
         'recovering_at': recovering_at if recovering_at is not None else job.get('recovering_at'),
         'retry_of': job.get('retry_of'), 'retried_as': job.get('retried_as'),
+        'submit_unanswered': 1 if job.get('submit_unanswered') else 0,
     }
 
 
 COLUMNS = ('id', 'kind', 'project', 'scene', 'state', 'created', 'started', 'ended', 'backend',
            'prompt_ids', 'correlation', 'snapshot_path', 'result_path', 'take_id', 'run', 'error',
            'resolved_by', 'resolved_verdict', 'resolved_at', 'workdir', 'holds',
-           'retry_allowed', 'recovering_at', 'retry_of', 'retried_as')
+           'retry_allowed', 'recovering_at', 'retry_of', 'retried_as', 'submit_unanswered')
 
 
 def _put(conn, r):
@@ -239,6 +242,7 @@ def _decode(row):
     out['resolved'] = ({'by': out['resolved_by'], 'verdict': out['resolved_verdict'], 'at': out['resolved_at']}
                        if out['resolved_verdict'] is not None else None)
     out['retry_allowed'] = bool(out['retry_allowed'])
+    out['submit_unanswered'] = bool(out.get('submit_unanswered'))
     return out
 
 

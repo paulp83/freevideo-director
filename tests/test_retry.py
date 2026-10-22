@@ -221,6 +221,41 @@ class Retry(unittest.TestCase):
 
     # ---------------------------------------------------------------- refusals: nothing submitted
 
+    def test_a_live_unanswered_submit_gets_a_retry_once_reconcile_finds_no_trace(self):
+        # found with a real ComfyUI behind a proxy that dropped the submit: the live path turned the row unknown,
+        # which erased the 'submitting' evidence, so reconcile proved the prompt lost yet never offered a Retry
+        StubComfy.mode = 'drop'
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        self.assertEqual(job['state'], 'unknown')
+        self.assertTrue(job['submit_unanswered'])
+        self.assertTrue(jobs_db.get(job['id'])['submit_unanswered'])        # durable, not just in memory
+        self.assertFalse(job.get('retry_allowed'))                           # not before ComfyUI has been asked
+        key = web.scene_key(self.slug, str(self.ids[0]))
+        StubComfy.mode = 'gone'                                              # neither queued nor in history
+        self.assertEqual(web.reconcile(job), 'lost')
+        self.assertTrue(job['retry_allowed'])
+        self.assertIsNone(job.get('resolved'))                               # kept: the user decides
+        self.assertIn('Retry is available', job['error'])
+        self.assertEqual(web.RESERVES.get(key), job['id'])                   # still holds its scene until then
+        code, d = self.post(f'/api/job/{job["id"]}/retry')                  # its pre-check sees no trace: still 'gone'
+        StubComfy.mode = 'complete'                                          # ...then the replayed prompt can finish
+        self.assertEqual(code, 200, d)
+        new_id = d['job']['id']
+        self.assertTrue(self.wait_for(lambda: web.JOBS[new_id]['done']))
+        self.assertEqual(web.JOBS[new_id]['state'], 'finished', web.JOBS[new_id]['error'])
+        self.assertEqual(jobs_db.get(job['id'])['resolved']['verdict'], 'retried')
+
+    def test_a_live_unanswered_submit_that_did_arrive_is_not_retried(self):
+        StubComfy.mode = 'drop'
+        job = web.new_job('render-draft', ['render'], project=self.slug, scene=self.ids[0])
+        web.run_job(job, web.render_job, self.slug, self.ids[0], 'draft')
+        StubComfy.mode = 'hang'
+        StubComfy.running_ids = list(job['prompt_ids'])                      # it reached ComfyUI after all
+        self.assertEqual(web.reconcile(job), 'running')
+        self.assertFalse(job.get('retry_allowed'))
+        StubComfy.mode = 'complete'
+
     def test_no_retry_for_a_submit_comfyui_had_acknowledged(self):
         StubComfy.mode = 'gone'                                # vanished without a trace
         jid = self.crashed_unknown(state='running', pids=['ack-1'])

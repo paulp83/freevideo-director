@@ -641,6 +641,8 @@ def run_job(job, fn, *args, **kwargs):
             unknown(job, f'the cancel of ComfyUI prompt {ids} was not confirmed; it may still be '
                          'executing. The job will not be resubmitted.')
     except (AmbiguousSubmit, JobTimeout) as e:
+        if isinstance(e, AmbiguousSubmit):
+            job['submit_unanswered'] = True        # durable: the row turns unknown, but a Retry stays honest if reconcile finds no trace
         ids = ', '.join(job['prompt_ids'])
         if ids:
             unknown(job, f'{e} ComfyUI prompt {ids} may still be executing; the job will not be resubmitted.')
@@ -915,6 +917,15 @@ def reconcile(job):
         verdict = 'failed'
     else:
         verdict = 'lost'                                 # neither queued nor in history: never ran
+        if job.get('submit_unanswered') and not job.get('retry_allowed'):
+            # the POST left unanswered and ComfyUI has no trace of the prompt, so the request may never have
+            # reached it: the same evidence the recovery pass uses to offer a Retry. Keep the job (unresolved,
+            # still holding its scene) so the user can replay the recorded request or dismiss it.
+            job['retry_allowed'] = True
+            job['error'] = ('the submit was not confirmed: ComfyUI has no record of its prompt, so the request '
+                            'may never have reached it. Nothing was resubmitted; Retry is available.')
+            db_note(job)
+            return verdict
     release_resolved(job, verdict)
     return verdict
 
@@ -1110,7 +1121,7 @@ def _lost_message(job, row):
     unanswered: the request may never have reached ComfyUI, so a Retry is honest. A submit
     ComfyUI had acknowledged (the row moved past 'submitting') may simply have been purged, and
     resubmitting on that guess could double the GPU work."""
-    if row['state'] == jobs_db.SUBMITTING:
+    if row['state'] == jobs_db.SUBMITTING or row.get('submit_unanswered'):
         job['retry_allowed'] = True
         return ('the submit was not confirmed: ComfyUI has no record of its prompt, so the request '
                 'may never have reached it. Nothing was resubmitted; Retry is available.')
@@ -1560,6 +1571,7 @@ def _retryable_row(job_id):
     if row['state'] != 'unknown' and row['state'] not in RECOVER_STATES:
         return None
     job = _rebuilt_job(row)
+    job['submit_unanswered'] = bool(row.get('submit_unanswered'))
     job['retry_allowed'] = (bool(row['retry_allowed']) or not row['prompt_ids']
                             or row['state'] == jobs_db.SUBMITTING)
     job.update(state='unknown', done=True, ended=row['ended'] or time.time(),

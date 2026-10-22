@@ -441,7 +441,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <span class="hint" id="primaryWhy" hidden></span>
     <div class="action-group">
       <button class="btn ghost" data-k="bAnother" id="bAnother" title="New seed, then a fresh preview render">Generate another take</button>
-      <button class="btn ghost" data-k="bEnhanceSel" id="bEnhanceSel" title="Finishing only on the in-use take: SeedVR2 upscale to 1920×1080, RIFE interpolation ×2 to 48 fps, CRF-16 encode">Enhance selected take</button>
+      <button class="btn ghost" data-k="bEnhanceSel" id="bEnhanceSel" title="Finishing only on the in-use take: SeedVR2 upscale to 1080 px high, RIFE interpolation ×2 to 48 fps, CRF-16 encode">Enhance selected take</button>
       <span class="hint" id="anotherWhy" hidden></span>
       <span class="hint" id="enhanceWhy" hidden></span>
     </div>
@@ -454,7 +454,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         <option value="2">×2</option><option value="3" selected>×3</option><option value="4">×4</option><option value="5">×5</option><option value="6">×6</option>
       </select>
       <button class="btn ghost" data-k="bVariants" id="bVariants" title="Several preview renders with new seeds">Generate variants</button>
-      <button class="btn ghost" data-k="bFinal" id="bFinal" title="One render straight to finished: render, SeedVR2 upscale to 1920×1080, RIFE ×2 to 48 fps, CRF-16 encode">Generate final</button>
+      <button class="btn ghost" data-k="bFinal" id="bFinal" title="One render straight to finished: render, SeedVR2 upscale to 1080 px high, RIFE ×2 to 48 fps, CRF-16 encode">Generate final</button>
       <span class="hint" id="renderWhy" hidden></span>
     </div>
     <details id="scSettings">
@@ -1822,9 +1822,11 @@ const FIN_CRFS = {high: 16, standard: 20, small: 24};
 function finBits(s) {                       // what one finished take looks like under settings s
   const wide = proj.aspect !== '9:16', fps = proj.source_fps || 24;
   const h = s.upscale.height;
-  const size = s.upscale.enabled
-    ? (wide ? `${Math.round(h * 16 / 9)}×${h}` : `${h}×${Math.round(h * 16 / 9)}`)
-    : (wide ? '1344×768' : '768×1344');
+  // SeedVR2's resolution is the SHORT side and the take keeps its own aspect: a 1344×768 take comes out 1890×1080
+  // (measured on a real enhance), not 16:9; the film export then fits the cut to 1920×1080
+  const [pw, ph] = proj.size || (wide ? [1344, 768] : [768, 1344]);
+  const long = Math.round(h * Math.max(pw, ph) / Math.min(pw, ph));
+  const size = s.upscale.enabled ? (wide ? `${long}×${h}` : `${h}×${long}`) : `${pw}×${ph}`;
   const outFps = s.fps_policy === 'interpolated' ? fps * s.interpolation.factor : fps;
   return {size, fps: outFps, crf: s.encode.crf};
 }
