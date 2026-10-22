@@ -46,6 +46,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 | [Best practices](docs/best-practices.md) | Writing better prompts, choosing a director model, iterating cheaply, film workflow |
 | [Troubleshooting](docs/troubleshooting.md) | Common errors, out-of-memory fixes, playback problems |
 | [Evaluating director models](docs/evaluation.md) | The eval harness: case set, fixtures, results schema, comparing models |
+| [M6 pilot A/B](docs/pilot.md) | The 12-slot blinded pilot: plan, prompts, renders, blind review, report |
 | [Multi-scene design](MULTISCENE-PLAN.md) | Design notes and planned work for film projects |
 
 ## Files
@@ -64,6 +65,7 @@ a logline, and you draft, pick, and finish scenes step by step:
 | `eval/make_fixtures.py` | Deterministic fixture images for the portable eval cases |
 | `rescore.py` | Re-score saved `eval/` outputs with today's `h3check.py` (writes `eval/<label>/rescored.json`) |
 | `eval_compare.py` | Side-by-side diff of two eval labels, gated on matching validator/case-set versions |
+| `pilot.py`, `pilot/scenes.json` | M6 pilot: 3 scenes x 2 seeds x 2 prompt arms, rendered one at a time, blinded review and report |
 | `docs/` | Documentation and screenshots |
 
 All servers bind to `127.0.0.1` by default.

@@ -56,6 +56,10 @@ SETTINGS = {
     'eval_fixture_dir':   Setting(HERE / 'eval' / 'fixtures', 'EVAL_FIXTURE_DIR', '--eval-fixture-dir', 'dir', False),
     'eval_group_image':   Setting('', 'EVAL_GROUP_IMAGE', '--eval-group-image', 'str', False),
     'eval_range_image':   Setting('', 'EVAL_RANGE_IMAGE', '--eval-range-image', 'str', False),
+    # pilot comparison (pilot.py / docs/pilot.md); private-photo variant for the identity scene
+    'pilot_portrait_image': Setting('', 'PILOT_PORTRAIT_IMAGE', '--pilot-portrait-image', 'str', False),
+    # blinded review server (pilot.py review-serve); binds the same host rule as the UI
+    'pilot_port':         Setting(8392, 'PILOT_PORT', '--pilot-port', 'port', False),
     # external binaries (found on PATH)
     'ffmpeg':             Setting('ffmpeg', 'FFMPEG', None, 'str', False),
     'ffprobe':            Setting('ffprobe', 'FFPROBE', None, 'str', False),

@@ -1,0 +1,37 @@
+{
+  "kind": "freevideo-pilot-scenes",
+  "schema": 1,
+  "fixtures": {
+    "gen-cafe-mug": {"kind": "generated", "file": "cafe-mug.png"},
+    "pilot-portrait": {"kind": "private", "file": "portrait.jpg", "env": "PILOT_PORTRAIT_IMAGE"}
+  },
+  "scenes": [
+    {
+      "id": "action-rooftop",
+      "title": "Rooftop chase (text-to-video, action-heavy)",
+      "seconds": 8,
+      "refs": [],
+      "private_variant": null,
+      "idea": "A woman in a red raincoat sprints along a rain-soaked rooftop at dusk, leaps a two-metre gap onto the next roof, lands in a roll and keeps running; the camera tracks alongside her at speed, rain streaking past the lens, city lights blurring behind.",
+      "why": "Pure text-to-video with several sequential action beats (sprint, leap, roll, run). The hardest test of action adherence and motion: a weak prompt tends to drop or merge beats, which is exactly what the arm comparison is about."
+    },
+    {
+      "id": "dialogue-kitchen",
+      "title": "Kitchen confession (dialogue, audio-heavy)",
+      "seconds": 6,
+      "refs": [],
+      "private_variant": null,
+      "idea": "At a dim kitchen table at night, a tired paramedic in a damp jacket looks up and says quietly, \"I called her. She knows now.\" The fridge hums and rain taps the window behind her; she lowers her head into her hands.",
+      "why": "Spoken line plus diegetic sound: the only scene where the audio criterion can separate the arms, and lip-sync/speech is where raw idea text most often loses structure."
+    },
+    {
+      "id": "identity-mug",
+      "title": "The same mug (image-referenced identity)",
+      "seconds": 6,
+      "refs": ["gen-cafe-mug"],
+      "private_variant": "pilot-portrait",
+      "idea": "A hand reaches in and lifts the ceramic mug from [Picture 1] off the counter, turns it slowly so the printed label stays readable, and sets it back down; the camera holds on the mug the whole time with shallow depth of field.",
+      "why": "Image-referenced generation: identity means the mug (label, shape, colour) survives being handled and stays recognizable. Portable by default; if the user supplies a private portrait photo (PILOT_PORTRAIT_IMAGE) it rides along as a second reference and identity also covers the person - equally for both arms."
+    }
+  ]
+}

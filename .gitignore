@@ -20,3 +20,5 @@ config.json
 eval/fixtures/generated/
 eval/fixtures/*.jpg
 eval/fixtures/*.png
+# pilot-runs: generated takes, blind-review clips, key and ratings for the M6 pilot (pilot.py)
+pilot-runs/

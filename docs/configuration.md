@@ -43,6 +43,8 @@ file) abort startup immediately, naming the setting and where the bad value came
 | `eval_fixture_dir` | `<repo>/eval/fixtures` | `EVAL_FIXTURE_DIR` | `--eval-fixture-dir` | `eval.py` fixture lookup root (see `eval/fixtures/README.md`) |
 | `eval_group_image` | *(empty)* | `EVAL_GROUP_IMAGE` | `--eval-group-image` | `eval.py`: full-path override for the private `group` fixture |
 | `eval_range_image` | *(empty)* | `EVAL_RANGE_IMAGE` | `--eval-range-image` | `eval.py`: full-path override for the private `rangels` fixture |
+| `pilot_port` | `8392` | `PILOT_PORT` | `--pilot-port` (on `pilot.py review-serve`) | `pilot.py:cmd_review_serve` (blinded review HTTP bind) |
+| `pilot_portrait_image` | *(empty)* | `PILOT_PORTRAIT_IMAGE` | `--pilot-portrait-image` | `pilot.py` fixture lookup: full-path override for the private `pilot-portrait` fixture |
 | `ffmpeg` | `ffmpeg` | `FFMPEG` | — | `director.py:image_part`; `enhance.py:intermediate`; `project.py:last_frame/make_card/assemble`; `web.py:poster_view` |
 | `ffprobe` | `ffprobe` | `FFPROBE` | — | `project.py:_duration/_has_audio` |
 | `job_timeout` | `14400` s (4 h) | `JOB_TIMEOUT` | `--job-timeout` | `web.py:JOB_TIMEOUT` (poll deadline) |
