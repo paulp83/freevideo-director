@@ -69,3 +69,26 @@ class RealHistoryShapes(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RealObjectInfoShapes(unittest.TestCase):
+    """Combo inputs captured from the real ComfyUI: RIFE lists its models as [[names], {default}], a shape a
+    stub-only suite never produced (readiness called the installed rife49.pth 'unconfirmed')."""
+
+    @classmethod
+    def setUpClass(cls):
+        import readiness
+        cls.readiness = readiness
+        cls.nodes = json.loads((HERE / 'fixtures' / 'comfy_object_info' / 'finishing_and_render_nodes.json')
+                               .read_text())['nodes']
+
+    def test_rife_models_are_read_from_the_legacy_combo_shape(self):
+        options = self.readiness._options(self.nodes, 'RIFE VFI')
+        self.assertIn('rife49.pth', options)
+
+    def test_seedvr2_models_are_read_from_the_real_shape(self):
+        self.assertIn('ema_vae_fp16.safetensors', self.readiness._options(self.nodes, 'SeedVR2LoadVAEModel'))
+        self.assertTrue(any(o.endswith('.safetensors') for o in self.readiness._options(self.nodes, 'SeedVR2LoadDiTModel')))
+
+    def test_a_node_with_no_combo_inputs_still_yields_none(self):
+        self.assertIsNone(self.readiness._options({'X': {'input': {'required': {'a': ['INT', {}], 'b': ['IMAGE']}}}}, 'X'))

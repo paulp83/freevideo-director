@@ -1,0 +1,1000 @@
+{
+ "captured_from": "ComfyUI 0.34.0 /object_info on 2026-10-21 (real backend)",
+ "nodes": {
+  "RIFE VFI": {
+   "input": {
+    "required": {
+     "ckpt_name": [
+      [
+       "sudo_rife4_269.662_testV1_scale1.pth",
+       "rife47.pth",
+       "rife49.pth",
+       "rife417.pth",
+       "rife426.pth"
+      ],
+      {
+       "default": "rife49.pth"
+      }
+     ],
+     "frames": [
+      "IMAGE"
+     ],
+     "clear_cache_after_n_frames": [
+      "INT",
+      {
+       "default": 10,
+       "min": 1,
+       "max": 1000
+      }
+     ],
+     "multiplier": [
+      "INT",
+      {
+       "default": 2,
+       "min": 1
+      }
+     ],
+     "fast_mode": [
+      "BOOLEAN",
+      {
+       "default": true
+      }
+     ],
+     "ensemble": [
+      "BOOLEAN",
+      {
+       "default": true
+      }
+     ],
+     "scale_factor": [
+      [
+       0.25,
+       0.5,
+       1.0,
+       2.0,
+       4.0
+      ],
+      {
+       "default": 1.0
+      }
+     ],
+     "dtype": [
+      [
+       "float32",
+       "float16",
+       "bfloat16"
+      ],
+      {
+       "default": "float32"
+      }
+     ],
+     "torch_compile": [
+      "BOOLEAN",
+      {
+       "default": false,
+       "tooltip": "Compile the model with torch.compile() for 10-30% faster inference after the first (warm-up) run. Requires PyTorch 2.0+."
+      }
+     ],
+     "batch_size": [
+      "INT",
+      {
+       "default": 1,
+       "min": 1,
+       "max": 64,
+       "tooltip": "Number of interpolation tasks per GPU call. Higher values improve throughput but use more VRAM. Set to 1 for the most conservative behaviour."
+      }
+     ]
+    },
+    "optional": {
+     "optional_interpolation_states": [
+      "INTERPOLATION_STATES"
+     ]
+    }
+   }
+  },
+  "SeedVR2LoadDiTModel": {
+   "input": {
+    "required": {
+     "model": [
+      "COMBO",
+      {
+       "tooltip": "DiT (Diffusion Transformer) model for video upscaling.\nModels automatically download on first use.\nAdditional models can be added to the ComfyUI models folder.",
+       "default": "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+       "multiselect": false,
+       "options": [
+        "seedvr2_ema_3b-Q4_K_M.gguf",
+        "seedvr2_ema_3b-Q8_0.gguf",
+        "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+        "seedvr2_ema_3b_fp16.safetensors",
+        "seedvr2_ema_7b-Q4_K_M.gguf",
+        "seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+        "seedvr2_ema_7b_fp16.safetensors",
+        "seedvr2_ema_7b_sharp-Q4_K_M.gguf",
+        "seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+        "seedvr2_ema_7b_sharp_fp16.safetensors"
+       ]
+      }
+     ],
+     "device": [
+      "COMBO",
+      {
+       "tooltip": "GPU device for DiT model inference (upscaling phase)",
+       "default": "cuda:0",
+       "multiselect": false,
+       "options": [
+        "cuda:0"
+       ]
+      }
+     ]
+    },
+    "optional": {
+     "blocks_to_swap": [
+      "INT",
+      {
+       "tooltip": "Number of transformer blocks to swap between devices for VRAM optimization.\n\u2022 0: Disabled (default)\n\u2022 3B model: 0-32 blocks\n\u2022 7B model: 0-36 blocks\n\nRequires offload_device to be set and different from device.\nNot available on macOS (unified memory architecture).",
+       "default": 0,
+       "min": 0,
+       "max": 36,
+       "step": 1
+      }
+     ],
+     "swap_io_components": [
+      "BOOLEAN",
+      {
+       "tooltip": "Offload input/output embeddings and normalization layers to reduce VRAM.\nRequires offload_device to be set and different from device.\nNot available on macOS (unified memory architecture).",
+       "default": false
+      }
+     ],
+     "offload_device": [
+      "COMBO",
+      {
+       "tooltip": "Device to offload DiT model when not actively processing.\n\u2022 'none': Keep model on inference device (default, fastest)\n\u2022 'cpu': Offload to system RAM (reduces VRAM usage)\n\u2022 'cuda:X': Offload to another GPU (good balance if available)\n\nRequired for BlockSwap (blocks_to_swap or swap_io_components).",
+       "default": "none",
+       "multiselect": false,
+       "options": [
+        "none",
+        "cpu",
+        "cuda:0"
+       ]
+      }
+     ],
+     "cache_model": [
+      "BOOLEAN",
+      {
+       "tooltip": "Keep DiT model loaded on offload_device between workflow runs.\nUseful for batch processing to avoid repeated loading.\nRequires offload_device to be set.",
+       "default": false
+      }
+     ],
+     "attention_mode": [
+      "COMBO",
+      {
+       "tooltip": "Attention computation backend:\n\u2022 sdpa: PyTorch scaled_dot_product_attention (default, stable, always available)\n\u2022 flash_attn_2: Flash Attention 2 (Ampere+, requires flash-attn package)\n\u2022 flash_attn_3: Flash Attention 3 (Hopper+, requires flash-attn with FA3 support)\n\u2022 sageattn_2: SageAttention 2 (requires sageattention package)\n\u2022 sageattn_3: SageAttention 3 (Blackwell/RTX 50xx only, requires sageattn3 package)\n\nSDPA is recommended - stable and works everywhere.\nFlash Attention and SageAttention provide speedup through optimized CUDA kernels on compatible GPUs.",
+       "default": "sdpa",
+       "multiselect": false,
+       "options": [
+        "sdpa",
+        "flash_attn_2",
+        "flash_attn_3",
+        "sageattn_2",
+        "sageattn_3"
+       ]
+      }
+     ],
+     "torch_compile_args": [
+      "TORCH_COMPILE_ARGS",
+      {
+       "tooltip": "Optional torch.compile optimization settings from SeedVR2 Torch Compile Settings node.\nProvides 20-40% speedup with compatible PyTorch 2.0+ and Triton installation."
+      }
+     ]
+    }
+   }
+  },
+  "SeedVR2LoadVAEModel": {
+   "input": {
+    "required": {
+     "model": [
+      "COMBO",
+      {
+       "tooltip": "VAE (Variational Autoencoder) model for encoding/decoding.\nModels automatically download on first use.\nAdditional models can be added to the ComfyUI models folder.",
+       "default": "ema_vae_fp16.safetensors",
+       "multiselect": false,
+       "options": [
+        "ema_vae_fp16.safetensors"
+       ]
+      }
+     ],
+     "device": [
+      "COMBO",
+      {
+       "tooltip": "GPU device for VAE model inference (encoding/decoding phases)",
+       "default": "cuda:0",
+       "multiselect": false,
+       "options": [
+        "cuda:0"
+       ]
+      }
+     ]
+    },
+    "optional": {
+     "encode_tiled": [
+      "BOOLEAN",
+      {
+       "tooltip": "Enable tiled encoding to reduce VRAM usage during the encoding phase",
+       "default": false
+      }
+     ],
+     "encode_tile_size": [
+      "INT",
+      {
+       "tooltip": "Encoding tile size in pixels (default: 1024).\nApplied to both height and width.\nLower values reduce VRAM usage but may increase processing time.\nOnly used when encode_tiled is enabled.",
+       "default": 1024,
+       "min": 64,
+       "step": 32
+      }
+     ],
+     "encode_tile_overlap": [
+      "INT",
+      {
+       "tooltip": "Pixel overlap between encoding tiles (default: 128).\nReduces visible seams between tiles through blending.\nHigher values improve quality but slow processing.\nOnly used when encode_tiled is enabled.",
+       "default": 128,
+       "min": 0,
+       "step": 32
+      }
+     ],
+     "decode_tiled": [
+      "BOOLEAN",
+      {
+       "tooltip": "Enable tiled decoding to reduce VRAM usage during the decoding phase",
+       "default": false
+      }
+     ],
+     "decode_tile_size": [
+      "INT",
+      {
+       "tooltip": "Decoding tile size in pixels (default: 1024).\nApplied to both height and width.\nLower values reduce VRAM usage but may increase processing time.\nOnly used when decode_tiled is enabled.",
+       "default": 1024,
+       "min": 64,
+       "step": 32
+      }
+     ],
+     "decode_tile_overlap": [
+      "INT",
+      {
+       "tooltip": "Pixel overlap between decoding tiles (default: 128).\nReduces visible seams between tiles through blending.\nHigher values improve quality but slow processing.\nOnly used when decode_tiled is enabled.",
+       "default": 128,
+       "min": 0,
+       "step": 32
+      }
+     ],
+     "tile_debug": [
+      "COMBO",
+      {
+       "tooltip": "Tile debug visualization mode:\n\u2022 'false': No visualization overlay (default)\n\u2022 'encode': Show encoding tile boundaries\n\u2022 'decode': Show decoding tile boundaries\n\nOnly works when respective tiling is enabled.",
+       "default": "false",
+       "multiselect": false,
+       "options": [
+        "false",
+        "encode",
+        "decode"
+       ]
+      }
+     ],
+     "offload_device": [
+      "COMBO",
+      {
+       "tooltip": "Device to offload VAE model when not actively processing.\n\u2022 'none': Keep model on inference device (default, fastest)\n\u2022 'cpu': Offload to system RAM (reduces VRAM usage)\n\u2022 'cuda:X': Offload to another GPU (good balance if available)",
+       "default": "none",
+       "multiselect": false,
+       "options": [
+        "none",
+        "cpu",
+        "cuda:0"
+       ]
+      }
+     ],
+     "cache_model": [
+      "BOOLEAN",
+      {
+       "tooltip": "Keep VAE model loaded on offload_device between workflow runs.\nUseful for batch processing to avoid repeated loading.\nRequires offload_device to be set.",
+       "default": false
+      }
+     ],
+     "torch_compile_args": [
+      "TORCH_COMPILE_ARGS",
+      {
+       "tooltip": "Optional torch.compile optimization settings from SeedVR2 Torch Compile Settings node.\nProvides 15-25% speedup with compatible PyTorch 2.0+ and Triton installation."
+      }
+     ]
+    }
+   }
+  },
+  "VHS_VideoCombine": {
+   "input": {
+    "required": {
+     "images": [
+      "IMAGE"
+     ],
+     "frame_rate": [
+      "FLOAT",
+      {
+       "default": 8,
+       "min": 1,
+       "step": 1
+      }
+     ],
+     "loop_count": [
+      "INT",
+      {
+       "default": 0,
+       "min": 0,
+       "max": 100,
+       "step": 1
+      }
+     ],
+     "filename_prefix": [
+      "STRING",
+      {
+       "default": "AnimateDiff"
+      }
+     ],
+     "format": [
+      [
+       "image/gif",
+       "image/webp",
+       "video/ffmpeg-gif",
+       "video/ffv1-mkv",
+       "video/8bit-png",
+       "video/webm",
+       "video/nvenc_h264-mp4",
+       "video/nvenc_av1-mp4",
+       "video/16bit-png",
+       "video/av1-webm",
+       "video/h264-mp4",
+       "video/h265-mp4",
+       "video/nvenc_hevc-mp4",
+       "video/ProRes"
+      ],
+      {
+       "formats": {
+        "video/ffmpeg-gif": [
+         [
+          "dither",
+          [
+           "bayer",
+           "heckbert",
+           "floyd_steinberg",
+           "sierra2",
+           "sierra2_4a",
+           "sierra3",
+           "burkes",
+           "atkinson",
+           "none"
+          ],
+          {
+           "default": "sierra2_4a"
+          },
+          "[0:v] split [a][b]; [a] palettegen=reserve_transparent=on:transparency_color=ffffff [p]; [b][p] paletteuse=dither=$val"
+         ]
+        ],
+        "video/ffv1-mkv": [
+         [
+          "level",
+          [
+           "0",
+           "1",
+           "3"
+          ],
+          {
+           "default": "3"
+          }
+         ],
+         [
+          "coder",
+          [
+           "0",
+           "1",
+           "2"
+          ],
+          {
+           "default": "1"
+          }
+         ],
+         [
+          "context",
+          [
+           "0",
+           "1"
+          ],
+          {
+           "default": "1"
+          }
+         ],
+         [
+          "gop_size",
+          "INT",
+          {
+           "default": 1,
+           "min": 1,
+           "max": 300,
+           "step": 1
+          }
+         ],
+         [
+          "slices",
+          [
+           "4",
+           "6",
+           "9",
+           "12",
+           "16",
+           "20",
+           "24",
+           "30"
+          ],
+          {
+           "default": "16"
+          }
+         ],
+         [
+          "slicecrc",
+          [
+           "0",
+           "1"
+          ],
+          {
+           "default": "1"
+          }
+         ],
+         [
+          "pix_fmt",
+          [
+           "rgba64le",
+           "bgra",
+           "yuv420p",
+           "yuv422p",
+           "yuv444p",
+           "yuva420p",
+           "yuva422p",
+           "yuva444p",
+           "yuv420p10le",
+           "yuv422p10le",
+           "yuv444p10le",
+           "yuv420p12le",
+           "yuv422p12le",
+           "yuv444p12le",
+           "yuv420p14le",
+           "yuv422p14le",
+           "yuv444p14le",
+           "yuv420p16le",
+           "yuv422p16le",
+           "yuv444p16le",
+           "gray",
+           "gray10le",
+           "gray12le",
+           "gray16le"
+          ],
+          {
+           "default": "rgba64le"
+          }
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ],
+         [
+          "trim_to_audio",
+          "BOOLEAN",
+          {
+           "default": false
+          }
+         ]
+        ],
+        "video/webm": [
+         [
+          "pix_fmt",
+          [
+           "yuv420p",
+           "yuva420p"
+          ]
+         ],
+         [
+          "crf",
+          "INT",
+          {
+           "default": 20,
+           "min": 0,
+           "max": 100,
+           "step": 1
+          }
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ],
+         [
+          "trim_to_audio",
+          "BOOLEAN",
+          {
+           "default": false
+          }
+         ]
+        ],
+        "video/nvenc_h264-mp4": [
+         [
+          "pix_fmt",
+          [
+           "yuv420p",
+           "p010le"
+          ]
+         ],
+         [
+          "bitrate",
+          "INT",
+          {
+           "default": 10,
+           "min": 1,
+           "max": 999,
+           "step": 1
+          }
+         ],
+         [
+          "megabit",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ]
+        ],
+        "video/nvenc_av1-mp4": [
+         [
+          "pix_fmt",
+          [
+           "yuv420p",
+           "p010le"
+          ]
+         ],
+         [
+          "bitrate",
+          "INT",
+          {
+           "default": 10,
+           "min": 1,
+           "max": 999,
+           "step": 1
+          }
+         ],
+         [
+          "megabit",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ]
+        ],
+        "video/av1-webm": [
+         [
+          "pix_fmt",
+          [
+           "yuv420p10le",
+           "yuv420p"
+          ]
+         ],
+         [
+          "crf",
+          "INT",
+          {
+           "default": 23,
+           "min": 0,
+           "max": 100,
+           "step": 1
+          }
+         ],
+         [
+          "input_color_depth",
+          [
+           "8bit",
+           "16bit"
+          ]
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ]
+        ],
+        "video/h264-mp4": [
+         [
+          "pix_fmt",
+          [
+           "yuv420p",
+           "yuv420p10le"
+          ]
+         ],
+         [
+          "crf",
+          "INT",
+          {
+           "default": 19,
+           "min": 0,
+           "max": 100,
+           "step": 1
+          }
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ],
+         [
+          "trim_to_audio",
+          "BOOLEAN",
+          {
+           "default": false
+          }
+         ]
+        ],
+        "video/h265-mp4": [
+         [
+          "pix_fmt",
+          [
+           "yuv420p10le",
+           "yuv420p"
+          ]
+         ],
+         [
+          "crf",
+          "INT",
+          {
+           "default": 22,
+           "min": 0,
+           "max": 100,
+           "step": 1
+          }
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ]
+        ],
+        "video/nvenc_hevc-mp4": [
+         [
+          "pix_fmt",
+          [
+           "yuv420p",
+           "p010le"
+          ]
+         ],
+         [
+          "bitrate",
+          "INT",
+          {
+           "default": 10,
+           "min": 1,
+           "max": 999,
+           "step": 1
+          }
+         ],
+         [
+          "megabit",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ],
+         [
+          "save_metadata",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ]
+        ],
+        "video/ProRes": [
+         [
+          "profile",
+          [
+           "lt",
+           "standard",
+           "hq",
+           "4444",
+           "4444xq"
+          ],
+          {
+           "default": "hq"
+          }
+         ]
+        ],
+        "image/webp": [
+         [
+          "lossless",
+          "BOOLEAN",
+          {
+           "default": true
+          }
+         ]
+        ]
+       }
+      }
+     ],
+     "pingpong": [
+      "BOOLEAN",
+      {
+       "default": false
+      }
+     ],
+     "save_output": [
+      "BOOLEAN",
+      {
+       "default": true
+      }
+     ]
+    },
+    "optional": {
+     "audio": [
+      "AUDIO"
+     ],
+     "meta_batch": [
+      "VHS_BatchManager"
+     ],
+     "vae": [
+      "VAE"
+     ]
+    },
+    "hidden": {
+     "prompt": "PROMPT",
+     "extra_pnginfo": "EXTRA_PNGINFO",
+     "unique_id": "UNIQUE_ID"
+    }
+   }
+  },
+  "FreeVideoGenerate": {
+   "input": {
+    "required": {
+     "text": [
+      "STRING",
+      {
+       "display_name": "Prompt",
+       "tooltip": "Describe the scene, motion, dialogue, sound and music.",
+       "default": "integrated_multimodal_description: [Shot 1] A premium cinematic, photorealistic wide shot opens above an immense black-glass desert at blue hour. A lone explorer in a deep cobalt coat stands on a mirror-bright salt basin while a colossal ringed observatory hangs in the clouds ahead, its bronze arcs catching the first edge of sunrise. Fine dust moves in deliberate ribbons across the reflective ground. The camera glides forward at low altitude, then rises toward the observatory as distant thunder rolls through the valley; every surface remains sharp, physically coherent, and richly detailed. [Shot 2] At 00:03.000, the observatory awakens in one fluid transformation. Its concentric rings rotate into alignment and release a luminous river of gold and turquoise particles. The camera accelerates through the moving rings in a single uninterrupted arc, passing close to engraved bronze, translucent glass, and drifting sparks. The light river climbs into the storm and becomes a vast aurora that reflects across the salt basin; the explorer remains the same scale and position as the camera sweeps around them. [Shot 3] At 00:07.000, the camera completes the orbit and settles into a majestic centered composition: the observatory, aurora, and mirrored desert form one continuous horizon beneath a clearing sky. The aurora folds into a simple luminous circle above the explorer, then the image resolves smoothly into a restrained dark title card. During the final second, clean luminous lettering reads exactly \u201cFreeVideo\u201d, with no other words or logos. Hold the final frame long enough to read; no subtitles, no glitches, no extra text.\n\noverall_soundscape: Begin with a high open wind, fine salt skittering over glass, and distant thunder. As the rings align, add precise metallic resonance and a rising electrical shimmer; the particle river becomes a broad airy rush that travels around the camera. Let the final aurora fade into a clean, quiet tail beneath the title.\n\nnon_diegetic_music: A restrained cinematic pulse begins with low strings and glassy harmonics, expands into full strings and deep brass as the observatory opens, then resolves into one bright, confident chord under the final title.",
+       "multiline": true
+      }
+     ],
+     "width": [
+      "INT",
+      {
+       "default": 1344,
+       "min": 256,
+       "max": 4096,
+       "step": 32
+      }
+     ],
+     "height": [
+      "INT",
+      {
+       "default": 768,
+       "min": 256,
+       "max": 4096,
+       "step": 32
+      }
+     ],
+     "seconds": [
+      "FLOAT",
+      {
+       "display_name": "Duration (s)",
+       "tooltip": "24 fps. The length is rounded up slightly to a length the model can generate; for example, 10 s becomes 10.125 s. Videos longer than 15 s are experimental.",
+       "default": 10.0,
+       "min": 1.625,
+       "max": 60.0,
+       "step": 0.1
+      }
+     ],
+     "seed": [
+      "INT",
+      {
+       "default": 2026090903,
+       "min": 0,
+       "max": 9007199254740991,
+       "control_after_generate": true
+      }
+     ]
+    },
+    "optional": {
+     "first": [
+      "IMAGE",
+      {
+       "display_name": "First frame",
+       "tooltip": "One image. Center-cropped to the selected canvas; enables I2VA."
+      }
+     ],
+     "last": [
+      "IMAGE",
+      {
+       "display_name": "Last frame",
+       "tooltip": "One image. With first frame enables FL2VA; alone enables L2VA."
+      }
+     ],
+     "references": [
+      "FREEVIDEO_REFERENCES",
+      {
+       "tooltip": "Experimental Ref2VA. Use FreeVideo Reference nodes. VDN is not reference-trained."
+      }
+     ],
+     "loras": [
+      "FREEVIDEO_LORAS",
+      {
+       "display_name": "LoRAs"
+      }
+     ],
+     "conditioning": [
+      "CONDITIONING",
+      {
+       "tooltip": "Native MiniMax-H3 conditioning from a compatible community node, with keyframes or references. When it is connected, the prompt and media inputs are not used. Conditioning from generic CLIP nodes is rejected."
+      }
+     ],
+     "media": [
+      "FREEVIDEO_MEDIA",
+      {
+       "tooltip": "Unified Media panel: keyframes or ordered references."
+      }
+     ],
+     "two_pass": [
+      "BOOLEAN",
+      {
+       "display_name": "Two-pass acceleration",
+       "tooltip": "Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size.",
+       "default": true
+      }
+     ],
+     "base_steps": [
+      "INT",
+      {
+       "display_name": "First-pass steps",
+       "tooltip": "Default: 8. Two-pass acceleration runs only with 8 first-pass steps; any other count generates in one pass of that many steps. Changing sampling steps may reduce generation quality.",
+       "default": 8,
+       "min": 1,
+       "max": 32
+      }
+     ],
+     "refine_steps": [
+      "INT",
+      {
+       "display_name": "Second-pass steps",
+       "tooltip": "Default: 3. Three steps use the independent refinement schedule. Changing sampling steps may reduce generation quality.",
+       "default": 3,
+       "min": 1,
+       "max": 31
+      }
+     ],
+     "force_regenerate": [
+      "BOOLEAN",
+      {
+       "display_name": "Force regeneration",
+       "tooltip": "Generate again even when an identical completed video is saved locally.",
+       "default": false
+      }
+     ],
+     "preview": [
+      "BOOLEAN",
+      {
+       "display_name": "Two-pass: preview first pass",
+       "tooltip": "Part of two-pass acceleration: pause after the half-resolution first pass and save it as a preview. Run the second pass from the result when it looks right; it continues from the same latents.",
+       "default": false
+      }
+     ],
+     "refine_from": [
+      "STRING",
+      {
+       "display_name": "Second pass of preview",
+       "tooltip": "Set by the Run second pass button: the preview video to continue. The second pass uses the preview's own prompt, seed, size and inputs.",
+       "advanced": true,
+       "default": "",
+       "socketless": true,
+       "multiline": false
+      }
+     ],
+     "continue_from": [
+      "STRING",
+      {
+       "display_name": "Continue from video",
+       "tooltip": "For long videos generated in segments: continue after this MP4. Use its ComfyUI output subfolder/filename or an absolute path inside ComfyUI output or input.",
+       "advanced": true,
+       "default": "",
+       "multiline": false
+      }
+     ],
+     "frames": [
+      "INT",
+      {
+       "display_name": "Total frames",
+       "tooltip": "For long videos generated in segments: 0 uses Duration; otherwise use 5 + 17n, at least 39. Includes the 22 overlap frames when continuing; the saved MP4 contains only new frames.",
+       "advanced": true,
+       "default": 0,
+       "min": 0,
+       "max": 2147483647
+      }
+     ],
+     "first_frame_reference": [
+      "BOOLEAN",
+      {
+       "display_name": "First-frame reference",
+       "tooltip": "Reduces drift.",
+       "advanced": true,
+       "default": false
+      }
+     ],
+     "voice_reference": [
+      "BOOLEAN",
+      {
+       "display_name": "Voice reference",
+       "tooltip": "Keeps the opening voice consistent in continued dialogue.",
+       "advanced": true,
+       "default": false
+      }
+     ],
+     "hide_tail": [
+      "BOOLEAN",
+      {
+       "display_name": "Hide dialogue tail",
+       "tooltip": "Generates and discards 17 extra frames to keep dialogue moving between parts.",
+       "advanced": true,
+       "default": false
+      }
+     ],
+     "step_cache": [
+      "COMBO",
+      {
+       "display_name": "Step cache",
+       "tooltip": "Reuses work between similar sampling steps to finish sooner, with a small change to the result. High uses easycache-av; Max uses fbcache.",
+       "advanced": true,
+       "default": "none",
+       "multiselect": false,
+       "options": [
+        "none",
+        "easycache-av",
+        "fbcache"
+       ]
+      }
+     ]
+    },
+    "hidden": {
+     "unique_id": [
+      "UNIQUE_ID"
+     ],
+     "prompt": [
+      "PROMPT"
+     ],
+     "extra_pnginfo": [
+      "EXTRA_PNGINFO"
+     ]
+    }
+   }
+  }
+ }
+}

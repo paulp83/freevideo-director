@@ -115,8 +115,8 @@ def _options(info, cls):
                     found.extend(str(o) for o in spec[1]['options'])
                 except (KeyError, TypeError):
                     pass
-            elif isinstance(spec, list) and len(spec) == 1 and isinstance(spec[0], list):
-                found.extend(str(o) for o in spec[0])
+            elif isinstance(spec, list) and spec and isinstance(spec[0], list):
+                found.extend(str(o) for o in spec[0])      # legacy combo: [[names], {default, ...}] or [[names]]
     return found or None
 
 
